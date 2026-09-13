@@ -5,9 +5,11 @@
 如果你第一次接触仓库，建议按这个顺序阅读：
 
 1. 本文件：项目目标、目录和当前状态。
-2. `REALTIME_GUI_PROJECT.md`：英文版项目总览。
+2. `REALTIME_GUI_PROJECT.md`：实时项目中文总览。
 3. `AGENT_EXPERIMENT_DESIGN.md`：实时录像、历史帧、动作序列和实验参数的技术细节。
 4. `evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`：69 道游戏的接入、验收和评分依据。
+5. `evaluation_examples/README.md`、`mm_agents/README.md`、`scripts/README.md`：任务、Agent 和运行脚本说明。
+6. `SETUP_GUIDELINE_CN.md`：Docker、VM、凭据和实验运行说明。
 
 ## 当前目标
 

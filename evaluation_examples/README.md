@@ -1,24 +1,23 @@
-# Evaluation examples
+# 评测任务说明
 
-Here we put the data examples to benchmark the ability of agents when interacting with GUI.
-The examples are stored in `./examples` where each data item formatted as:
+本目录存放 OSWorld 的任务配置和基准清单。每个任务通常包含唯一 ID、初始环境、自然语言指令、初始化配置、相关应用和评分器。
 
-```
-{
-    "id": "uid", # unique id
-    "snapshot": "snapshot_id", # the snapshot id of the environment, with some data already there and apps already opened, or just desktop
-    "instruction": "natural_language_instruction", # the natural language instruction of the task, what we want the agent to do
-    "source": "website_url", # where we know this example, some forum, or some website, or some paper
-    "config": {xxx}, # the scripts to setup the donwload and open files actions, as the initial state of a task
-    # (coming in next project) "trajectory": "trajectory_directory", # the trajectory directory, which contains the action sequence file, the screenshots and the recording video
-    "related_apps": ["app1", "app2", ...], # the related apps, which are opened during the task
-    "evaluator": "evaluation_dir", # the directory of the evaluator, which contains the evaluation script for this example
-…
-}
+## 实时 GUI 基准
+
+本项目的正式实时任务清单是：
+
+```text
+evaluation_examples/test_realtime_gui_bench.json
 ```
 
-The `./trajectories` file contains the annotated trajectories for each data item in `./examples` for finishing the task.
+对应文件位于：
 
-For now, it is under construction, and only tested on Windows 10. Please:
-- Modify the path accordingly to run the evaluation;
-- Remind us if some parts are overfit to our environment.
+- 任务配置：`evaluation_examples/examples/realtime_gui_bench/`
+- 游戏网页：`evaluation_examples/websites/realtime_gui_bench/games/`
+- 评分读取：`desktop_env/evaluators/getters/realtime_gui.py`
+- 评分指标：`desktop_env/evaluators/metrics/realtime_gui.py`
+
+实时基准共有 69 道题，分为 A/B/C/D 四类。完整接入记录见
+`evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`。
+
+不要把历史清单、浏览器验收脚本或模型结果目录当作正式任务定义。新增或修改任务后，应同步检查清单、配置、网页路径和评分测试。

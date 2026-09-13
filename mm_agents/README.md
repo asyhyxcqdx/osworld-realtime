@@ -1,67 +1,32 @@
-# Agent
-## Prompt-based Agents
+# Agent 说明
 
-### Supported Models
-We currently support the following models as the foundational models for the agents:
-- `GPT-3.5` (gpt-3.5-turbo-16k, ...)
-- `GPT-4` (gpt-4-0125-preview, gpt-4-1106-preview, ...)
-- `GPT-4V` (gpt-4-vision-preview, ...)
-- `Gemini-Pro`
-- `Gemini-Pro-Vision`
-- `Claude-3, 2` (claude-3-haiku-2024030, claude-3-sonnet-2024022, ...)
-- ...
+本目录包含 OSWorld 的多模态 GUI Agent 实现。实时 GUI 项目使用
+`realtime_agent.py` 和 `realtime_protocol.py`，其他子目录是不同模型或历史 Agent 的适配实现。
 
-And those from the open-source community:
-- `Mixtral 8x7B`
-- `QWEN`, `QWEN-VL`
-- `CogAgent`
-- `Llama3`
-- ...
+## 实时 GUI Agent
 
-In the future, we will integrate and support more foundational models to enhance digital agents, so stay tuned.
+四个实时变体共用截图、`computer_13` 动作空间和模型 API：
 
-### How to use
+| Agent | 历史帧工具 | 单回合动作 |
+| --- | --- | --- |
+| Agent1 | 无 | 一个原子动作 |
+| Agent2 | 无 | 一个动作序列 |
+| Agent3 | 有 | 一个原子动作 |
+| Agent4 | 有 | 一个动作序列 |
 
-```python
-from mm_agents.agent import PromptAgent
+当前实现入口：
 
-agent = PromptAgent(
-    model="gpt-4-vision-preview",
-    observation_type="screenshot",
-)
-agent.reset()
-# say we have an instruction and observation
-instruction = "Please help me to find the nearest restaurant."
-obs = {"screenshot": open("path/to/observation.jpg", 'rb').read()}
-response, actions = agent.predict(
-    instruction,
-    obs
-)
-```
+- `realtime_protocol.py`：模式配置、动作校验、工具 schema 和提示词。
+- `realtime_agent.py`：模型请求、工具调用、历史帧查询和响应日志。
 
-### Observation Space and Action Space
-We currently support the following observation spaces:
-- `a11y_tree`: the accessibility tree of the current screen
-- `screenshot`: a screenshot of the current screen
-- `screenshot_a11y_tree`: a screenshot of the current screen with the accessibility tree overlay
-- `som`: the set-of-mark trick on the current screen, with table metadata included.
+最终实验要求所有 Agent 使用原生 API tool use。历史帧查询可以在一个回合内调用多次，但不计额外回合；Agent1/3 的行动工具必须限制为单个动作。迁移完成前，不要用旧的文本 JSON 输出行为作为最终实验接口。
 
-And the following action spaces:
-- `pyautogui`: valid Python code with `pyautogui` code valid
-- `computer_13`: a set of enumerated actions designed by us
+## 如何接入模型 API
 
-To feed an observation into the agent, you have to maintain the `obs` variable as a dict with the corresponding information:
-```python
-# continue from the previous code snippet
-obs = {
-    "screenshot": open("path/to/observation.jpg", 'rb').read(),
-    "a11y_tree": ""  # [a11y_tree data]
-}
-response, actions = agent.predict(
-    instruction,
-    obs
-)
-```
+模型凭据从环境变量读取，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 或项目使用的中转站密钥。不要把密钥写入代码、配置文件或提交记录。
 
-## Efficient Agents, Q* Agents, and more
-Stay tuned for more updates.
+实时实验通过 `scripts/python/run_multienv.py` 启动，而不是直接运行 Agent 文件。完整参数和结果目录约定见仓库根目录的 `README_CN.md` 与 `AGENT_EXPERIMENT_DESIGN.md`。
+
+## 修改原则
+
+修改 Agent 时应保持四组之间只有预先定义的能力差异。动作 schema、工具调用、回合计数和日志格式的改动必须同时更新测试和实验文档。

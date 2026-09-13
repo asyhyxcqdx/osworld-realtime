@@ -1,109 +1,41 @@
-# Scripts Directory
+# 脚本目录说明
 
-This directory contains all the run scripts for OSWorld, organized by type.
+本目录存放 OSWorld 的运行和辅助脚本。所有脚本都应从仓库根目录执行，不要先进入 `scripts/`。
 
-## Structure
+## 目录结构
 
-```
+```text
 scripts/
-├── python/          # Python run scripts for various models
-│   ├── run_*.py     # Individual model run scripts
-│   └── run_multienv_*.py  # Multi-environment run scripts
-└── bash/            # Bash scripts
-    └── run_*.sh     # Shell scripts for running models
+├── python/          # Python 运行脚本
+│   ├── run_*.py     # 单模型或单功能入口
+│   └── run_multienv_*.py  # 多环境运行入口
+└── bash/            # Shell 启动脚本
+    └── run_*.sh
 ```
 
-## Python Scripts
+## 实时 GUI 项目入口
 
-The `python/` directory contains Python scripts for running different models and agents:
-
-- **Single model scripts**: `run_autoglm.py`, `run_coact.py`, `run_maestro.py`
-- **Multi-environment scripts**: `run_multienv_*.py` - Scripts for running models in multiple environments
-- **Manual examination**: `manual_examine.py` - Tool for manually verifying and examining specific benchmark tasks
-
-## Bash Scripts
-
-The `bash/` directory contains shell scripts for running specific models:
-
-- `run_dart_gui.sh` - Run DART GUI model
-- `run_muse_spark.sh` - Run Muse Spark; see `mm_agents/muse_spark/README.md`
-- `run_os_symphony.sh` - Run OS Symphony model
-- `run_manual_examine.sh` - Example script for manual task examination with sample task IDs
-
-> **Note**: Due to previous oversight, many bash scripts were not preserved during the reorganization. We will gradually add more bash scripts in future updates. Community contributions are welcome! If you have bash scripts for running specific models or workflows, please feel free to submit a pull request.
-
-## Usage
-
-**Important**: All scripts should be run from the **project root directory** (not from within the scripts/ directory).
-
-### Running Python Scripts
+四组 Agent 使用同一个入口：
 
 ```bash
-# From the OSWorld root directory
-python scripts/python/run_multienv.py [args]
-
-# Example: Run with OpenAI GPT-4o
 python scripts/python/run_multienv.py \
-    --provider_name docker \
-    --headless \
-    --observation_type screenshot \
-    --model gpt-4o \
-    --max_steps 15 \
-    --num_envs 10 \
-    --client_password password
+  --agent_variant agent1 \
+  --run_id exp001 \
+  --action_space computer_13 \
+  --observation_type screenshot \
+  --test_all_meta_path evaluation_examples/test_realtime_gui_bench.json
 ```
 
-### Running Bash Scripts
+真实 Docker 运行还需要 provider、VM 镜像、模型、凭据和其他参数。完整模板见仓库根目录的 `AGENT_EXPERIMENT_DESIGN.md` 和 `README_CN.md`。
 
-```bash
-# From the OSWorld root directory
-bash scripts/bash/run_dart_gui.sh [args]
-```
+## 其他脚本
 
-### Manual Task Examination
+- `python/` 下的 `run_*.py` 用于其他模型或 OSWorld 运行模式。
+- `bash/` 下的 `run_*.sh` 是预设参数示例。
+- `generate_realtime_gui_bench.py` 用于生成 69 道实时任务的 OSWorld 配置。
+- `validate_realtime_gui_bench.py` 用于检查实时任务接入和评分路径。
+- `install_realtime_server.py` 用于将实时录像与历史帧服务安装到当前 VM。
 
-For manual verification and examination of specific benchmark tasks:
+## 开发约定
 
-```bash
-# From the OSWorld root directory
-python scripts/python/manual_examine.py \
-    --headless \
-    --observation_type screenshot \
-    --result_dir ./results_human_examine \
-    --test_all_meta_path evaluation_examples/test_all.json \
-    --domain libreoffice_impress \
-    --example_id a669ef01-ded5-4099-9ea9-25e99b569840 \
-    --max_steps 3
-```
-
-This tool allows you to:
-- Manually execute tasks in the environment
-- Verify task correctness and evaluation metrics
-- Record the execution process with screenshots and videos
-- Examine specific problematic tasks
-
-See `scripts/bash/run_manual_examine.sh` for example task IDs across different domains.
-
-## Technical Details
-
-All Python scripts in this directory have been configured with automatic path resolution to import modules from the project root. This means:
-
-1. **You must run scripts from the project root directory**
-2. Scripts automatically add the project root to `sys.path`
-3. All imports (like `lib_run_single`, `desktop_env`, `mm_agents`) work correctly
-
-## Adding New Scripts
-
-If you create a new run script, make sure to include the following path setup at the beginning (after standard library imports but before project imports):
-
-```python
-# Add project root to path for imports
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-
-# Now you can import project modules
-import lib_run_single
-from desktop_env.desktop_env import DesktopEnv
-from mm_agents.your_agent import YourAgent
-```
+脚本必须从项目根目录运行；入口会自行处理项目模块导入。新增脚本时，应复用现有参数命名、结果目录布局和日志格式，并同步更新中文文档和相关测试。

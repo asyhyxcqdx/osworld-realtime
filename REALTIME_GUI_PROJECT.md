@@ -1,105 +1,74 @@
-# Realtime GUI Agent Project Guide
+# 实时 GUI Agent 项目总览
 
-This fork extends OSWorld with a real-time GUI benchmark and four controlled
-agent variants. The research question is whether turn-based agents become more
-capable when they receive historical video frames, can submit multiple actions
-in one turn, or receive both capabilities.
+本仓库基于 OSWorld，加入实时 GUI 游戏基准和四个受控的 Agent 变体。研究问题是：历史视频帧和单回合多动作是否能弥补回合制 Agent 与人类连续感知—行动循环之间的差距。
 
-## Benchmark
+## 基准任务
 
-The current benchmark contains 69 self-contained browser games:
+当前基准包含 69 个自包含网页游戏：
 
-| Category | Capability requirement | Tasks |
+| 类别 | 能力要求 | 数量 |
 | --- | --- | ---: |
-| A | Continuous perception; no real-time action requirement | 22 |
-| B | Anticipatory action; no real-time perception requirement | 12 |
-| C | Coupled perception and action with reproducible dynamics | 17 |
-| D | Coupled perception and action with stochastic dynamics | 18 |
+| A | 连续感知，不要求实时动作 | 22 |
+| B | 预见性动作，不要求实时感知 | 12 |
+| C | 可复现动态下的实时感知与动作耦合 | 17 |
+| D | 随机动态下的实时感知与动作耦合 | 18 |
 
-The task list is `evaluation_examples/test_realtime_gui_bench.json`. Game pages
-are in `evaluation_examples/websites/realtime_gui_bench/games/`, and the
-corresponding OSWorld task configurations are in
-`evaluation_examples/examples/realtime_gui_bench/`.
+任务清单是 `evaluation_examples/test_realtime_gui_bench.json`。网页位于
+`evaluation_examples/websites/realtime_gui_bench/games/`，对应的 OSWorld
+任务配置位于 `evaluation_examples/examples/realtime_gui_bench/`。
 
-Each game provides up to three attempts within one environment run. The
-evaluator reads `BENCH.passed` and `BENCH.attempts` and reports:
+每个游戏在一次环境运行中最多有三次机会。评分器读取网页的
+`BENCH.passed` 和 `BENCH.attempts`：
 
-- `pass@1`: the first attempt succeeds (`passed` is true and `attempts == 0`).
-- `pass@3`: at least one of the three attempts succeeds (`passed` is true).
+- `pass@1`：第一次尝试成功，即 `passed == true` 且 `attempts == 0`。
+- `pass@3`：三次机会内至少成功一次，即 `passed == true`。
 
-`pass@3` therefore does not require running the same game three separate
-times. A missing or interrupted result is unscored; it must not be converted to
-a game failure.
+因此，`pass@3` 不需要把同一个游戏单独运行三遍。缺失或中断的结果应记为未评分，不能转换成游戏失败。
 
-## Agent matrix
+## Agent 矩阵
 
-All four variants use the same screenshot observation and the existing
-`computer_13` action vocabulary. The experimental factors are:
+四组共用截图观察、`computer_13` 动作词汇和模型接口。实验变量只有历史帧工具和单回合行动数量：
 
-| Agent | Historical-frame tool | Actions per turn |
+| Agent | 历史帧工具 | 每回合行动 |
 | --- | --- | --- |
-| Agent1 | Disabled | Exactly one atomic action |
-| Agent2 | Disabled | One submitted action sequence |
-| Agent3 | Enabled | Exactly one atomic action |
-| Agent4 | Enabled | One submitted action sequence |
+| Agent1 | 不开放 | 只能一个原子动作 |
+| Agent2 | 不开放 | 可以提交一个动作序列 |
+| Agent3 | 开放 | 只能一个原子动作 |
+| Agent4 | 开放 | 可以提交一个动作序列 |
 
-A turn is one perception--reasoning--action cycle. Agent3 and Agent4 may call
-the historical-frame tool repeatedly before committing an action. Tool calls do
-not add turns. Agent2 and Agent4 may execute several atomic actions after one
-action submission; Agent1 and Agent3 are restricted to one.
+一个回合定义为“当前观测 → 思考和感知 → 行动”。Agent3/4 可以在提交行动前多次调用历史帧工具，工具调用不增加回合数。Agent2/4 的一段动作提交会连续执行多个原子动作；Agent1/3 必须拒绝动作数组。
 
-The intended final interface is native API tool use with schemas for both
-historical-frame queries and action submission. The current code already has
-the frame-query protocol and action validation, but action responses are still
-being migrated from text JSON parsing to the unified action tool interface.
+最终接口约定是所有 Agent 都使用原生 API tool use，并用 schema 描述感知工具和行动工具。当前代码已经有历史帧协议和动作校验，但动作结果仍有一部分通过文本 JSON 解析，统一行动工具接口尚未完成迁移。
 
-## Runtime architecture
+## 运行架构
 
-- `mm_agents/realtime_protocol.py`: variant modes, action vocabulary validation,
-  frame-query schema, and prompt construction.
-- `mm_agents/realtime_agent.py`: provider protocol adapters, tool-call loop,
-  response logging, and frame-query handling.
-- `lib_run_realtime.py`: task lifecycle, turn/action budgets, recordings, and
-  detailed result logging.
-- `desktop_env/server/realtime.py`: VM-side continuous recording, frame access,
-  and action-sequence execution.
-- `desktop_env/server/fmp4.py`: incremental fMP4 indexing and historical-frame
-  decoding.
-- `scripts/python/run_multienv.py`: the command-line entry point for the four
-  variants.
-- `desktop_env/evaluators/getters/realtime_gui.py` and
-  `desktop_env/evaluators/metrics/realtime_gui.py`: result extraction and
-  `pass@1`/`pass@3` scoring.
+- `mm_agents/realtime_protocol.py`：四组模式、动作词汇校验、历史帧 schema 和提示词生成。
+- `mm_agents/realtime_agent.py`：模型 API 协议、工具调用循环、历史帧处理和日志。
+- `lib_run_realtime.py`：任务生命周期、预算、录像和详细结果保存。
+- `desktop_env/server/realtime.py`：虚拟机内持续录像、取帧和动作序列执行。
+- `desktop_env/server/fmp4.py`：增量 fMP4 索引和历史帧解码。
+- `scripts/python/run_multienv.py`：四组 Agent 的命令行入口。
+- `desktop_env/evaluators/getters/realtime_gui.py`：读取网页 `BENCH` 状态。
+- `desktop_env/evaluators/metrics/realtime_gui.py`：计算 `pass@1` 和 `pass@3`。
 
-## Verification status
+## 结果和实验状态
 
-The 69 games and their evaluator have been checked with browser interaction
-and scoring-path tests. The four-agent plumbing has local and API smoke-test
-coverage. These checks establish that the benchmark can run and score; they do
-not constitute the final model comparison.
+四组比较使用同一个 `--result_dir` 和 `--run_id`。运行器会建立：
 
-The full experiment is 69 tasks × 4 variants. The old Sonnet smoke batch is a
-partial diagnostic run and must not be presented as the final 4×4 result
-matrix. New experiments must use a new `run_id` when changing the model,
-protocol, prompt, or budget.
+```text
+<result_dir>/<model>/<run_id>/agent1/
+<result_dir>/<model>/<run_id>/agent2/
+<result_dir>/<model>/<run_id>/agent3/
+<result_dir>/<model>/<run_id>/agent4/
+```
 
-For a four-agent comparison, pass one shared `--result_dir` and one shared
-`--run_id` to the four launches. The runner creates the isolated layout
-`<result_dir>/<model>/<run_id>/agent1` through `agent4`; reusing the same
-`run_id` resumes that comparison batch rather than mixing it with another
-configuration. The canonical command template is in
-`AGENT_EXPERIMENT_DESIGN.md`.
+完整实验规模是 69 道任务 × 4 个 Agent。旧的 Sonnet 小规模试跑只是诊断批次，不能当作最终 4×4 结果。修改模型、API 协议、提示词、schema 或预算后必须使用新的 `run_id`。
 
-## Contributor workflow
+69 道网页任务和评分器已经完成接入验收；四组 Agent 的基础运行器已有本地和 API 冒烟测试。这些检查证明基准可以运行和评分，不等于最终模型比较已经完成。
 
-1. Read this guide, `AGENT_EXPERIMENT_DESIGN.md`, and the relevant tests.
-2. Run focused unit tests before changing runtime behavior.
-3. Keep benchmark pages, task configs, evaluator logic, and agent logic in
-   separate changes where possible.
-4. Use `.env` only for local credentials; never commit API keys, VM images,
-   recordings, caches, or private result logs.
-5. Document any change to the action schema, turn definition, timing, scoring,
-   or result layout before running a new experiment.
+## 开源开发约定
 
-Historical experiment notes are intentionally kept outside the source tree;
-this guide is the intended starting point for new contributors.
+1. 修改运行行为前，先阅读本文件、`AGENT_EXPERIMENT_DESIGN.md` 和相关测试。
+2. 任务网页、OSWorld 配置、评分器、Agent 和 VM 服务尽量分开修改。
+3. `.env` 只用于本地凭据；不要提交 API 密钥、VM 镜像、录像、缓存或私有结果。
+4. 修改动作 schema、回合定义、时间控制、评分或结果目录时，先更新文档，再启动新实验。
