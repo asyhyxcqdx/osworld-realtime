@@ -20,4 +20,7 @@ evaluation_examples/test_realtime_gui_bench.json
 实时基准共有 69 道题，分为 A/B/C/D 四类。完整接入记录见
 `evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`。
 
+网页必须遵守仓库根目录的 `REALTIME_GUI_BENCH_PROTOCOL.md`。该协议定义
+`window.BENCH` 的字段、三次尝试、`pass_at_1`/`pass_at_3` 和终态；不要依据历史任务或旧 checker 自行解释 `attempts`。
+
 不要把历史清单、浏览器验收脚本或模型结果目录当作正式任务定义。新增或修改任务后，应同步检查清单、配置、网页路径和评分测试。

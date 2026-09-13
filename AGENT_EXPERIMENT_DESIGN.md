@@ -1,5 +1,8 @@
 # 四组 Agent：实现与运行约定
 
+游戏网页的 `window.BENCH` 状态和 `pass_at_1`/`pass_at_3` 正式定义以
+`REALTIME_GUI_BENCH_PROTOCOL.md` 为准；本文只记录四组 Agent 的运行实现和实验参数。
+
 当前四组已接入同一套运行器。它们使用相同的模型接口、原有 `computer_13` 动作空间、当前截图、历史轮数和 fMP4 录制设置；区别只有是否允许动作序列、是否向模型开放 `get_frames`。本文记录当前实现，不把设想写成已验证结果。
 
 ## 四组

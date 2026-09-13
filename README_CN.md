@@ -10,6 +10,7 @@
 4. `evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`：69 道游戏的接入、验收和评分依据。
 5. `evaluation_examples/README.md`、`mm_agents/README.md`、`scripts/README.md`：任务、Agent 和运行脚本说明。
 6. `SETUP_GUIDELINE_CN.md`：Docker、VM、凭据和实验运行说明。
+7. `REALTIME_GUI_BENCH_PROTOCOL.md`：游戏制作 Agent 必须遵守的正式状态和评分接口。
 
 ## 当前目标
 
