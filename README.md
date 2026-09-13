@@ -35,7 +35,7 @@
 > four controlled GUI-agent variants. Start with the
 > [Realtime GUI Project Guide](REALTIME_GUI_PROJECT.md) for the benchmark
 > layout, agent matrix, scoring rules, runtime architecture, and contributor
-> workflow.
+> workflow. 中文开发者请先阅读 [README_CN.md](README_CN.md)。
 
 
 ## 📢 Updates
