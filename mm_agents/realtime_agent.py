@@ -17,7 +17,6 @@ from mm_agents.realtime_protocol import (
     ACTION_TOOL_TYPES,
     FRAME_TOOL,
     GetFramesArgs,
-    MODES,
     load_output,
     parse_actions,
     system_prompt,
@@ -370,6 +369,8 @@ class RealtimeAgent:
         self,
         *,
         variant="agent1",
+        sequence=None,
+        frames=None,
         model="claude-sonnet-5",
         api_format="auto",
         api_base_url=None,
@@ -384,8 +385,11 @@ class RealtimeAgent:
         system_prompt_text=None,
         wire=None,
     ):
-        self.mode = MODES[variant]
+        if sequence is None or frames is None:
+            raise ValueError("sequence and frames must come from a validated Agent config")
         self.variant = variant
+        self.sequence = bool(sequence)
+        self.frames = bool(frames)
         self.max_tokens, self.temperature = max_tokens, temperature
         if max_trajectory_length is not None and max_trajectory_length < 0:
             raise ValueError("max_trajectory_length must be nonnegative or None")
@@ -398,9 +402,9 @@ class RealtimeAgent:
             model, api_format, api_base_url, thinking_summary=thinking_summary
         )
         self.system = system_prompt_text or system_prompt(
-            self.mode, pause, self.max_actions, self.max_queries
+            self.sequence, self.frames, pause, self.max_actions, self.max_queries
         )
-        if self.mode.frames and tool_format == "json":
+        if self.frames and tool_format == "json":
             self.system += (
                 '\nTo query instead of acting, return {"tool_call":{"tool_name":"get_frames","times_s":[3.0]}}.\n'
                 + json.dumps(FRAME_TOOL)
@@ -482,7 +486,7 @@ class RealtimeAgent:
             self.max_actions,
             obs.get("remaining_actions", self.max_actions),
         )
-        if not self.mode.sequence:
+        if not self.sequence:
             max_allowed = 1
         if len(calls) > max_allowed:
             raise ValueError("Invalid action count for this agent group.")
@@ -545,7 +549,7 @@ class RealtimeAgent:
             start = time.monotonic()
             self.counters["model_requests"] += 1
             request_id = self.counters["model_requests"]
-            tools_enabled = self.mode.frames and (
+            tools_enabled = self.frames and (
                 not self.max_queries or queries < self.max_queries
             )
             request_tools = []
@@ -659,7 +663,7 @@ class RealtimeAgent:
                     return text, actions
                 if not frame_calls:
                     raise ValueError("Unknown native tool call.")
-                if not self.mode.frames:
+                if not self.frames:
                     raise ValueError("This agent group has no frame query tool.")
                 results = []
                 for call in frame_calls:
@@ -735,7 +739,7 @@ class RealtimeAgent:
             try:
                 actions = parse_actions(
                     text,
-                    sequence=self.mode.sequence,
+                    sequence=self.sequence,
                     max_actions=min(
                         self.max_actions, obs.get("remaining_actions", self.max_actions)
                     ),

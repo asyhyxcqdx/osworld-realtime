@@ -71,6 +71,8 @@ def agent_kwargs(config):
     thinking = api["thinking"]
     return {
         "model": api["model"],
+        "sequence": action["mode"] == "sequence",
+        "frames": observation["enabled"],
         "api_format": api["protocol"],
         "max_tokens": api["max_output_tokens"],
         "temperature": api["temperature"],

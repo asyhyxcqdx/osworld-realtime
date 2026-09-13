@@ -17,7 +17,7 @@
 
 历史帧查询属于感知阶段，不会增加回合数，也不会执行鼠标或键盘动作。模型可能因为多次感知而产生多次 HTTP 请求，但这些请求仍属于同一个回合。
 
-四个 Agent 的差异由 `MODES` 定义：
+四个 Agent 的差异由 YAML 配置中的 `action.mode` 和 `observation.historical_video.enabled` 定义：
 
 | Agent | 当前截图 | 历史帧 | 每回合动作数 |
 | --- | --- | --- | --- |
@@ -26,7 +26,7 @@
 | Agent3 / Video | 有 | 有 | 1 |
 | Agent4 / combine | 有 | 有 | 1–100 |
 
-对应实现见 [realtime_protocol.py](/mnt/zhaorunsong/yhyx/OSWorld/mm_agents/realtime_protocol.py#L18)。
+运行器将这两个配置字段传给 `RealtimeAgent`，运行时直接使用 `sequence` 和 `frames` 属性。动作校验和工具 schema 仍在 [realtime_protocol.py](/mnt/zhaorunsong/yhyx/OSWorld/mm_agents/realtime_protocol.py) 中定义。
 
 ## 2. 运行入口
 

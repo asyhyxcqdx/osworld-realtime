@@ -10,12 +10,17 @@ from mm_agents.realtime_agent import ModelWire, RealtimeAgent, response_reasonin
 from mm_agents.realtime_protocol import (
     GetFramesArgs,
     parse_actions,
-    MODES,
     system_prompt,
 )
 
 
 ACTION = {"action_type": "PRESS", "parameters": {"key": " "}}
+CAPABILITIES = {
+    "agent1": SimpleNamespace(sequence=False, frames=False),
+    "agent2": SimpleNamespace(sequence=True, frames=False),
+    "agent3": SimpleNamespace(sequence=False, frames=True),
+    "agent4": SimpleNamespace(sequence=True, frames=True),
+}
 IMAGE = {
     "type": "base64",
     "media_type": "image/png",
@@ -149,9 +154,9 @@ def native_reply(protocol, *, tool=None, text=None, force_text=False):
 @pytest.mark.parametrize(
     "protocol", ["anthropic_messages", "openai_chat", "openai_responses"]
 )
-@pytest.mark.parametrize("variant", list(MODES))
+@pytest.mark.parametrize("variant", list(CAPABILITIES))
 def test_four_variants_and_repeated_frame_queries(protocol, variant):
-    mode = MODES[variant]
+    mode = CAPABILITIES[variant]
     wire = ModelWire("mock", protocol)
     actions = [ACTION, ACTION] if mode.sequence else ACTION
     replies = (
@@ -167,7 +172,7 @@ def test_four_variants_and_repeated_frame_queries(protocol, variant):
         return replies.pop(0)
 
     wire.request = request
-    agent = RealtimeAgent(variant=variant, wire=wire)
+    agent = RealtimeAgent(variant=variant, sequence=mode.sequence, frames=mode.frames, wire=wire)
     query = Mock(
         return_value={
             "frames": [
@@ -203,7 +208,7 @@ def test_json_tool_output_and_query_budget():
     ]
     wire.request = Mock(side_effect=replies)
     agent = RealtimeAgent(
-        variant="agent3", wire=wire, tool_format="json", max_frame_queries=1
+        variant="agent3", sequence=False, frames=True, wire=wire, tool_format="json", max_frame_queries=1
     )
     agent.bind_frame_query(
         lambda _: {
@@ -227,7 +232,7 @@ def test_single_action_repair_does_not_execute_first_invalid_action():
             native_reply(wire.protocol, text=json.dumps(ACTION)),
         ]
     )
-    agent = RealtimeAgent(wire=wire)
+    agent = RealtimeAgent(sequence=False, frames=False, wire=wire)
     assert agent.predict("t", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION]
     assert agent.counters["model_requests"] == 2
 
@@ -240,7 +245,7 @@ def test_action_budget_is_not_silently_truncated():
             native_reply(wire.protocol, text=json.dumps(ACTION)),
         ]
     )
-    agent = RealtimeAgent(variant="agent2", wire=wire)
+    agent = RealtimeAgent(variant="agent2", sequence=True, frames=False, wire=wire)
     assert agent.predict(
         "t", {"screenshot": b"png", "task_time_s": 0, "remaining_actions": 1}
     )[1] == [ACTION]
@@ -301,12 +306,13 @@ def test_env_sequence_observes_once():
 @pytest.mark.parametrize("variant", ["agent3", "agent4"])
 def test_default_queries_have_no_query_or_request_count_limit(protocol, variant):
     wire = ModelWire("mock", protocol)
-    action = [ACTION] if MODES[variant].sequence else ACTION
+    action = [ACTION] if CAPABILITIES[variant].sequence else ACTION
     wire.request = Mock(side_effect=[
         *(native_reply(protocol, tool=f"q{i}") for i in range(12)),
         native_reply(protocol, text=json.dumps(action)),
     ])
-    agent = RealtimeAgent(variant=variant, wire=wire)
+    mode = CAPABILITIES[variant]
+    agent = RealtimeAgent(variant=variant, sequence=mode.sequence, frames=mode.frames, wire=wire)
     agent.bind_frame_query(Mock(return_value={"frames": [{"status": "not_ready"}]}))
     assert agent.predict("t", {"screenshot": b"png", "task_time_s": 1})[1] == [ACTION]
     assert agent.counters["frame_queries"] == 12
@@ -337,7 +343,7 @@ def test_provider_reasoning_is_logged_and_preserved_in_tool_history(protocol):
         return native_reply(protocol, text=json.dumps(ACTION))
 
     wire.request = request
-    agent = RealtimeAgent(variant="agent3", wire=wire)
+    agent = RealtimeAgent(variant="agent3", sequence=False, frames=True, wire=wire)
     agent.bind_frame_query(lambda _: {"frames": []})
     events = []
     agent.bind_event_sink(events.append)

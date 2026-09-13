@@ -346,6 +346,8 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
             from mm_agents.realtime_agent import RealtimeAgent
             agent = RealtimeAgent(
                 variant=args.agent_variant, model=args.model, max_tokens=args.max_tokens,
+                sequence=args.realtime_config["action"]["mode"] == "sequence",
+                frames=args.realtime_config["observation"]["historical_video"]["enabled"],
                 temperature=args.temperature, max_trajectory_length=args.max_trajectory_length,
                 api_format=args.api_format, api_base_url=args.api_base_url,
                 pause=args.sleep_after_execution, max_sequence_actions=args.max_sequence_actions,

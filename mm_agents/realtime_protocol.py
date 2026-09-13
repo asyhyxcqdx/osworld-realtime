@@ -2,25 +2,10 @@
 import json
 import math
 import re
-from dataclasses import dataclass
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 from desktop_env.actions import ACTION_SPACE, KEYBOARD_KEYS
-
-
-@dataclass(frozen=True)
-class AgentMode:
-    sequence: bool
-    frames: bool
-
-
-MODES = {
-    "agent1": AgentMode(False, False),
-    "agent2": AgentMode(True, False),
-    "agent3": AgentMode(False, True),
-    "agent4": AgentMode(True, True),
-}
 
 
 class GetFramesArgs(BaseModel):
@@ -194,12 +179,12 @@ def parse_actions(text, *, sequence=False, max_actions=100):
     return actions
 
 
-def system_prompt(mode, pause, max_actions, max_queries):
+def system_prompt(sequence, frames, pause, max_actions, max_queries):
     output = (
         f"Submit 1-{max_actions} native computer action tool calls. "
         "The calls execute consecutively in the VM with one final screenshot. "
         "No automatic gaps are inserted. "
-        if mode.sequence
+        if sequence
         else "Submit exactly one native computer action tool call per decision. "
     )
     prompt = (
@@ -210,14 +195,14 @@ def system_prompt(mode, pause, max_actions, max_queries):
         f"WAIT has no parameters. pause={pause} seconds. "
         + (
             f"WAIT sleeps once for {pause} seconds. "
-            if mode.sequence
+            if sequence
             else f"Ordinary actions sleep {pause} seconds before observation; legacy WAIT sleeps twice. "
         )
         + "MOVE_TO duration stays random 0.5-1 seconds; DRAG_TO stays 1 second. "
         + output
         + "Do not finish with a text-only response."
     )
-    if mode.frames:
+    if frames:
         query_budget = (
             f"You may use get_frames up to {max_queries} times before committing actions. "
             if max_queries

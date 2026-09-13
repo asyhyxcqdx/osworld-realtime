@@ -7,10 +7,15 @@ from flask import Flask, Response
 
 from desktop_env.server.realtime import LiveRecording, register_realtime
 from lib_run_realtime import run_realtime_example
-from mm_agents.realtime_protocol import MODES
+CAPABILITIES = {
+    "agent1": SimpleNamespace(sequence=False, frames=False),
+    "agent2": SimpleNamespace(sequence=True, frames=False),
+    "agent3": SimpleNamespace(sequence=False, frames=True),
+    "agent4": SimpleNamespace(sequence=True, frames=True),
+}
 
 
-@pytest.mark.parametrize("variant", list(MODES))
+@pytest.mark.parametrize("variant", list(CAPABILITIES))
 def test_runner_counts_actions_not_queries_and_cleans_recording(
     tmp_path, monkeypatch, variant
 ):
@@ -18,7 +23,7 @@ def test_runner_counts_actions_not_queries_and_cleans_recording(
     monkeypatch.setattr("lib_run_single.setup_logger", lambda *args: None)
     monkeypatch.setattr("lib_run_single._evaluate_with_details", lambda *args, **kwargs: 1)
     monkeypatch.setattr("lib_run_realtime.log_task_completion", lambda *args: None)
-    mode = MODES[variant]
+    mode = CAPABILITIES[variant]
     controller = SimpleNamespace(
         start_realtime_recording=Mock(return_value={"task_time_s": 0}),
         last_observation_time=0.1,
@@ -42,6 +47,8 @@ def test_runner_counts_actions_not_queries_and_cleans_recording(
         reset=Mock(),
         variant=variant,
         mode=mode,
+        sequence=mode.sequence,
+        frames=mode.frames,
         bind_frame_query=Mock(),
         bind_event_sink=Mock(),
         system="test system prompt",
@@ -106,7 +113,7 @@ def test_model_events_are_saved_before_next_request_and_survive_api_failure(tmp_
         raise RuntimeError("Model API HTTP 503: test failure")
 
     wire.request = request
-    agent = RealtimeAgent(variant="agent3", wire=wire)
+    agent = RealtimeAgent(variant="agent3", sequence=False, frames=True, wire=wire)
     args = SimpleNamespace(
         result_dir=str(tmp_path), environment_ready_wait_s=60, recording_fragment_ms=100,
         sleep_after_execution=0, model="mock", max_sequence_actions=16,

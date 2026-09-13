@@ -31,8 +31,8 @@ def run_realtime_example(
         "agent_started_at": getattr(args, "agent_started_at", None),
         "task_started_at": task_started_at,
         "variant": agent.variant,
-        "sequence": agent.mode.sequence,
-        "frame_query": agent.mode.frames,
+        "sequence": agent.sequence,
+        "frame_query": agent.frames,
         "action_space": "computer_13",
         "model": args.model,
         "agent_config": getattr(args, "realtime_config_path", None),
@@ -50,7 +50,7 @@ def run_realtime_example(
         "instruction": instruction,
         "trajectory_file": "trajectory.jsonl",
         "system_prompt_file": "system_prompt.txt",
-        "frame_tool": FRAME_TOOL if agent.mode.frames else None,
+        "frame_tool": FRAME_TOOL if agent.frames else None,
         "model_log_version": 3,
         "clock": "First recorded X11 frame after environment preparation is t=0; screenshot time is measured in the VM.",
     }
@@ -93,7 +93,7 @@ def run_realtime_example(
         write_event({"event": "frame_query_artifacts", "times_s": times_s, "images": images})
         return result
 
-    agent.bind_frame_query(query if agent.mode.frames else None)
+    agent.bind_frame_query(query if agent.frames else None)
     agent.bind_event_sink(write_event)
     try:
         obs = env._get_obs()
@@ -124,7 +124,7 @@ def run_realtime_example(
             )
             dispatched = time.monotonic()
             try:
-                if agent.mode.sequence:
+                if agent.sequence:
                     obs, reward, done, info = env.step_sequence(
                         actions, args.sleep_after_execution
                     )
