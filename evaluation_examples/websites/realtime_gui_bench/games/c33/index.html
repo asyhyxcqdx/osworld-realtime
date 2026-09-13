@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grapple Swing 钩爪荡</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:600px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Swing right and land 向右荡去落地</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">R</span> Release 释放</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Landed on the ground 落在右侧地面</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Grapple Swing 钩爪荡</div>
+      <div class="intro-rule">You hang from a grapnel on the left and swing rightward. Release <b>R</b> at the right moment to swing <b>as far as possible</b> and fly across the chasm onto the ground on the right.<br>你从左侧钩爪荡向右方，找准<b>让荡程最远</b>的时机按 R 释放，飞越深渊落到右侧地面。<br><br>Press R to release 按 R 释放</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Release R at the right moment 在正确时刻按 R 释放</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+
+  /* ================================================================
+   * 物理公式（硬编码可复现，Python 模拟定稿）
+   *
+   * 单摆：锚点 (AX, AY)，绳长 L，摆角 α 相对「竖直向下」，α<0 在锚点左侧、α>0 在右侧。
+   *   主角位置：  x = AX + L·sinα,   y = AY + L·cosα
+   *   角加速度：  dω/dt = -(G/L)·sinα      （ω = dα/dt）
+   *   主角从左侧水平位（α = -90°）静止摆下（ω 从 0 增大），
+   *   经过最低点（α = 0°），摆到右侧（α > 0）。
+   * 释放瞬时（切线速度 = 位置对时间的导数）：
+   *   vx = L·ω·cosα       （α>0、ω>0 → vx>0 向右，与「从左荡到右」方向一致）
+   *   vy = -L·ω·sinα
+   * 释放后自由抛物线（同一 G）：
+   *   y(t) = y0 + vy·t + ½·G·t²，  x(t) = x0 + vx·t
+   *
+   * 核心玩法 = 找「落点最远」的释放时机（d = vx × T 的权衡，非「水平速度最大」）：
+   *   水平距离 d(α) = vx(α) × T(α)：
+   *     vx(α) = L·ω·cosα = √(2GL)·cos^(3/2)α  —— 摆得越低（α 越小）越大，α=0°（最低点）最大；
+   *     T(α)（浮空时间）由释放高度 + 垂直初速决定，释放点越高（α 越大）越长。
+   *   两者一降一升，乘积 d(α) 呈「先升后降」峰形，数值解最优 α* ≈ 34.5°，最远落点 ≈ 672。
+   *   （α=0° vx 最大但离地最低、T 最短 → d=497；α=34.5° vx 略降但更高、飞行更久 → d=672 最远。）
+   * 判定（单侧简化 + 容错放宽）：
+   *   右侧地面从 GROUND_L 起向右无限延展；落点 x ≥ GROUND_L → 成功（落到右侧地面）；
+   *   落点 x < GROUND_L（没飞过深渊，太早/太晚释放 d 不够）→ 掉深渊失败。
+   *   GROUND_L 设在峰值之下约 37px，给「接近最优时机仍成功」的容错：
+   *   成功区间（Python 定稿）：释放角 α∈[20.6°,48.9°]，宽 28.3°，时间窗约 206ms（人类可从容命中）。
+   * ================================================================ */
+  const G = 500;            // 重力加速度 px/s²（单摆与抛体共用；调小使摆动变慢、时间窗变宽）
+  const L = 140;            // 绳长 px
+  const AX = 260, AY = 100; // 锚点（左上，静止可见）
+  const GROUND_L = 635, PLAT_Y = 340;  // 右侧地面起点 x（向右无限延展，峰值 672 之下约 37px 留容错）、地面顶 y
+  const SIZE = 34;          // 主角尺寸
+  const START_ALPHA = -90;  // 起始摆角（左侧水平）
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"grapple_swing", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "swing";   // swing | fly | over
+  // 摆角 α（弧度，相对竖直向下），从左侧 START_ALPHA(-90°) 摆向右侧
+  let alpha = START_ALPHA * Math.PI / 180;
+  let omega = 0;         // 角速度 rad/s（从 0 增大为正）
+  let px = 0, py = 0, vx = 0, vy = 0, prevY = 0;  // 主角位置/速度
+
+  function heroPosFromAlpha(a) {
+    return { x: AX + L * Math.sin(a), y: AY + L * Math.cos(a) };
+  }
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status); }catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, alphaDeg:+((alpha*180/Math.PI).toFixed(1)),
+             x:Math.round(px), y:Math.round(py), vx:+vx.toFixed(1), vy:+vy.toFixed(1),
+             anchor:{x:AX,y:AY}, ropeLen:L, ground:{L:GROUND_L,y:PLAT_Y},
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "swing";
+    alpha = START_ALPHA * Math.PI / 180;
+    omega = 0;
+    const p = heroPosFromAlpha(alpha);
+    px = p.x; py = p.y; vx = 0; vy = 0; prevY = py;
+    setStatus("Swing 荡动","");
+  }
+
+  function release(){
+    if (phase !== "swing") return;
+    // 释放：切线速度（位置对时间的导数）——α>0、ω>0 → vx>0 向右
+    vx = L * omega * Math.cos(alpha);
+    vy = -L * omega * Math.sin(alpha);
+    prevY = py;
+    phase = "fly";
+    setStatus("Release! 释放！","action");
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Success 成功","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Fell 掉落","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Fell 掉落","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt){
+    if (phase === "over") return;
+    if (phase === "swing") {
+      // 单摆：角加速度 = -(G/L)·sinα（α 从 -90° 递增到 +90°）
+      omega -= (G / L) * Math.sin(alpha) * dt;
+      alpha += omega * dt;
+      const p = heroPosFromAlpha(alpha);
+      px = p.x; py = p.y; prevY = py;
+      // 摆到右侧最高点后开始回摆（ω 从正变负、主角仍在右侧）仍未释放 → 失败。
+      // 注意：α 永远到不了精确的 90°（最高点速度归零再反转），须用「回摆」判据而非「α>=90°」。
+      if (omega < 0 && alpha > 0.2) { fail(); }
+    } else if (phase === "fly") {
+      prevY = py;
+      vy += G * dt;
+      px += vx * dt;
+      py += vy * dt;
+      // 从上方穿过地面顶（正常物理落地，无吸附）：
+      //   落点 x ≥ GROUND_L → 落到右侧无限地面，成功；
+      //   落点 x < GROUND_L → 掉进深渊，失败（太早/太晚释放，飞不过深渊）。
+      if (py >= PLAT_Y && prevY < PLAT_Y) {
+        if (px >= GROUND_L) { win(); }
+        else { fail(); }
+        return;
+      }
+      if (py > 460 || px > 800 || px < -60) fail();
+    }
+  }
+
+  // ---- 渲染 ----
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#2c3a5c"); g.addColorStop(.5,"#4a5878"); g.addColorStop(1,"#7a8196");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+  }
+  // 岩壁/钟乳石背景
+  function drawCave(){
+    ctx.fillStyle = "rgba(20,26,42,.6)";
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(60,0); ctx.lineTo(40,120); ctx.lineTo(0,90); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(760,60); ctx.lineTo(800,20); ctx.lineTo(800,120); ctx.lineTo(730,110); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "rgba(30,38,58,.5)";
+    ctx.beginPath(); ctx.moveTo(180,0); ctx.lineTo(205,0); ctx.lineTo(195,55); ctx.lineTo(170,50); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(620,0); ctx.lineTo(640,0); ctx.lineTo(628,60); ctx.lineTo(608,52); ctx.closePath(); ctx.fill();
+  }
+  // 深渊（右侧地面起点 GROUND_L 左侧，向下无限）
+  function drawAbyss(){
+    const s=ctx.createLinearGradient(0,PLAT_Y,0,460);
+    s.addColorStop(0,"#0f1626"); s.addColorStop(1,"#05070d");
+    ctx.fillStyle=s;
+    ctx.fillRect(0, PLAT_Y, GROUND_L, 460-PLAT_Y);   // 深渊（地面起点左侧）
+  }
+  // 右侧无限地面（从 GROUND_L 起向右无限延展）
+  function drawPlatform(){
+    ctx.fillStyle="#4caf50"; ctx.fillRect(GROUND_L, PLAT_Y, 800-GROUND_L, 14);
+    ctx.fillStyle="#43a047"; ctx.fillRect(GROUND_L, PLAT_Y+14, 800-GROUND_L, 5);
+    const s=ctx.createLinearGradient(0,PLAT_Y+19,0,460); s.addColorStop(0,"#8d6e63"); s.addColorStop(1,"#5d4037");
+    ctx.fillStyle=s; ctx.fillRect(GROUND_L,PLAT_Y+19,800-GROUND_L,460-PLAT_Y-19);
+    // 地面起点发光提示（落点必须飞过此处）
+    ctx.fillStyle="rgba(246,196,83,.55)"; ctx.fillRect(GROUND_L-2, PLAT_Y-6, 5, 12);
+  }
+  // 锚点 + 绳（摆动连线）
+  function drawRope(){
+    if (phase === "swing") {
+      ctx.strokeStyle="rgba(200,180,140,.9)"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(AX, AY); ctx.lineTo(px, py); ctx.stroke();
+    }
+    // 锚点（钩爪）
+    ctx.fillStyle="#c9a86a";
+    ctx.beginPath(); ctx.arc(AX, AY, 9, 0, 7); ctx.fill();
+    ctx.fillStyle="#a8874f";
+    ctx.beginPath(); ctx.arc(AX, AY, 6, 0, 7); ctx.fill();
+    ctx.fillStyle="#f4e5c8";
+    ctx.beginPath(); ctx.arc(AX-2, AY-2, 2.5, 0, 7); ctx.fill();
+  }
+  // 主角（canvas 精细绘制简洁卡通小人：有轮廓、配色层次、眼睛）
+  function drawHero(){
+    const S = SIZE;
+    const cx = px, cy = py - S/2;  // 主角身体中心（py 是脚底）
+    ctx.save();
+    const bg = ctx.createLinearGradient(0,cy-S/2,0,cy+S/2);
+    bg.addColorStop(0,"#5ed3e8"); bg.addColorStop(1,"#2a9fc0");
+    ctx.fillStyle = "#14313d"; rr(cx-S/2-2, cy-S/2-2, S+4, S+4, 10); ctx.fill();  // 轮廓
+    ctx.fillStyle = bg; rr(cx-S/2, cy-S/2, S, S, 9); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.25)"; rr(cx-S/2+3, cy-S/2+4, S-6, S/2-5, 6); ctx.fill();  // 高光
+    // 眼睛
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(cx+S/2-9, cy-6, 5.5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+S/2-21, cy-6, 5.5, 0, 7); ctx.fill();
+    ctx.fillStyle = "#1b3a46";
+    ctx.beginPath(); ctx.arc(cx+S/2-7, cy-6, 2.6, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+S/2-19, cy-6, 2.6, 0, 7); ctx.fill();
+    // 嘴
+    ctx.strokeStyle = "#1b3a46"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx+S/2-16, cy+4, 5, .15, Math.PI-.15); ctx.stroke();
+    ctx.restore();
+  }
+  // 释放后的拖尾/粒子
+  const trail = [];
+  function spawnTrail(){ trail.push({ x:px, y:py-SIZE/2, t:0 }); }
+  function drawTrail(){
+    for (let i=trail.length-1; i>=0; i--) {
+      const tr = trail[i]; tr.t += 16;
+      if (tr.t > 200) { trail.splice(i,1); continue; }
+      const a = Math.max(0, 1 - tr.t/200) * .22;
+      ctx.fillStyle = `rgba(94,211,232,${a})`;
+      rr(tr.x - SIZE/2, tr.y - SIZE/2, SIZE, SIZE, 9); ctx.fill();
+    }
+  }
+
+  function render(){
+    drawSky();
+    drawCave();
+    drawPlatform();
+    drawAbyss();
+    drawRope();
+    drawTrail();
+    drawHero();
+    if (phase === "fly") spawnTrail();
+  }
+
+  let lastT = null;
+  function frame(t){
+    if (lastT === null) lastT = t;
+    const dt = Math.min((t - lastT)/1000, 0.05); lastT = t;
+    if (started) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 释放键 = R（keydown 触发 release）
+  addEventListener("keydown",(e)=>{
+    const k = (e.key || "").toLowerCase();
+    const c = e.code || "";
+    const kc = e.keyCode || e.which || 0;
+    const isSpace = k === " " || c === "Space" || kc === 32;
+    const isRelease = k === "r" || c === "KeyR" || kc === 82;
+    if (isRelease) {
+      e.preventDefault();
+      release();
+    }
+    // 空格仅在规则页/retry 页触发 Start/Next，进入游戏后（intro 与 retryOverlay 均隐藏）不误触
+    if (isSpace) {
+      e.preventDefault();
+      if (!introEl.classList.contains("hidden")) {
+        startGame();
+      } else if (!retryOverlay.classList.contains("hidden")) {
+        nextRound();
+      }
+    }
+  });
+  cv.addEventListener("mousedown", ()=>release());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trick Landing 滑雪转体落地</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Spin and land upright 转体后转正落地</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">J</span> Stop spin & land 停止转体落地</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Landed upright 转正落地</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Trick Landing 滑雪转体落地</div>
+      <div class="intro-rule">The skier launches off the jump and spins in the air. Press <b>J</b> at the moment his body returns upright (head up, board down) to stop the spin and land safely — spin too late and he crashes.<br>滑雪者跳出跳台空中转体，在<b>身体转回竖直（头朝上、板朝下）的瞬间</b>按 J 停止转体安全落地——转过头或没转正都会摔倒。<br><br>Press J when upright 身体转正时按 J</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Press J when the body is upright 身体转正时按 J</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+
+  /* ================================================================
+   * 滑雪转体落地物理（硬编码可复现）
+   *   滑雪者从跳台飞出做抛体运动：
+   *     x(t) = X0 + VX·t
+   *     y(t) = Y0 + VY0·t + ½·G·t²      （VY0<0 向上飞出）
+   *   落地时刻（y 回到雪坡 YL）：t_land = 0.891s。
+   *   空中转体：身体朝向角 θ(t) = OMEGA·t 匀速翻转，翻转 1 圈（360°/0.891s）。
+   *   「头朝上」判定：身体朝向 θ mod 360 ∈ [0°,60°] ∪ [300°,360°]。
+   *   按 J（停止转体落地）时身体朝向在「头朝上 ±60°」→ 安全落地；否则摔倒。
+   *   身体朝向随翻转持续变化，单截图看不出何时转正 → c 类。
+   * ================================================================ */
+  const G = 1400;
+  const VX = 320, VY0 = -500;
+  const X0 = 120, Y0 = 320;   // 跳台顶（飞出点）
+  const YL = 430;             // 雪坡落地 y
+  const T_LAND = 0.891;       // 落地时刻（解析解）
+  const OMEGA = (360 / T_LAND) * Math.PI / 180;  // 翻转角速度（1 圈/0.891s → 弧度）
+  const UPRIGHT_WIN = 60 * Math.PI / 180;         // 头朝上 ±60°
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"trick_landing", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "launch";   // launch(空中翻转) | landed(安全落地) | crash(摔倒) | over
+  let t = 0;
+  let px = X0, py = Y0;
+  let theta = 0;          // 身体朝向角（弧度）
+  let pressedAt = null;   // 按 J 时的朝向
+  let settleT = 0;
+  let snowParts = [];     // 雪花粒子
+  let landThetaFrom = 0;  // 按 J 瞬时朝向（easing 起始）
+  let landThetaTarget = 0;// 目标朝向（回正 0 / 摔倒 π/2）
+  let landXFrom = 0, landYFrom = 0;  // 按 J 瞬时位置（easing 起始）
+  let landXTo = 0, landYTo = 0;      // 落地位置（easing 目标）
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status); }catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    const d = ((theta * 180 / Math.PI) % 360 + 360) % 360;
+    return { phase, t:+t.toFixed(3), px:Math.round(px), py:Math.round(py), thetaDeg:+d.toFixed(1),
+             tLand:+T_LAND.toFixed(3), attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "launch"; t = 0; px = X0; py = Y0; theta = 0; pressedAt = null; settleT = 0; snowParts = [];
+    setStatus("Spin and land upright 转体后转正落地","");
+  }
+
+  function spawnSnow(px, py, n, power){
+    for (let i=0;i<n;i++){
+      snowParts.push({
+        x:px+(-14+Math.random()*28), y:py+(-6+Math.random()*12),
+        vx:-power+Math.random()*power*2, vy:-power*0.7-Math.random()*power*0.8,
+        life:1, size:2+Math.random()*3
+      });
+    }
+  }
+
+  function pressLand(){
+    if (phase !== "launch" || pressedAt !== null) return;
+    pressedAt = theta;
+    const d = ((theta * 180 / Math.PI) % 360 + 360) % 360;
+    // 记录 easing 起始朝向（归一化到 [0, 2π)）
+    const norm = ((theta % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+    if (d <= 60 || d >= 300) {
+      phase = "landed"; settleT = 0;
+      // 回正：目标最近的竖直朝上（0 或 2π），沿最短路径
+      landThetaFrom = norm;
+      landThetaTarget = norm < Math.PI ? 0 : 2*Math.PI;
+      // 位置：记录空中瞬时位置，落地位置 = 继续向右滑一小段落雪坡
+      landXFrom = px; landYFrom = py;
+      landXTo = px + 40; landYTo = YL;
+      spawnSnow(px, py, 14, 3);
+      setStatus("Landed upright! 转正落地！","action");
+    } else {
+      phase = "crash"; settleT = 0;
+      // 摔倒：目标最近的侧倒（90° 或 270°），沿最短路径
+      landThetaFrom = norm;
+      const down = Math.PI/2, up = 3*Math.PI/2;
+      const dDown = angularDist(norm, down), dUp = angularDist(norm, up);
+      landThetaTarget = dDown <= dUp ? down : up;
+      landXFrom = px; landYFrom = py;
+      landXTo = px + 40; landYTo = YL;
+      spawnSnow(px, py, 24, 5);
+      setStatus("Crashed! 摔倒了！","lose");
+    }
+  }
+
+  // 两个朝向角的最短角距离
+  function angularDist(a, b){
+    let d = ((b - a) % (2*Math.PI) + 2*Math.PI) % (2*Math.PI);
+    return d > Math.PI ? 2*Math.PI - d : d;
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Landed upright! 转正落地！","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Failed 失败","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Failed 失败","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt){
+    if (phase === "over") return;
+    // 雪花粒子更新（各阶段持续）
+    for (const p of snowParts) { p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 900*dt; p.life -= 2.2*dt; }
+    snowParts = snowParts.filter(p => p.life > 0);
+
+    if (phase === "launch") {
+      t += dt;
+      // 跳跃抛物线
+      px = X0 + VX * t;
+      py = Y0 + VY0 * t + 0.5 * G * t * t;
+      // 空中转体
+      theta += OMEGA * dt;
+      // 落地（未按 J 定身）→ 摔倒（转体没转正 / 没定身）
+      if (py >= YL) {
+        py = YL;
+        phase = "crash"; settleT = 0; pressedAt = theta;
+        // 摔倒：从当前朝向 ease 侧倒
+        const norm = ((theta % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
+        landThetaFrom = norm;
+        landThetaTarget = angularDist(norm, Math.PI/2) <= angularDist(norm, 3*Math.PI/2) ? Math.PI/2 : 3*Math.PI/2;
+        landXFrom = px; landYFrom = py;   // 已在雪坡，位置不变
+        landXTo = px; landYTo = py;
+        spawnSnow(px, py, 24, 5);
+        setStatus("Crashed! 摔倒了！","lose");
+      }
+    } else if (phase === "landed") {
+      // 回正落地动画：位置从空中平滑落到雪坡 + θ easeOut 平滑转正 + 雪花
+      settleT += dt;
+      const r = Math.min(1, settleT / 0.6);
+      const e = easeOutCubic(r);
+      px = landXFrom + (landXTo - landXFrom) * e;
+      py = landYFrom + (landYTo - landYFrom) * e;
+      theta = landThetaFrom + (landThetaTarget - landThetaFrom) * e;
+      if (settleT >= 0.7) { win(); }
+    } else if (phase === "crash") {
+      // 摔倒动画：位置从空中平滑落到雪坡 + θ easeIn 平滑侧倒 + 雪花
+      settleT += dt;
+      const r = Math.min(1, settleT / 0.6);
+      const e = easeInCubic(r);
+      px = landXFrom + (landXTo - landXFrom) * e;
+      py = landYFrom + (landYTo - landYFrom) * e;
+      theta = landThetaFrom + (landThetaTarget - landThetaFrom) * e;
+      if (settleT >= 0.7) { fail(); }
+    }
+  }
+
+  function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+  function easeInCubic(t){ return t * t * t; }
+
+  // ---- 渲染 ----
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#7fb4e8"); g.addColorStop(.5,"#b8d4f0"); g.addColorStop(1,"#e8f2fb");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+  }
+  // 雪山（雪坡 + 跳台）
+  function drawMountain(){
+    // 远山
+    ctx.fillStyle="#dce8f5";
+    ctx.beginPath(); ctx.moveTo(0,300); ctx.lineTo(200,180); ctx.lineTo(420,300); ctx.closePath(); ctx.fill();
+    // 雪坡（落地坡）
+    ctx.fillStyle="#eef4fa"; ctx.beginPath();
+    ctx.moveTo(0,430); ctx.lineTo(500,360); ctx.lineTo(800,430); ctx.lineTo(800,460); ctx.lineTo(0,460); ctx.closePath(); ctx.fill();
+    // 跳台（左侧）
+    ctx.fillStyle="#c8dcee"; ctx.beginPath();
+    ctx.moveTo(80,430); ctx.lineTo(150,320); ctx.lineTo(190,320); ctx.lineTo(130,430); ctx.closePath(); ctx.fill();
+    // 雪地纹理线
+    ctx.strokeStyle="rgba(180,200,220,.6)"; ctx.lineWidth=2;
+    for(let i=0;i<5;i++){
+      ctx.beginPath(); ctx.moveTo(100+i*40, 400+i*8); ctx.lineTo(400+i*60, 360+i*12); ctx.stroke();
+    }
+  }
+  // 滑雪者（canvas 简约：头 + 身体 + 雪板，rotate 表现身体翻转朝向）
+  function drawSkier(){
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(theta);   // 身体翻转
+    // 雪板（板朝下 = 身体下方）
+    ctx.fillStyle="#4a6a9a"; ctx.fillRect(-16, 10, 32, 6);
+    ctx.fillStyle="#3a5a8a"; ctx.fillRect(-16, 10, 32, 2);
+    // 身体
+    const bg = ctx.createLinearGradient(0,-18,0,12);
+    bg.addColorStop(0,"#e0603a"); bg.addColorStop(1,"#c04028");
+    ctx.fillStyle="#6a1a08"; rr(-9,-20,18,32,6); ctx.fill();
+    ctx.fillStyle=bg; rr(-8,-19,16,30,6); ctx.fill();
+    // 头（头盔）
+    ctx.fillStyle="#3a5a8a";
+    ctx.beginPath(); ctx.arc(0, -24, 7, 0, 7); ctx.fill();
+    ctx.fillStyle="#2a4a7a"; ctx.beginPath(); ctx.arc(-2, -26, 4, 0, 7); ctx.fill();
+    // 手臂（展开转体）
+    ctx.strokeStyle="#e0603a"; ctx.lineWidth=4; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(-8,-8); ctx.lineTo(-20,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8,-8); ctx.lineTo(20,0); ctx.stroke();
+    ctx.restore();
+  }
+  // 正确朝向提示（头朝上的方向小箭头）
+  function drawUprightHint(){
+    ctx.fillStyle="rgba(52,211,153,.8)"; ctx.font="14px sans-serif"; ctx.textAlign="center";
+    ctx.fillText("↑ upright 转正", 620, 100);
+  }
+  // 雪花飞溅粒子
+  function drawSnowParticles(){
+    for (const p of snowParts) {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = "#eef4fa";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function render(){
+    drawSky();
+    drawMountain();
+    drawSnowParticles();
+    drawSkier();
+    drawUprightHint();
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 落地键 J + 空格触发 Start/Next（phase 隔离）
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const isJ = k==="j"||c==="KeyJ"||kc===74;
+    const isSpace = k===" "||c==="Space"||kc===32;
+    if (isJ) { e.preventDefault(); pressLand(); }
+    if (isSpace) {
+      e.preventDefault();
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+    }
+  });
+  cv.addEventListener("mousedown", ()=>pressLand());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

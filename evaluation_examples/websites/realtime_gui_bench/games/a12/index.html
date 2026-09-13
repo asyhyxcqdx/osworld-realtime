@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cups and Balls 魔术杯球戏法</title>
+<style>
+  :root { --bg1:#150f22; --ok:#34d399; --bad:#ff5c7a; --warn:#f6c453; --gold:#f6c453; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2a1c42 0%, var(--bg1) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; color:#efe9f7; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.reveal { color:var(--gold); } .status.yours { color:#a99fb9; }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .reveal-btn {
+    padding:13px 34px; border-radius:30px; border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(150deg,#7c3f9e 0%,#5c2c7a 100%); color:#fff;
+    font-size:16px; font-weight:700; letter-spacing:.6px; cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,0,0,.35); transition:transform .15s, opacity .2s;
+  }
+  .reveal-btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .reveal-btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#958aa6; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,22,42,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(14,8,22,.68); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  .intro {
+    position:fixed; inset:0; background:rgba(14,8,22,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:540px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.6; }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,#7c3f9e 0%,#5c2c7a 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3);
+    transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the coin, then track the shuffle and tap its cup · 盯住硬币，跟踪戏法后点藏着它的杯子</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <button class="reveal-btn" id="revealBtn">Start 开始 (Space)</button>
+  <div class="hint" id="hint">Attempt 0 / 3 · 第 0 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">You found the coin · 你找到了硬币</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts · 尝试次数用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Cups and Balls · 魔术杯球戏法</div>
+      <div class="intro-rule">
+        魔术师把一枚金币盖在六个杯子之一下面。 A magician places a gold coin under one of six cups.<br>
+        然后他抬起杯子让你看清硬币，再快速挪动杯子互相换位。 He lifts the cup to show the coin, then swiftly slides the cups to swap places.<br>
+        你要一直盯住藏硬币的那个杯子。 Keep your eyes on the cup hiding the coin.<br>
+        最后点出硬币藏在哪个杯子下。 Finally, tap the cup hiding the coin.
+      </div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  // 叙事：魔术舞台。魔术师把金色硬币扣在一个陶瓷杯下，抬起杯子露硬币，落下盖住，
+  // 然后 6 个彩色陶瓷杯两两滑动换位，玩家必须盯住藏硬币的杯子（杯子颜色是身份标记，可区分以跟踪）。
+  // 信息消失的自然原因 = 杯子扣住硬币（载体常驻、只有硬币位置在换位后不可见）。
+  // IEW 有限（硬币只出现在抬杯瞬间暴露） + AVW=∞（作答点击杯子无时限）。
+  // 判定 = 纯碰撞点击杯子；表现与判定同源（coinCup / cups[coinCup].x）。
+  const CW = 800, CH = 460;
+  const MAX_ATTEMPTS = 3;
+  const TABLE_Y = 340;
+  const CUP_BOTTOM = 340, CUP_TOP = 224, CUP_H = CUP_BOTTOM - CUP_TOP;
+  const LIFT = 74;
+  const SLOTS = [100, 220, 340, 460, 580, 700];
+  const SHOW_MS = 700, COVER_MS = 340, SWAP_MS = 300, SWAPS_N = 5;
+  // 6 个杯子颜色完全一致（统一奶油白陶瓷）——无颜色身份标记，
+  // 玩家无法靠「记住硬币在哪个颜色的杯子」偷懒，必须持续观察换位动画才能跟踪藏硬币的杯子。
+  const CUP_COLORS = ["#c9b491", "#c9b491", "#c9b491", "#c9b491", "#c9b491", "#c9b491"];
+
+  const BENCH = { task:"shell_game", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";        // idle | show | cover | shuffle | answer | done
+  let cups = [];             // {id, color, x, fromX, toX}
+  let coinCup = 0;           // 藏硬币的杯子 id
+  let cupLift = 0;           // 1=抬起（露硬币），0=落下
+  let phaseStart = 0, swapIdx = 0, swaps = [];
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, coinCup, coinX: cups[coinCup] ? cups[coinCup].x : null, cupX: cups.map(c=>c.x), swaps: swaps.map(s=>s.slice()), attempts: BENCH.attempts, passed: BENCH.passed }; };
+
+  function genSwaps(){
+    const s = [];
+    for(let i=0;i<SWAPS_N;i++){
+      let a = Math.floor(Math.random()*6), b = Math.floor(Math.random()*6);
+      while (b === a) b = Math.floor(Math.random()*6);
+      s.push([a,b]);
+    }
+    return s;
+  }
+  function applySwap(s){
+    const [a,b] = s;
+    const ta = cups[a].toX, tb = cups[b].toX;
+    cups[a].toX = tb; cups[b].toX = ta;
+  }
+
+  function onStart(){
+    if (phase !== "idle") return;
+    cups = CUP_COLORS.map((color,id)=>({ id, color, x: SLOTS[id], fromX: SLOTS[id], toX: SLOTS[id] }));
+    coinCup = Math.floor(Math.random()*6);
+    swaps = genSwaps();
+    swapIdx = 0;
+    cupLift = 0;
+    phase = "show"; phaseStart = performance.now();
+    cupLift = 1;   // 抬杯露硬币
+    revealBtn.disabled = true;
+    setStatus("Watch the coin… 盯住硬币","reveal");
+    syncURL();
+  }
+
+  function update(now){
+    if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "cover"; phaseStart = now; setStatus("Cup covers the coin… 杯子盖住硬币","reveal"); }
+    }
+    else if (phase === "cover"){
+      cupLift = Math.max(0, 1 - (now - phaseStart)/COVER_MS);
+      if (now - phaseStart >= COVER_MS){ cupLift = 0; phase = "shuffle"; phaseStart = now; swapIdx = 0; applySwap(swaps[0]); setStatus("Track the cups… 跟踪杯子","reveal"); }
+    }
+    else if (phase === "shuffle"){
+      if (now - phaseStart >= SWAP_MS){
+        cups.forEach(c=>{ c.fromX = c.toX; c.x = c.toX; });
+        swapIdx++;
+        if (swapIdx < swaps.length){ applySwap(swaps[swapIdx]); phaseStart = now; }
+        else { phase = "answer"; setStatus("Tap the cup hiding the coin · 点藏着硬币的杯子","action"); }
+      } else {
+        const t = (now - phaseStart) / SWAP_MS;
+        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+        const [a,b] = swaps[swapIdx];
+        cups[a].x = cups[a].fromX + (cups[a].toX - cups[a].fromX) * e;
+        cups[b].x = cups[b].fromX + (cups[b].toX - cups[b].fromX) * e;
+      }
+    }
+  }
+
+  // ===== 绘制 =====
+  function drawBackground(){
+    // 舞台暗幕：深紫径向渐变 + 聚光灯锥形光柱
+    const g = ctx.createRadialGradient(400, 120, 60, 400, 120, 560);
+    g.addColorStop(0,"#33214f"); g.addColorStop(0.55,"#1c1233"); g.addColorStop(1,"#120c1e");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 聚光灯锥（从顶部洒下，低 alpha）
+    const spot = ctx.createRadialGradient(400, 0, 10, 400, 120, 300);
+    spot.addColorStop(0,"rgba(255,240,200,.14)"); spot.addColorStop(1,"rgba(255,240,200,0)");
+    ctx.fillStyle = spot;
+    ctx.beginPath(); ctx.moveTo(400,0); ctx.lineTo(120, CH); ctx.lineTo(680, CH); ctx.closePath(); ctx.fill();
+    // 魔术桌：木框 + 红丝绒铺面
+    const wood = ctx.createLinearGradient(0, TABLE_Y-6, 0, CH);
+    wood.addColorStop(0,"#6b4526"); wood.addColorStop(0.3,"#8a5a34"); wood.addColorStop(1,"#3c2714");
+    ctx.fillStyle = wood; ctx.fillRect(0, TABLE_Y-6, CW, CH-(TABLE_Y-6));
+    // 红丝绒桌布（桌面前缘）
+    const velvet = ctx.createLinearGradient(0, TABLE_Y-8, 0, TABLE_Y+46);
+    velvet.addColorStop(0,"#a0333f"); velvet.addColorStop(0.5,"#7c2530"); velvet.addColorStop(1,"#5a1a24");
+    ctx.fillStyle = velvet; ctx.fillRect(0, TABLE_Y-8, CW, 54);
+    // 桌布高光边
+    ctx.fillStyle = "rgba(255,255,255,.10)"; ctx.fillRect(0, TABLE_Y-8, CW, 3);
+  }
+
+  function drawCoin(){
+    // 金币：始终在藏硬币的杯子内部（跟随 coinCup 杯子移动），被不透明杯身盖住——
+    // cover/shuffle/answer 阶段硬币「被杯子盖住」而非「消失」（物理遮挡）。
+    const c = cups[coinCup];
+    if (!c) return;
+    const x = c.x, y = CUP_BOTTOM - 20;   // 硬币在倒扣杯杯内（桌面之上），落下被杯盖住、抬起露出
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = 8;
+    const cg = ctx.createRadialGradient(x-8, y-8, 3, x, y, 26);
+    cg.addColorStop(0,"#ffe9a8"); cg.addColorStop(0.6,"#f0bd34"); cg.addColorStop(1,"#b8841c");
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(x, y, 24, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    // 币面内圈 + 星形徽记
+    ctx.strokeStyle = "#a97418"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, 17, 0, 7); ctx.stroke();
+    ctx.fillStyle = "#a97418";
+    ctx.font = "700 20px serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("★", x, y+1);
+    // 高光
+    ctx.fillStyle = "rgba(255,255,255,.75)";
+    ctx.beginPath(); ctx.ellipse(x-8, y-9, 5, 3.4, -0.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function shade(hex, amt){
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.max(0, ((n>>16)&255) - amt), g = Math.max(0, ((n>>8)&255) - amt), b = Math.max(0, (n&255) - amt);
+    return `rgb(${r},${g},${b})`;
+  }
+  function lighten(hex, amt){
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.min(255, ((n>>16)&255) + amt), g = Math.min(255, ((n>>8)&255) + amt), b = Math.min(255, (n&255) + amt);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function drawCup(c){
+    // 倒扣杯子：杯口朝下盖在桌上的硬币上（杯口=宽边在底部，杯底=圆弧顶在顶部）
+    const liftY = -cupLift * LIFT;
+    const x = c.x;
+    const topW = 74, botW = 112;
+    const topY = CUP_TOP + liftY, botY = CUP_BOTTOM + liftY;
+    ctx.save();
+    // 杯底阴影（贴桌面，倒扣时杯口贴桌）
+    ctx.fillStyle = "rgba(0,0,0,.30)";
+    ctx.beginPath(); ctx.ellipse(x, CUP_BOTTOM+4, botW*0.5, 8, 0, 0, 7); ctx.fill();
+    // 杯身（梯形）陶瓷质感：线性渐变 + 两侧暗边
+    const g = ctx.createLinearGradient(x - botW/2, 0, x + botW/2, 0);
+    g.addColorStop(0, shade(c.color, 42));
+    g.addColorStop(0.28, lighten(c.color, 30));
+    g.addColorStop(0.5, c.color);
+    g.addColorStop(0.74, shade(c.color, 30));
+    g.addColorStop(1, shade(c.color, 62));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x - topW/2, topY);
+    ctx.lineTo(x + topW/2, topY);
+    ctx.lineTo(x + botW/2, botY);
+    ctx.lineTo(x - botW/2, botY);
+    ctx.closePath(); ctx.fill();
+    // 杯口（底部宽边，朝下贴桌面，白沿）——倒扣时开口在下方
+    ctx.fillStyle = lighten(c.color, 46);
+    ctx.beginPath(); ctx.ellipse(x, botY, botW/2, 9, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.55)";
+    ctx.beginPath(); ctx.ellipse(x, botY, botW/2 - 6, 5, 0, 0, 7); ctx.fill();
+    // 杯底（顶部窄边圆弧顶，倒扣时封闭端在上）
+    ctx.fillStyle = shade(c.color, 50);
+    ctx.beginPath(); ctx.arc(x, topY, topW/2, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = lighten(c.color, 35);
+    ctx.beginPath(); ctx.arc(x, topY, topW/2 - 4, Math.PI, 0); ctx.fill();
+    // 杯身中部高光条
+    ctx.strokeStyle = "rgba(255,255,255,.22)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - topW/2 + 10, topY + 18); ctx.lineTo(x - botW/2 + 14, botY - 10); ctx.stroke();
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    // 硬币始终绘制（始终在杯内、跟随藏硬币的杯子移动），杯子后画、不透明盖住硬币——「盖住」而非「消失」
+    drawCoin();
+    cups.forEach(drawCup);
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let clicked = -1;
+    cups.forEach((c,i)=>{
+      if (Math.abs(p.x - c.x) < 62 && p.y > CUP_TOP - 20 && p.y < CUP_BOTTOM + 24) clicked = i;
+    });
+    if (clicked === -1) return;
+    const ok = clicked === coinCup;
+    BENCH.results.push(ok);
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success! 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Wrong cup 点错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function startRound(){
+    cups = CUP_COLORS.map((color,id)=>({ id, color, x: SLOTS[id], fromX: SLOTS[id], toX: SLOTS[id] }));
+    coinCup = 0; swaps = []; phase = "idle"; cupLift = 0;
+    revealBtn.disabled = false;
+    setStatus("Watch the coin, then track the shuffle and tap its cup · 盯住硬币，跟踪戏法后点藏着它的杯子","");
+    syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  revealBtn.addEventListener("click", onStart);
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    startRound();
+  });
+
+  // 空格触发 Start/Next（弹层显示时；进游戏后空格无动作，不误触）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && retryEl.classList.contains("show")){ e.preventDefault(); retryEl.classList.remove("show"); startRound(); }
+    else if (phase === "idle"){ e.preventDefault(); onStart(); }
+  });
+
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

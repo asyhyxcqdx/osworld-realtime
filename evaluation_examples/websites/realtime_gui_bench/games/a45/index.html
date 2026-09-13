@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Babel Glyph 符号识别</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Reveal to see the glyph 点揭示查看符文</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Babel Glyph 符号识别</div>
+      <div class="intro-rule">A mysterious glyph on the totem <b>glows for a moment</b>, then fades out. Remember its shape and <b>recognize it</b> from the 8 symbol candidates.<br>图腾上的一个神秘符文<b>短暂发光显现</b>，随即熄灭消失。记住它的样子，从 8 个候选符号里<b>认出它</b>。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·纯图形符号记忆）：图腾/魔法阵上的一个抽象几何符号（无语义、不可读）短暂显现后熄灭，
+  // 玩家凭记忆从 8 个候选符号认出（区别于文字闪现 a36 的语义可读，这里纯图形无语义）。
+  // IEW 有限（符号只闪现后消失）；AVW=∞（作答无时限）。补丁=视频。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const READY_MIN = 300, READY_MAX = 2000;
+  const SHOW_MS = 1500;
+
+  // 8 个抽象符号（纯几何，无语义），不同颜色
+  const GLYPHS = [
+    { id:"cross-circle",   color:"#f6c453" },
+    { id:"triangle-dot",   color:"#4c7dff" },
+    { id:"double-diamond", color:"#a855f7" },
+    { id:"star-line",      color:"#34d399" },
+    { id:"spiral",         color:"#f97316" },
+    { id:"zigzag",         color:"#e05a8a" },
+    { id:"tri-circle",     color:"#3ad0d0" },
+    { id:"square-cross",   color:"#e04a3a" },
+  ];
+
+  const BENCH = { task:"babel_glyph", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | show | answer | done
+  let target = 0;              // 目标符号索引 0..7
+  let clickedIdx = -1;
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, target, targetId: GLYPHS[target].id, clickedIdx, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  function startRound(){
+    target = Math.floor(Math.random()*GLYPHS.length);
+    clickedIdx = -1;
+    phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Reveal to see the glyph 点揭示查看符文","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "show"; phaseStart = now; setStatus("Watch the glyph… 注意符文…","ready"); }
+    }
+    else if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "answer"; setStatus("Recognize the glyph 认出符文","action"); }
+    }
+  }
+
+  // 魔法阵背景 + 图腾
+  function drawBg(){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#181428"); g.addColorStop(1,"#0d0a16");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 石壁纹理
+    ctx.strokeStyle = "rgba(255,255,255,.03)"; ctx.lineWidth = 1;
+    for (let x=0;x<CW;x+=50){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,CH); ctx.stroke(); }
+    for (let y=0;y<CH;y+=50){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(CW,y); ctx.stroke(); }
+    // 图腾柱（中央石碑）
+    ctx.fillStyle = "#2a2338";
+    ctx.beginPath(); ctx.roundRect(290, 150, 220, 180, 12); ctx.fill();
+    ctx.strokeStyle = "#4a3f66"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(290, 150, 220, 180, 12); ctx.stroke();
+    // 石碑上的魔法阵圆环
+    ctx.strokeStyle = "rgba(246,196,83,.5)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(400, 240, 55, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(400, 240, 44, 0, Math.PI*2); ctx.stroke();
+    // 石碑座
+    ctx.fillStyle = "#241d30";
+    ctx.fillRect(270, 330, 260, 24);
+    // 地面
+    ctx.fillStyle = "#1a1426";
+    ctx.fillRect(0, 390, CW, 110);
+  }
+
+  // 画一个抽象符号（纯几何，按 id）
+  function drawGlyph(id, cx, cy, s){
+    const col = GLYPHS[id].color;
+    ctx.strokeStyle = col;
+    ctx.fillStyle = col;
+    ctx.lineWidth = 3;
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (id === 0){ // cross-circle：圆 + 十字
+      ctx.beginPath(); ctx.arc(0,0,s,0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-s,0); ctx.lineTo(s,0); ctx.moveTo(0,-s); ctx.lineTo(0,s); ctx.stroke();
+    } else if (id === 1){ // triangle-dot：三角 + 中心点
+      ctx.beginPath();
+      for (let i=0;i<3;i++){ const a = -Math.PI/2 + i*2*Math.PI/3; const x=Math.cos(a)*s, y=Math.sin(a)*s; if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+      ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,s*0.18,0,Math.PI*2); ctx.fill();
+    } else if (id === 2){ // double-diamond：菱形叠菱形
+      const diamond = (r)=>{ ctx.beginPath(); ctx.moveTo(0,-r); ctx.lineTo(r,0); ctx.lineTo(0,r); ctx.lineTo(-r,0); ctx.closePath(); };
+      diamond(s); ctx.stroke();
+      diamond(s*0.5); ctx.stroke();
+    } else if (id === 3){ // star-line：五角星线框
+      ctx.beginPath();
+      for (let i=0;i<10;i++){ const r=(i%2===0)?s:s*0.5; const a=-Math.PI/2+i*Math.PI/5; const x=Math.cos(a)*r,y=Math.sin(a)*r; if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+      ctx.closePath(); ctx.stroke();
+    } else if (id === 4){ // spiral：螺旋
+      ctx.beginPath();
+      for (let t=0;t<=s;t+=s/40){ const a=t*0.5; const r=t; const x=Math.cos(a)*r, y=Math.sin(a)*r; if(t===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+      ctx.stroke();
+    } else if (id === 5){ // zigzag：之字折线
+      ctx.beginPath(); ctx.moveTo(-s*0.8, -s*0.7); ctx.lineTo(s*0.2, -s*0.3); ctx.lineTo(-s*0.2, s*0.1); ctx.lineTo(s*0.8, s*0.7); ctx.stroke();
+    } else if (id === 6){ // tri-circle：三点 + 外接圆
+      ctx.beginPath(); ctx.arc(0,0,s,0,Math.PI*2); ctx.stroke();
+      for (let i=0;i<3;i++){ const a = -Math.PI/2 + i*2*Math.PI/3; ctx.beginPath(); ctx.arc(Math.cos(a)*s*0.6, Math.sin(a)*s*0.6, s*0.14, 0, Math.PI*2); ctx.fill(); }
+    } else { // square-cross：方块 + 双对角线 + 中心点
+      ctx.beginPath(); ctx.rect(-s,-s,s*2,s*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-s,-s); ctx.lineTo(s,s); ctx.moveTo(s,-s); ctx.lineTo(-s,s); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,s*0.16,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+    ctx.lineWidth = 1;
+  }
+
+  function render(){
+    drawBg();
+    if (phase === "show"){
+      // 符文在石碑中央发光显现
+      drawGlyph(target, 400, 240, 44);
+      // 光晕
+      ctx.fillStyle = "rgba(246,196,83,.15)";
+      ctx.beginPath(); ctx.arc(400, 240, 60, 0, Math.PI*2); ctx.fill();
+    }
+    else if (phase === "answer"){
+      // 符文熄灭（石碑上留空）
+      // 候选 8 个符号（横排）
+      const candX = [70, 165, 260, 355, 450, 545, 640, 735], candY = 430;
+      for (let i=0;i<8;i++){
+        const cx = candX[i], cy = candY;
+        ctx.fillStyle = (clickedIdx === i) ? "#f6c453" : "#2a2338";
+        ctx.beginPath(); ctx.roundRect(cx-30, cy-30, 60, 60, 8); ctx.fill();
+        ctx.strokeStyle = (clickedIdx === i) ? "#fff" : "#4a3f66"; ctx.lineWidth = (clickedIdx === i) ? 3 : 1.5;
+        ctx.beginPath(); ctx.roundRect(cx-30, cy-30, 60, 60, 8); ctx.stroke();
+        drawGlyph(i, cx, cy, 20);
+      }
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    const candX = [70, 165, 260, 355, 450, 545, 640, 735], candY = 430;
+    let sel = -1;
+    for (let i=0;i<8;i++){
+      if (Math.abs(p.x-candX[i]) < 32 && Math.abs(p.y-candY) < 32){ sel = i; break; }
+    }
+    if (sel === -1) return;
+    clickedIdx = sel;
+    const ok = (sel === target);
+    BENCH.results.push(ok ? "hit" : "miss");
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Miss! 认错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

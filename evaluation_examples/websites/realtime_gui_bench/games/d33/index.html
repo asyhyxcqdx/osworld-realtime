@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Drumroll</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:var(--bg);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6;user-select:none;overflow:hidden;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;}
+  .status{font-size:24px;font-weight:800;min-height:32px;letter-spacing:.4px;text-align:center;}
+  .status.alert{color:#ffd166;}
+  .status.action{font-size:30px;font-weight:800;color:var(--gold);text-shadow:0 0 14px rgba(246,196,83,.55);letter-spacing:.5px;}
+  .status.danger{font-size:30px;font-weight:800;color:#ff5c5c;text-shadow:0 0 16px rgba(255,80,80,.6);letter-spacing:.5px;}
+  .status.win{color:var(--ok1);} .status.lose{color:var(--fail1);}
+  canvas{border-radius:16px;box-shadow:0 16px 44px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);display:block;}
+  .hint{font-size:14px;color:#9aa3c7;letter-spacing:.5px;}
+  .tip{font-size:13px;color:#9aa3c7;letter-spacing:.4px;}
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 52px;text-align:center;max-width:640px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="tip">Press SPACE to hit each note the moment it pops up  每个拍点弹出瞬间按空格敲击</div>
+  <div class="hint" id="hint">Attempt 0 / 3 尝试 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功！</div>
+      <div class="celeb-sub">Full combo! 全连击！</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Random Drumroll 随机节奏连打</div>
+      <div class="intro-rule">A drumroll: notes pop up at <b>independent random intervals</b> (200ms~1s, no warning). Hit each note with <b>SPACE</b> the instant it appears. Full combo to pass!<br>一段连打：拍点以<b>独立随机间隔</b>（200ms~1s，无预告）弹出。每个拍点<b>弹出的瞬间按空格</b>敲击，全部命中达成全连击！</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Missed a note! 漏拍了！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const W = 800, H = 460;
+
+  const DRUM_X = 400, DRUM_Y = 260;     // 鼓面中心
+  const DRUM_R = 150;                    // 鼓面半径
+  const DRUMROLL_LEN = 8;                // 一次连打 8 拍
+  const BEAT_WINDOW = 400;               // 拍点弹出后的判定窗口 400ms（连续 8 次连击，放宽照顾反应慢的人）
+  const BEAT_INTERVAL_MIN = 200;         // 拍点间隔下限 200ms（人类 ε_a≈200ms 可反应）
+  const BEAT_INTERVAL_MAX = 1000;        // 拍点间隔上限 1s（turn-based T_m 秒级来不及）
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  const BENCH = { task:"random_drumroll", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+"  尝试 "+BENCH.attempts+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  // 状态机：idle(等待下一拍) | beat(拍点弹出，200ms 判定窗口) | hit | miss
+  let phase = "idle";
+  let beatCount = 0;                    // 已命中的拍数
+  let totalBeats = DRUMROLL_LEN;
+  let nextBeatAt = 0;                   // 下一拍出现的时刻
+  let beatUntil = 0;                    // 当前拍点判定结束时刻
+  let beatAt = 0;                       // 当前拍点出现时刻
+  let missAt = 0;
+  let lastT = performance.now();
+  let missLock = false;
+
+  window.__dbg = function(){ return { phase, beatCount, totalBeats, nextIn:+Math.max(0, nextBeatAt - performance.now()).toFixed(0), attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status }; };
+
+  function resetRound(){
+    phase = "idle";
+    beatCount = 0;
+    totalBeats = DRUMROLL_LEN;
+    missLock = false;
+    // 第一拍间隔独立随机（200~1000ms），无预告
+    nextBeatAt = performance.now() + (BEAT_INTERVAL_MIN + Math.random()*(BEAT_INTERVAL_MAX - BEAT_INTERVAL_MIN));
+    setStatus("Get ready… 准备…","");
+  }
+
+  // 拍点弹出
+  function popBeat(){
+    phase = "beat";
+    beatAt = performance.now();
+    beatUntil = beatAt + BEAT_WINDOW;
+    setStatus("Hit! 敲！","action");
+  }
+
+  function doHit(){
+    if (phase === "beat") {
+      phase = "hit";
+      beatCount += 1;
+      if (beatCount >= totalBeats) {
+        // 全连击成功
+        BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+        setStatus("Full combo! 全连击！","win"); syncURL(); celebrate();
+        return;
+      }
+      // 下一拍间隔独立随机（200~1000ms），无预告
+      phase = "idle";
+      nextBeatAt = performance.now() + (BEAT_INTERVAL_MIN + Math.random()*(BEAT_INTERVAL_MAX - BEAT_INTERVAL_MIN));
+      setStatus("Combo " + beatCount + " / " + totalBeats);
+    } else if (phase === "idle") {
+      // 按早了（没有拍点）
+      doMiss();
+    }
+  }
+
+  function doMiss(){
+    if (missLock) return;
+    missLock = true;
+    phase = "miss";
+    missAt = performance.now();
+    BENCH.results.push("miss");
+    BENCH.attempts += 1; setHint();
+    setStatus("Missed! 漏拍！","lose"); syncURL();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      setTimeout(()=>{ BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show"); }, 700);
+      return;
+    }
+    setTimeout(()=>{
+      document.getElementById("retrySub").textContent = "Missed a note! 漏拍了！";
+      document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+      document.getElementById("retryOverlay").classList.remove("hidden");
+    }, 700);
+  }
+
+  function update(dt){
+    const now = performance.now();
+    if (phase === "idle") {
+      if (now >= nextBeatAt && beatCount < totalBeats) popBeat();
+    } else if (phase === "beat") {
+      if (now > beatUntil) doMiss();   // 拍点超时没按 → 漏拍
+    }
+  }
+
+  // ---- 渲染 ----
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function drawBack(){
+    // 音游舞台背景
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#1a1428"); g.addColorStop(0.6,"#2a1e3c"); g.addColorStop(1,"#160f22");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // 舞台灯光射线
+    ctx.fillStyle="rgba(124,92,255,.08)";
+    for (let i=0;i<8;i++){
+      ctx.beginPath(); ctx.moveTo(100+i*90,0); ctx.lineTo(20+i*100,H); ctx.lineTo(60+i*100,H); ctx.closePath(); ctx.fill();
+    }
+    // 地面
+    ctx.fillStyle="#1e1428"; ctx.fillRect(0,420,W,H-420);
+    ctx.fillStyle="#2a1a38"; ctx.fillRect(0,420,W,4);
+  }
+
+  function drawDrum(){
+    // 太鼓：鼓身
+    const g = ctx.createLinearGradient(DRUM_X-DRUM_R, DRUM_Y-DRUM_R, DRUM_X+DRUM_R, DRUM_Y+DRUM_R);
+    g.addColorStop(0,"#c9a86a"); g.addColorStop(.5,"#a8864e"); g.addColorStop(1,"#7a5f34");
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(DRUM_X, DRUM_Y, DRUM_R, 0, 7); ctx.fill();
+    ctx.strokeStyle="#5a4428"; ctx.lineWidth=6; ctx.stroke();
+    // 鼓面（内圈，敲击区）
+    const face = ctx.createLinearGradient(DRUM_X-DRUM_R, DRUM_Y-DRUM_R, DRUM_X+DRUM_R, DRUM_Y+DRUM_R);
+    face.addColorStop(0,"#f5e8d0"); face.addColorStop(1,"#e0c8a0");
+    ctx.fillStyle=face;
+    ctx.beginPath(); ctx.arc(DRUM_X, DRUM_Y, DRUM_R-26, 0, 7); ctx.fill();
+    ctx.strokeStyle="#b99a6a"; ctx.lineWidth=3; ctx.stroke();
+    // 鼓面圆环装饰
+    ctx.strokeStyle="rgba(180,140,90,.5)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(DRUM_X, DRUM_Y, DRUM_R-50, 0, 7); ctx.stroke();
+    // 鼓架（左右支架）
+    ctx.fillStyle="#4a3a34"; ctx.fillRect(DRUM_X-DRUM_R-10, DRUM_Y-10, 18, 60);
+    ctx.fillRect(DRUM_X+DRUM_R-8, DRUM_Y-10, 18, 60);
+  }
+
+  function drawBeatNote(){
+    // 拍点：鼓面中心弹出的音符标记（仅 beat 阶段显示）
+    if (phase !== "beat") return;
+    const now = performance.now();
+    const p = 1 - (now - beatAt) / BEAT_WINDOW;   // 1→0 收缩
+    const a = Math.max(0, p);
+    // 渐进的音符圆
+    const r = 20 + a * 30;
+    ctx.strokeStyle=`rgba(246,196,83,${0.4 + a*0.6})`; ctx.lineWidth=7;
+    ctx.beginPath(); ctx.arc(DRUM_X, DRUM_Y, r, 0, 7); ctx.stroke();
+    // 中心光点
+    ctx.fillStyle=`rgba(255,220,130,${a})`;
+    ctx.beginPath(); ctx.arc(DRUM_X, DRUM_Y, 14, 0, 7); ctx.fill();
+  }
+
+  function drawComboBar(){
+    // 连击进度条（顶部）
+    const barW = 400, barH = 12, bx = (W-barW)/2, by = 14;
+    ctx.fillStyle="rgba(255,255,255,.12)"; rr(bx,by,barW,barH,6); ctx.fill();
+    const frac = beatCount / totalBeats;
+    ctx.fillStyle = frac >= 1 ? "#34d399" : "#f6c453";
+    rr(bx,by,barW*frac,barH,6); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.9)"; ctx.font="700 16px Arial"; ctx.textAlign="center";
+    ctx.fillText("Combo " + beatCount + " / " + totalBeats, W/2, by+14);
+  }
+
+  function render(){
+    drawBack(); drawDrum(); drawBeatNote(); drawComboBar();
+
+    if (phase === "hit") {
+      const a = Math.max(0, 1-(performance.now()-hitAt)/300);
+      ctx.strokeStyle="rgba(52,211,153,"+a+")"; ctx.lineWidth=8;
+      ctx.beginPath(); ctx.arc(DRUM_X, DRUM_Y, DRUM_R-30 + a*20, 0, 7); ctx.stroke();
+    }
+    if (phase === "miss") {
+      const a = Math.max(0, 1-(performance.now()-missAt)/800);
+      ctx.fillStyle="rgba(255,60,60,"+(a*0.3)+")"; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 44px Arial"; ctx.textAlign="center";
+      ctx.fillText("MISS 漏拍", W/2, 140);
+    }
+  }
+  let hitAt = 0;
+  function frame(now){
+    const dt = now - lastT; lastT = now;
+    if (dt > 0 && dt < 100) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // 空格键统一处理（按覆盖层状态隔离）
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode||e.which||0;
+    if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
+    if (e.code !== "Space" || e.repeat) return;
+    if (!introEl.classList.contains("hidden")) { startGame(); return; }
+    if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    doHit();   // 游戏进行中：空格 = 敲击
+  });
+
+  function celebrate(){ hitAt = performance.now(); overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

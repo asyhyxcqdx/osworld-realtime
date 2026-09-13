@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Parry 随机弹反</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Parry the strike 弹反来袭</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Space</span> Parry 弹反</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Parried! 弹反成功！</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Struck down 被击中</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Random Parry 随机弹反</div>
+      <div class="intro-rule">In a moonlit bamboo grove, a masked assassin's flying blade rushes at you — <b>but you never know when it will strike</b>. It flies at you at a <b>random moment</b>.<br>Swing your sword to <b>parry it at the exact moment it reaches you</b>.<br>竹林月夜，蒙面刺客的飞剑疾冲而来——<b>但你永远不知道它何时来袭</b>，它在<b>随机时刻</b>飞来。<br>在<b>剑锋劈到身前的瞬间</b>挥刀格挡，把它弹开。<br><br>Space to parry 按空格弹反</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Parry at the hit moment 命中瞬间弹反</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  // 物理参数：沿用 c28 固定弹反（飞剑直线飞来，剑士挥刀格挡，纯碰撞检测）
+  // 唯一随机性 = 飞剑「何时出现」（随机延迟后飞入），飞行轨迹/速度固定 → 不可预编码
+  const ATTACK_VX = 480, ATTACK_X0 = 60, ATTACK_Y = 250, TIP_R = 14;   // 来袭剑尖
+  const PLAYER_X = 600, PLAYER_Y = 250, GROUND_Y = 380;
+  const GRIP_X = 560, GRIP_Y = 200;      // 刀握点
+  const BLADE_LEN = 85;                  // 刀长
+  const BLOCK_FROM = -2.2, BLOCK_TO = 0.7;   // 格挡挥刀起止角
+  const BLOCK_MS = 180;                  // 格挡挥刀时长
+  const PASS_END = 660;                  // 剑尖飞过此 x 未格挡 → 被击中失败
+  const APPEAR_MIN = 600, APPEAR_RANGE = 2900;   // 随机出现延迟 0.6~3.5s
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"random_parry", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "waiting";    // waiting(等待随机延迟) | incoming | resolve | over
+  let attackX = ATTACK_X0;
+  let appearAt = 0;         // 飞剑出现时刻（随机）
+  let blockT0 = -1;
+  let blockDone = false;
+  let deflected = false;
+  let resolveT0 = 0, resolveResult = null;
+  let particles = [];
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, attackX:Math.round(attackX), blocking: blockT0 >= 0, appearAt: Math.round(appearAt),
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "waiting"; attackX = ATTACK_X0;
+    blockT0 = -1; blockDone = false; deflected = false;
+    resolveT0 = 0; resolveResult = null; particles = [];
+    // ★ 随机出现：飞剑何时飞入随机（每次 retry 重新掷），agent 无法预知何时来袭
+    appearAt = performance.now() + APPEAR_MIN + Math.random()*APPEAR_RANGE;
+    setStatus("Get ready… 准备…","");
+  }
+
+  function bladeAngle(){
+    if (blockT0 < 0) return BLOCK_FROM;
+    const t = Math.min(1, (performance.now() - blockT0) / BLOCK_MS);
+    const e = 1 - Math.pow(1 - t, 2);
+    return BLOCK_FROM + (BLOCK_TO - BLOCK_FROM) * e;
+  }
+  function bladeSegment(){
+    const a = bladeAngle();
+    return { ax:GRIP_X, ay:GRIP_Y, bx:GRIP_X + BLADE_LEN*Math.cos(a), by:GRIP_Y + BLADE_LEN*Math.sin(a) };
+  }
+  function segPointDist(px, py, ax, ay, bx, by){
+    const vx = bx-ax, vy = by-ay, wx = px-ax, wy = py-ay;
+    const c1 = vx*wx + vy*wy;
+    if (c1 <= 0) return Math.hypot(px-ax, py-ay);
+    const c2 = vx*vx + vy*vy;
+    if (c2 <= c1) return Math.hypot(px-bx, py-by);
+    const t = c1/c2;
+    return Math.hypot(px-(ax+vx*t), py-(ay+vy*t));
+  }
+
+  function parry(e){
+    if (e && e.repeat) return;
+    if (phase !== "incoming") return;
+    if (blockT0 >= 0) return;
+    blockT0 = performance.now();
+    setStatus("Parry! 格挡！","action");
+  }
+  function parryHit(now){
+    deflected = true;
+    phase = "resolve";
+    resolveT0 = now;
+    resolveResult = "parry";
+    spawnSparks();
+    setStatus("Parried! 弹反成功！","win");
+  }
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Parried! 弹反成功！","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Struck down 被击中","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Struck down 被击中","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt, now){
+    if (phase === "waiting") {
+      if (now >= appearAt) { phase = "incoming"; setStatus("Parry the strike 弹反来袭",""); }
+    } else if (phase === "incoming") {
+      attackX += ATTACK_VX * dt;
+      if (blockT0 >= 0 && !blockDone) {
+        const t = (now - blockT0) / BLOCK_MS;
+        if (t >= 1) blockDone = true;
+        const { ax, ay, bx, by } = bladeSegment();
+        if (segPointDist(attackX, ATTACK_Y, ax, ay, bx, by) < TIP_R) {
+          parryHit(now);
+          return;
+        }
+      }
+      if (attackX > PASS_END && !deflected) {
+        phase = "resolve";
+        resolveT0 = now;
+        resolveResult = "hit";
+        spawnSparks();
+        setStatus("Struck down 被击中","lose");
+      }
+    } else if (phase === "resolve") {
+      if (resolveResult === "parry") { attackX -= ATTACK_VX * 2.4 * dt; }
+      else { attackX += ATTACK_VX * dt; }
+      particles.forEach(p => { p.life += dt*1000; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 900*dt; });
+      particles = particles.filter(p => p.life < p.max);
+      const el = now - resolveT0;
+      if (el > (resolveResult === "parry" ? 700 : 600)) {
+        if (resolveResult === "parry") win(); else fail();
+      }
+    }
+  }
+
+  function spawnSparks(){
+    particles = [];
+    for (let i=0;i<20;i++){
+      particles.push({ x:attackX, y:ATTACK_Y, vx:-140+Math.random()*320, vy:-(100+Math.random()*260),
+        r:2+Math.random()*2.5, life:0, max:400+Math.random()*400, c:Math.random()<0.5?"#ffe9a8":"#fff2c0" });
+    }
+  }
+
+  // ---- 渲染（复用 c28 竹林月夜 + 剑士 + 飞剑 + 刀光 + 火花）----
+  function drawBG(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#10182a"); g.addColorStop(0.5,"#1a2440"); g.addColorStop(1,"#2a3852");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+    const mg = ctx.createRadialGradient(120, 90, 6, 120, 90, 46);
+    mg.addColorStop(0,"#f2f6ff"); mg.addColorStop(1,"rgba(210,225,255,0)");
+    ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(120, 90, 46, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#e8edf8"; ctx.beginPath(); ctx.arc(120, 90, 26, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(28,40,64,.6)"; ctx.fillRect(0, 300, 800, 50);
+    for (let i=0;i<9;i++){
+      const bx = 40 + i*92;
+      ctx.strokeStyle = "rgba(40,80,60," + (0.5+0.2*Math.sin(i)) + ")";
+      ctx.lineWidth = 12;
+      ctx.beginPath(); ctx.moveTo(bx, 460); ctx.lineTo(bx, 120-i%3*30); ctx.stroke();
+      ctx.strokeStyle = "rgba(30,60,45,.55)"; ctx.lineWidth = 18;
+      ctx.beginPath(); ctx.moveTo(bx+22, 460); ctx.lineTo(bx+22, 180-i%3*40); ctx.stroke();
+      ctx.strokeStyle = "rgba(20,45,35,.5)"; ctx.lineWidth = 2;
+      for (let j=0;j<3;j++){ ctx.beginPath(); ctx.moveTo(bx-6, 300-j*110); ctx.lineTo(bx+6, 300-j*110); ctx.stroke(); }
+    }
+    ctx.fillStyle = "#1e2736"; ctx.fillRect(0, GROUND_Y, 800, 80);
+    ctx.fillStyle = "rgba(70,90,120,.4)";
+    for (let i=0;i<16;i++){ ctx.fillRect((i*53+7)%800, GROUND_Y+12+(i%2)*30, 44, 22); }
+  }
+
+  function drawPlayer(){
+    const bx = PLAYER_X;
+    ctx.fillStyle = "#2a3450";
+    ctx.fillRect(bx-28, GROUND_Y-62, 17, 62);
+    ctx.fillRect(bx+11, GROUND_Y-62, 17, 62);
+    const bg = ctx.createLinearGradient(0,GROUND_Y-140,0,GROUND_Y-60);
+    bg.addColorStop(0,"#3c4a6e"); bg.addColorStop(1,"#263354");
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.moveTo(bx-26, GROUND_Y-60); ctx.lineTo(bx+26, GROUND_Y-60);
+    ctx.lineTo(bx+13, GROUND_Y-140); ctx.lineTo(bx-13, GROUND_Y-140); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#e8e8ee"; ctx.fillRect(bx-4, GROUND_Y-138, 8, 12);
+    ctx.fillStyle = "#c8a060"; ctx.fillRect(bx-20, GROUND_Y-72, 40, 7);
+    ctx.fillStyle = "#a8864a"; ctx.fillRect(bx-12, GROUND_Y-70, 24, 3);
+    ctx.fillStyle = "#f0c9a0"; ctx.beginPath(); ctx.arc(bx, GROUND_Y-158, 17, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#6b4e2a"; ctx.beginPath(); ctx.arc(bx, GROUND_Y-164, 30, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = "#5a3f20"; ctx.fillRect(bx-30, GROUND_Y-166, 60, 4);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.beginPath(); ctx.arc(bx-6, GROUND_Y-156, 2.6, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(bx-10, GROUND_Y-163); ctx.lineTo(bx-2, GROUND_Y-161); ctx.stroke();
+
+    const a = bladeAngle();
+    ctx.save();
+    ctx.translate(GRIP_X, GRIP_Y);
+    ctx.rotate(a);
+    const bg2 = ctx.createLinearGradient(0,0,BLADE_LEN,0);
+    bg2.addColorStop(0,"#8a6a3a"); bg2.addColorStop(0.5,"#e8e8f0"); bg2.addColorStop(1,"#c8d0e0");
+    ctx.strokeStyle = bg2; ctx.lineWidth = 7; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(BLADE_LEN,0); ctx.stroke();
+    ctx.fillStyle = "#c8a060"; ctx.beginPath(); ctx.arc(6, 0, 5, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSlash(){
+    if (blockT0 < 0) return;
+    const t = (performance.now() - blockT0) / BLOCK_MS;
+    if (t < 0 || t > 1) return;
+    const alpha = Math.sin(Math.PI * Math.min(1, t)) * 0.9;
+    const a = bladeAngle();
+    ctx.save();
+    ctx.translate(GRIP_X, GRIP_Y);
+    ctx.rotate(a);
+    ctx.strokeStyle = `rgba(255,240,170,${alpha})`;
+    ctx.lineWidth = 8;
+    ctx.shadowColor = "rgba(255,230,140,.9)";
+    ctx.shadowBlur = 24 * alpha;
+    ctx.beginPath(); ctx.moveTo(10,0); ctx.lineTo(BLADE_LEN,0); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawAttack(){
+    if (phase !== "incoming" && phase !== "resolve") return;
+    const ax = attackX, ay = ATTACK_Y;
+    const glow = bladeGlow();
+    if (deflected) {
+      ctx.save();
+      ctx.translate(ax, ay); ctx.scale(-1, 1);
+      drawBladeShape(0);
+      ctx.restore();
+    } else {
+      if (glow > 0.01) {
+        const rg = ctx.createRadialGradient(ax-6, ay, 3, ax-6, ay, 44);
+        rg.addColorStop(0, `rgba(255,80,70,${0.75*glow})`);
+        rg.addColorStop(0.5, `rgba(255,60,50,${0.38*glow})`);
+        rg.addColorStop(1, "rgba(255,60,50,0)");
+        ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(ax-6, ay, 44, 0, Math.PI*2); ctx.fill();
+      }
+      const g = ctx.createLinearGradient(ax,0,ax-130,0);
+      g.addColorStop(0, glow > 0.1 ? `rgba(255,120,100,${0.5+0.4*glow})` : "rgba(190,225,255,.7)");
+      g.addColorStop(1, "rgba(190,225,255,0)");
+      ctx.fillStyle = g; ctx.fillRect(ax-130, ay-5, 130, 10);
+      drawBladeShape(glow);
+    }
+  }
+
+  function drawBladeShape(glow){
+    const g = ctx.createLinearGradient(0,-24,0,24);
+    g.addColorStop(0, glow > 0.2 ? "#fff0ec" : "#f4f8ff");
+    g.addColorStop(0.5, glow > 0.2 ? "#f4c8c0" : "#c8d8f0");
+    g.addColorStop(1, glow > 0.2 ? "#b88880" : "#8898b6");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, -6); ctx.lineTo(46, -18); ctx.lineTo(66, 0); ctx.lineTo(46, 18); ctx.lineTo(0, 6);
+    ctx.closePath(); ctx.fill();
+    if (glow > 0.2) {
+      ctx.strokeStyle = `rgba(255,70,60,${0.5+0.5*glow})`; ctx.lineWidth = 2.5;
+    } else {
+      ctx.strokeStyle = "#5a6a88"; ctx.lineWidth = 2;
+    }
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(58, 0); ctx.stroke();
+    ctx.fillStyle = glow > 0.2 ? "rgba(255,170,150,.95)" : "rgba(210,235,255,.9)";
+    ctx.beginPath(); ctx.arc(66, 0, 3.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#6b4e2a"; ctx.fillRect(-9, -4.5, 11, 9);
+    ctx.fillStyle = "#8a6a3a"; ctx.beginPath(); ctx.arc(-10, 0, 3.5, 0, Math.PI*2); ctx.fill();
+  }
+
+  function drawParticles(){
+    particles.forEach(p => {
+      ctx.fillStyle = p.c;
+      ctx.globalAlpha = Math.max(0, 1 - p.life/p.max);
+      ctx.fillRect(p.x - p.r/2, p.y - p.r/2, p.r, p.r);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function bladeGlow(){
+    const GLOW_LO = 400, PEAK = 560, GLOW_HI = 640;
+    if (phase !== "incoming") return 0;
+    if (attackX <= GLOW_LO || attackX >= GLOW_HI) return 0;
+    let u;
+    if (attackX <= PEAK) {
+      u = (attackX - GLOW_LO) / (PEAK - GLOW_LO);
+    } else {
+      u = 1 - (attackX - PEAK) / (GLOW_HI - PEAK);
+    }
+    u = Math.max(0, Math.min(1, u));
+    return u * u * (3 - 2 * u);
+  }
+
+  function render(){
+    drawBG();
+    drawPlayer();
+    drawAttack();
+    drawSlash();
+    drawParticles();
+  }
+
+  function frame(t){ if (!started) { requestAnimationFrame(frame); return; }
+    const dt = Math.min((t - (frame.last||t))/1000, 0.05); frame.last = t;
+    update(dt, t);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  addEventListener("keydown",(e)=>{
+    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
+      const introShown = !introEl.classList.contains("hidden");
+      const retryShown = !retryOverlay.classList.contains("hidden");
+      if (introShown) { e.preventDefault(); startGame(); return; }
+      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
+    }
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    const up = k===" " || k==="w" || k==="arrowup" || c==="Space" || c==="KeyW" || c==="ArrowUp" || kc===32 || kc===87 || kc===38;
+    if (up) parry(e);
+  });
+  cv.addEventListener("mousedown", ()=>parry());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

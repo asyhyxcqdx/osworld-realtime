@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Charge Distance 蓄力距离</title>
+<style>
+:root{
+  --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+  --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+  --accent1:#4c5baa; --accent2:#3a4684;
+  --accent3:#4c7dff; --accent4:#3355d8;
+  --ok1:#34d399; --ok2:#0ea371;
+  --fail1:#f87171; --fail2:#dc2626;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; }
+body{
+  background:radial-gradient(1000px 700px at 50% -5%, #2a4a3a 0%, #162820 58%, #0c1610 100%);
+  font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:#e8eaf6; user-select:none; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+}
+.status{ font-size:24px; font-weight:800; min-height:32px; letter-spacing:.4px; text-align:center; }
+.status.idle{ color:#8b93b8; } .status.armed{ color:var(--gold); }
+.status.win{ color:var(--ok1); } .status.lose{ color:var(--fail1); }
+.status.action{ font-size:28px; font-weight:800; color:var(--gold); text-shadow:0 0 16px rgba(246,196,83,.6); letter-spacing:.5px; }
+
+/* 目标信息卡 */
+.spec{ display:flex; align-items:center; gap:14px; }
+.spec-card{ background:linear-gradient(160deg,#1c2a24,#121e18); border:1px solid rgba(255,255,255,.12);
+  border-radius:16px; padding:12px 24px; text-align:center; box-shadow:0 10px 26px rgba(0,0,0,.35); }
+.spec-lbl{ font-size:12px; color:#9ab8a8; letter-spacing:2px; text-transform:uppercase; }
+.spec-val{ font-size:32px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--gold); margin-top:2px; }
+.spec-val b{ font-size:19px; font-weight:700; color:#e8eaf6; }
+
+/* 舞台（弹弓 + 小鸟 + 平台） */
+.stage{ position:relative; width:760px; height:360px; border-radius:20px; overflow:hidden;
+  border:2px solid rgba(255,255,255,.10); box-shadow:inset 0 0 70px rgba(0,0,0,.5); }
+#arena{ position:absolute; inset:0; width:100%; height:100%; }
+
+/* 蓄力进度条（含目标刻度标记） */
+.bar-wrap{ position:relative; width:440px; height:26px; }
+.bar{ position:absolute; left:0; top:0; bottom:0; width:0%; border-radius:13px;
+  background:linear-gradient(90deg,#4c7dff,var(--ok1)); transition:width .05s linear; }
+.bar-bg{ position:absolute; inset:0; border-radius:13px; background:#2a3350; border:1px solid rgba(255,255,255,.12); }
+.bar-tick{ position:absolute; top:-6px; bottom:-6px; width:3px; background:var(--gold); z-index:3;
+  box-shadow:0 0 8px rgba(246,196,83,.7); }
+.bar-tick-lbl{ position:absolute; top:-26px; transform:translateX(-50%); font-size:13px; font-weight:800; color:var(--gold); z-index:3; }
+.bar-lbl{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; color:#fff; text-shadow:0 0 4px rgba(0,0,0,.5); z-index:2; }
+
+.feedback{ font-size:16px; font-weight:700; min-height:22px; color:#8b93b8; text-align:center; }
+.feedback.good{ color:var(--ok1); } .feedback.warn{ color:var(--gold); } .feedback.bad{ color:var(--fail1); }
+
+.row{ display:flex; align-items:center; gap:30px; }
+.btn{ padding:16px 38px; font-size:21px; font-weight:800; letter-spacing:1px; border:none; border-radius:14px;
+  cursor:pointer; color:#fff; background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+  box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25); transition:transform .12s; }
+.btn:active{ transform:translateY(2px) scale(.98); }
+.btn:disabled{ opacity:.35; cursor:default; }
+.hint{ font-size:14px; color:#9ab8a8; letter-spacing:.5px; }
+
+.toast{ position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+  background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+  padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+  opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.overlay{ position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+.overlay.show{ opacity:1; pointer-events:auto; }
+.celeb-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+  transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.overlay.show .celeb-box{ transform:scale(1); }
+.celeb-check{ width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+.celeb-check.ok{ background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+.celeb-check.fail{ background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+.celeb-title{ font-size:30px; font-weight:800; color:var(--title); }
+.celeb-sub{ font-size:15px; color:var(--sub); margin-top:6px; }
+#confetti{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+
+.intro{ position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+.intro.hidden{ display:none; }
+.intro-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:680px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.intro-title{ font-size:28px; font-weight:800; color:var(--title); }
+.intro-rule{ font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+.intro-rule b{ color:var(--title); }
+.intro-start{ margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+.intro-start:hover{ transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Press Start 按开始</div>
+
+  <div class="spec">
+    <div class="spec-card">
+      <div class="spec-lbl">Target power 目标力度</div>
+      <div class="spec-val"><span id="targetVal">65</span> <b>%</b></div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-lbl">Charge 蓄力</div>
+      <div class="spec-val">SPACE <b>hold 长按</b></div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-lbl">Hold time 按住时长</div>
+      <div class="spec-val"><span id="holdTimeVal">1.0</span> <b>s to 65% / 1 秒到 65%</b></div>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="arena"></canvas>
+  </div>
+
+  <div class="bar-wrap" id="barWrap">
+    <div class="bar-bg"></div>
+    <div class="bar" id="bar"></div>
+    <div class="bar-tick" id="barTick"></div>
+    <div class="bar-tick-lbl" id="barTickLbl">65%</div>
+    <div class="bar-lbl" id="barLbl">0%</div>
+  </div>
+
+  <div class="feedback" id="feedback">Hold SPACE to charge, release at the tick 按住蓄力、到刻度松手</div>
+
+  <div class="row">
+    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <div class="hint" id="hint">Attempt 1 / 3 第1/3次</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Landed! 落地</div>
+      <div class="celeb-sub">Perfect power 力度正好</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Charge Distance 蓄力距离</div>
+      <div class="intro-rule">You're playing a slingshot game. A target platform sits at a distance that needs <b>65% power</b>. Press and hold <b>SPACE</b> to pull the slingshot — the charge bar fills — and release exactly when it reaches the golden <b>65% tick</b> (within ±5%) to launch the bird onto the platform. Overcharge or undercharge misses.<br>你在玩弹弓游戏。目标平台的距离需要 <b>65% 力度</b>。<b>按住空格</b>拉弹弓——蓄力条会填充——在它到达金色 <b>65% 刻度</b>（±5%）时松手，把小鸟发射上平台。蓄过头或蓄不够都会射偏。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const TARGET_PCT = 65;        // 最佳力度 65%（文字标注，对应落平台中心）
+  const CHARGE_MS = 1500;       // 蓄满 100% 用时 1.5s
+  const MISS_MS = 6000;         // 6s 内未蓄力 → miss
+  // 发射物理：力度 → 落点距离。100% 力度飞 MAX_DIST，落平台需力度落在 [PL,PR] 区间
+  const MAX_DIST = 608;         // 100% 力度水平飞行距离 px
+  const LAUNCH_X = 150, LAUNCH_Y = 250;   // 发射点（弹弓口）
+  const PLATFORM_L = 500, PLATFORM_R = 590, GROUND_Y = 300;  // 平台左右边界 + 地面 y
+  const FLY_MS = 800;           // 发射飞行动画时长
+
+  const BENCH = { task:"charge_distance", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn");
+  const arena=document.getElementById("arena"), stage=document.getElementById("stage");
+  const bar=document.getElementById("bar"), barLbl=document.getElementById("barLbl");
+  const barTick=document.getElementById("barTick"), barTickLbl=document.getElementById("barTickLbl");
+  const barWrap=document.getElementById("barWrap");
+  const feedback=document.getElementById("feedback");
+  const toast=document.getElementById("toast");
+  const overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+  const targetVal=document.getElementById("targetVal");
+  const holdTimeVal=document.getElementById("holdTimeVal");
+
+  let phase="idle", raf=null, armNow=0, chargeStart=0, charging=false, chargePct=0;
+  let flyStart=0, landX=0, landed=false;   // 飞行动画起点 / 落点 x / 是否已落地
+
+  targetVal.textContent = TARGET_PCT;
+  barTickLbl.textContent = TARGET_PCT+"%";
+  holdTimeVal.textContent = (CHARGE_MS * TARGET_PCT / 100 / 1000).toFixed(1);   // 按住到 65% 的秒数
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+  function setFeedback(t,c){ feedback.textContent=t; feedback.className="feedback "+(c||""); }
+  function setBar(p){ p=Math.max(0,Math.min(100,p)); bar.style.width=p+"%"; barLbl.textContent=Math.round(p)+"%"; }
+
+  function sizeCanvas(){ arena.width=stage.clientWidth; arena.height=stage.clientHeight; }
+  function layoutTick(){
+    const w=barWrap.clientWidth;
+    const x=w*(TARGET_PCT/100);
+    barTick.style.left=x+"px";
+    barTickLbl.style.left=x+"px";
+  }
+
+  // 可爱小鸟（愤怒小鸟风格：圆身体 + 白眼 + 粗眉 + 三角嘴 + 尾羽 + 头顶毛）
+  function drawBird(ctx, x, y, r){
+    ctx.save();
+    ctx.translate(x, y);
+    // 尾羽（身后）
+    ctx.fillStyle="#7a2b22";
+    ctx.beginPath(); ctx.moveTo(-r*0.75, -r*0.1); ctx.lineTo(-r*1.5, -r*0.5); ctx.lineTo(-r*1.35, r*0.05); ctx.lineTo(-r*0.75, r*0.2); ctx.closePath(); ctx.fill();
+    // 头顶毛
+    ctx.fillStyle="#b5332a";
+    ctx.beginPath(); ctx.moveTo(-r*0.1, -r*0.9); ctx.lineTo(-r*0.35, -r*1.45); ctx.lineTo(r*0.15, -r*1.15); ctx.closePath(); ctx.fill();
+    // 圆身体
+    const bg=ctx.createRadialGradient(-r*0.25,-r*0.3,r*0.2, 0,0,r);
+    bg.addColorStop(0,"#ff6a5c"); bg.addColorStop(1,"#d43a30");
+    ctx.fillStyle=bg;
+    ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#a52a20"; ctx.lineWidth=1.5; ctx.stroke();
+    // 肚皮（浅色）
+    ctx.fillStyle="#f6d8c8";
+    ctx.beginPath(); ctx.ellipse(0, r*0.4, r*0.42, r*0.45, 0, 0, Math.PI*2); ctx.fill();
+    // 眼白 + 瞳孔
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(-r*0.38,-r*0.28,r*0.35,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r*0.38,-r*0.28,r*0.35,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#222";
+    ctx.beginPath(); ctx.arc(-r*0.4,-r*0.26,r*0.15,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r*0.36,-r*0.26,r*0.15,0,Math.PI*2); ctx.fill();
+    // 粗眉毛
+    ctx.strokeStyle="#7a1f16"; ctx.lineWidth=r*0.22; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(-r*0.7,-r*0.7); ctx.lineTo(-r*0.1,-r*0.6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(r*0.7,-r*0.7); ctx.lineTo(r*0.1,-r*0.6); ctx.stroke();
+    // 三角嘴
+    ctx.fillStyle="#f6a23a";
+    ctx.beginPath(); ctx.moveTo(-r*0.16,r*0.05); ctx.lineTo(r*0.16,r*0.05); ctx.lineTo(0,r*0.38); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  function draw(flying){
+    const W=arena.width, H=arena.height;
+    const ctx=arena.getContext("2d");
+    ctx.clearRect(0,0,W,H);
+    // 天空 + 地面
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#1e6a4a"); g.addColorStop(1,"#133a2a");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="#2d1c12"; ctx.fillRect(0,GROUND_Y,W,H-GROUND_Y);
+    ctx.fillStyle="rgba(255,255,255,.1)";
+    for(let x=0;x<W;x+=44){ ctx.beginPath(); ctx.moveTo(x,GROUND_Y); ctx.lineTo(x,H); ctx.stroke(); }
+    // 弹弓（左侧 Y 形支架 + 皮筋兜住小鸟，两者贴合）
+    ctx.save();
+    ctx.translate(150, GROUND_Y-10);
+    // 木叉
+    ctx.strokeStyle="#6b4a2f"; ctx.lineWidth=12; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(0,40); ctx.lineTo(-30,-50); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,40); ctx.lineTo(30,-50); ctx.stroke();
+    // 皮筋兜点 = 小鸟位置（蓄力时向后拉，飞行/落地后皮筋回弹恢复）
+    const pullAmt = (charging && phase==="armed") ? chargePct*0.4 : 3;
+    const carryX = (landed || flying) ? 0 : -pullAmt;
+    const carryY = -22;   // 皮筋兜点（小鸟 center 坐这）
+    // 皮筋（两段从木叉顶端汇聚到兜点，兜住小鸟）
+    ctx.strokeStyle="#8a3b2f"; ctx.lineWidth=4; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(-30,-50); ctx.lineTo(carryX, carryY); ctx.lineTo(30,-50); ctx.stroke();
+    // 小鸟坐在皮筋兜点上（未飞行未落地时）
+    if(!landed && !flying){
+      drawBird(ctx, carryX, carryY, 20);
+    }
+    ctx.restore();
+    // 目标平台
+    ctx.save();
+    const pc = (PLATFORM_L+PLATFORM_R)/2;
+    ctx.fillStyle="#4c7dff";
+    ctx.beginPath(); ctx.roundRect(PLATFORM_L, GROUND_Y, PLATFORM_R-PLATFORM_L, 18, 6); ctx.fill();
+    ctx.strokeStyle="#3355d8"; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle="#cfe0ff"; ctx.font="700 13px sans-serif"; ctx.textAlign="center";
+    ctx.fillText("TARGET 目标", pc, GROUND_Y-12);
+    ctx.restore();
+    // 小鸟：landed 停在落点；flying 抛物线飞行；未飞行时已在弹弓皮筋兜点画过
+    if(landed){
+      // 停在落点（成功落平台顶部 / 失败落到地面）
+      const ly = (landX>=PLATFORM_L && landX<=PLATFORM_R) ? GROUND_Y-24 : GROUND_Y-20;
+      drawBird(ctx, landX, ly, 20);
+    } else if(flying){
+      const now=performance.now();
+      const p=Math.min(1,(now-flyStart)/FLY_MS);
+      const fx = LAUNCH_X + (landX-LAUNCH_X)*p;
+      const fh = Math.sin(p*Math.PI)*160;   // 抛物线高度
+      const fy = LAUNCH_Y - fh;
+      drawBird(ctx, fx, fy, 20);
+    }
+  }
+
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false; charging=false; chargePct=0; landX=0; landed=false;
+    setBar(0);
+    setFeedback("Hold SPACE to charge, release at the tick 按住蓄力、到刻度松手","");
+    setStatus("Press Start 按开始","idle"); syncURL();
+    sizeCanvas(); layoutTick(); draw(false);
+  }
+
+  function arm(){
+    phase="armed"; startBtn.disabled=true; armNow=performance.now(); charging=false; chargePct=0; landX=0; landed=false;
+    setBar(0);
+    setStatus("Charge to 65% then release! 蓄到 65% 松手！","action");
+    setFeedback("Hold SPACE 按住空格", "warn");
+    syncURL();
+    (function tick(now){
+      if(phase!=="armed") return;
+      const el=now-armNow;
+      if(charging){
+        chargePct = Math.min(100, (now-chargeStart)/CHARGE_MS*100);
+        setBar(chargePct);
+        draw(false);
+      }
+      if(el>MISS_MS){ miss(); return; }
+      raf=requestAnimationFrame(tick);
+    })(armNow);
+    draw(false);
+  }
+
+  function startCharge(){
+    if(phase!=="armed") return;
+    charging=true; chargeStart=performance.now();
+    setFeedback("Charging… 蓄力中…", "good");
+  }
+
+  function releaseCharge(){
+    if(phase!=="armed" || !charging) return;
+    charging=false;
+    // 力度 → 落点距离
+    landX = LAUNCH_X + (chargePct/100) * MAX_DIST;
+    // 进入飞行阶段（发射动画），落地点在飞行结束后再判定
+    phase="flying"; flyStart=performance.now();
+    setFeedback("Flying… 飞行中…","warn");
+    (function tick(now){
+      if(phase!=="flying") return;
+      const p=Math.min(1,(now-flyStart)/FLY_MS);
+      draw(true);
+      if(p>=1){
+        // 飞行结束：落点判定
+        const onPlatform = landX >= PLATFORM_L && landX <= PLATFORM_R;
+        if(onPlatform) finishRound(true);
+        else finishRound(false, landX<PLATFORM_L?"Too weak 力度不足":"Too strong 力度过头");
+        return;
+      }
+      raf=requestAnimationFrame(tick);
+    })(flyStart);
+  }
+
+  function finishRound(win, reason){
+    if(phase!=="armed" && phase!=="flying") return;
+    phase="done"; cancelAnimationFrame(raf); startBtn.disabled=true;
+    landed=true;   // 小鸟停在落点，不瞬移回弹弓
+    if(win){
+      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      draw(false); setStatus("Landed! 落地","win"); syncURL(); celebrate();
+    } else {
+      draw(false);
+      failOne(reason||"Missed 未命中");
+    }
+  }
+  function miss(){ cancelAnimationFrame(raf); if(phase!=="armed") return; phase="done"; startBtn.disabled=true; failOne("Missed 未蓄力"); }
+  function failOne(reason){
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    setStatus("Missed 未命中","lose");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    const cv=document.getElementById("confetti"); cv.width=innerWidth; cv.height=innerHeight;
+    const ctx=cv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,cv.width,cv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<cv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,cv.width,cv.height);
+    })(t0);
+  }
+
+  // 空格：intro/retry/idle = Start/Next；armed = 蓄力（keydown 开始 / keyup 松手发射）
+  function onIntroStart(){
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
+  }
+  function onNext(){
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+  }
+  function onSpaceKey(e){
+    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
+    if(e.repeat) return;
+    const introEl=document.getElementById("intro");
+    const retryEl=document.getElementById("retryOverlay");
+    if(!introEl.classList.contains("hidden") && phase!=="armed"){ e.preventDefault(); onIntroStart(); return; }
+    if(retryEl.classList.contains("show") && phase!=="armed"){ e.preventDefault(); onNext(); return; }
+    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }
+    if(phase==="armed"){ e.preventDefault(); startCharge(); return; }
+  }
+  function onSpaceUp(e){
+    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
+    if(phase==="armed" && charging){ e.preventDefault(); releaseCharge(); }
+  }
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+  window.addEventListener("keydown", onSpaceKey);
+  window.addEventListener("keyup", onSpaceUp);
+  document.getElementById("introStart").addEventListener("click", onIntroStart);
+  document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  window.__dbg = function(){
+    // 落平台对应力度区间（测试/Agent 可算出「蓄到多少力度会落到平台」）
+    const loPct = Math.round((PLATFORM_L - LAUNCH_X) / MAX_DIST * 100);
+    const hiPct = Math.round((PLATFORM_R - LAUNCH_X) / MAX_DIST * 100);
+    return { phase, charging, chargePct:Math.round(chargePct), targetPct:TARGET_PCT,
+      chargeMs:CHARGE_MS, platform:[PLATFORM_L,PLATFORM_R], landX:Math.round(landX),
+      landRangePct:[loPct,hiPct], maxDist:MAX_DIST,
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Union, Optional
 from typing import Dict, List
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from playwright.sync_api import sync_playwright, TimeoutError
@@ -38,6 +39,21 @@ FILE_PATH = os.path.dirname(os.path.abspath(__file__))
 init_proxy_pool(PROXY_CONFIG_FILE)  # initialize the global proxy pool
 
 MAX_RETRIES = 20
+
+
+def _resolve_huggingface_url(url: str) -> str:
+    endpoint = os.getenv("HF_ENDPOINT", "").strip()
+    source = urlsplit(url)
+    target = urlsplit(endpoint)
+    if source.hostname not in {"huggingface.co", "www.huggingface.co"}:
+        return url
+    if not target.scheme or not target.netloc:
+        return url
+
+    target_path = f"{target.path.rstrip('/')}{source.path}"
+    return urlunsplit(
+        (target.scheme, target.netloc, target_path, source.query, source.fragment)
+    )
 
 
 def _redact_command_for_log(command: Union[str, List[str]]) -> str:
@@ -179,6 +195,26 @@ class SetupController:
             
             if retry == MAX_RETRIES:
                 return False
+
+        external_proxy_url = os.getenv("OSWORLD_VM_PROXY_URL", "").strip()
+        if external_proxy_url and self.use_proxy:
+            proxy = urlsplit(external_proxy_url)
+            try:
+                proxy_port = proxy.port
+            except ValueError as exc:
+                raise ValueError("OSWORLD_VM_PROXY_URL has an invalid port") from exc
+            if proxy.scheme not in {"http", "https"} or not proxy.hostname or not proxy_port:
+                raise ValueError(
+                    "OSWORLD_VM_PROXY_URL must be an http(s) URL with an explicit port"
+                )
+            for schema, key, value in (
+                ("org.gnome.system.proxy", "mode", "manual"),
+                ("org.gnome.system.proxy.http", "host", proxy.hostname),
+                ("org.gnome.system.proxy.http", "port", str(proxy_port)),
+                ("org.gnome.system.proxy.https", "host", proxy.hostname),
+                ("org.gnome.system.proxy.https", "port", str(proxy_port)),
+            ):
+                self._execute_setup(["gsettings", "set", schema, key, value])
                 
 
         for i, cfg in enumerate(config):
@@ -214,6 +250,7 @@ class SetupController:
         """
         for f in files:
             url: str = f["url"]
+            download_url = _resolve_huggingface_url(url)
             path: str = f["path"]
             cache_path: str = os.path.join(self.cache_dir, "{:}_{:}".format(
                 uuid.uuid5(uuid.NAMESPACE_URL, url),
@@ -222,14 +259,16 @@ class SetupController:
                 raise Exception(f"Setup Download - Invalid URL ({url}) or path ({path}).")
 
             if not os.path.exists(cache_path):
-                logger.info(f"Cache file not found, downloading from {url} to {cache_path}")
+                logger.info(
+                    f"Cache file not found, downloading from {download_url} to {cache_path}"
+                )
                 max_retries = 3
                 downloaded = False
                 e = None
                 for i in range(max_retries):
                     try:
-                        logger.info(f"Download attempt {i+1}/{max_retries} for {url}")
-                        response = requests.get(url, stream=True, timeout=300)  # Add 5 minute timeout
+                        logger.info(f"Download attempt {i+1}/{max_retries} for {download_url}")
+                        response = requests.get(download_url, stream=True, timeout=300)  # Add 5 minute timeout
                         response.raise_for_status()
                         
                         # Get file size if available
@@ -253,7 +292,7 @@ class SetupController:
 
                     except requests.RequestException as e:
                         logger.error(
-                            f"Failed to download {url} caused by {e}. Retrying... ({max_retries - i - 1} attempts left)")
+                            f"Failed to download {download_url} caused by {e}. Retrying... ({max_retries - i - 1} attempts left)")
                         # Clean up partial download
                         if os.path.exists(cache_path):
                             os.remove(cache_path)
@@ -408,8 +447,14 @@ class SetupController:
             logger.warning("Command should be a list of strings. Now it is a string. Will split it by space.")
             command = command.split()
             
-        if command[0] == "google-chrome" and self.use_proxy:
-            command.append("--proxy-server=http://127.0.0.1:18888")  # Use the proxy server set up by _proxy_setup
+        if command[0] == "google-chrome":
+            external_proxy_url = os.getenv("OSWORLD_VM_PROXY_URL", "").strip()
+            if external_proxy_url and self.use_proxy and not any(
+                argument.startswith("--proxy-server=") for argument in command
+            ):
+                command.append(f"--proxy-server={external_proxy_url}")
+            elif self.use_proxy:
+                command.append("--proxy-server=http://127.0.0.1:18888")  # Use the proxy server set up by _proxy_setup
 
         command = _wrap_chrome_launch_for_stderr_capture(command, shell)
 
@@ -749,6 +794,80 @@ class SetupController:
                 browser.close()
                 return
 
+    def _pyautogui_open_url_setup(
+        self,
+        url: str,
+        typing_interval: float = 0.03,
+        settle_seconds: float = 8.0,
+        initial_delay: float = 5.0,
+        new_tab: bool = False,
+    ):
+        """Open a URL through Chrome's visible address bar.
+
+        Unlike ``chrome_open_tabs``, this setup neither waits through CDP nor
+        navigates through it. It waits for Chrome's desktop window, then sends
+        ordinary keyboard events (Ctrl+L, typing, Enter) through pyautogui.
+        """
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("pyautogui_open_url requires an absolute http(s) URL")
+        if typing_interval < 0 or settle_seconds < 0 or initial_delay < 0:
+            raise ValueError(
+                "typing_interval, settle_seconds, and initial_delay must be non-negative"
+            )
+
+        script_lines = [
+            "import subprocess, time",
+            "import pyautogui",
+            "pyautogui.FAILSAFE = False",
+            "deadline = time.time() + 30",
+            "window_id = None",
+            "while time.time() < deadline:",
+            "    result = subprocess.run(['wmctrl', '-lx'], capture_output=True, text=True)",
+            "    for line in result.stdout.splitlines():",
+            "        if 'google-chrome' in line.lower():",
+            "            window_id = line.split()[0]",
+            "            break",
+            "    if window_id:",
+            "        break",
+            "    time.sleep(0.5)",
+            "if not window_id:",
+            "    raise RuntimeError('Google Chrome window did not appear')",
+            "subprocess.run(['wmctrl', '-i', '-a', window_id], check=True)",
+            f"time.sleep({float(initial_delay)!r})",
+        ]
+        if new_tab:
+            script_lines.extend(
+                [
+                    "pyautogui.hotkey('ctrl', 't')",
+                    "time.sleep(0.5)",
+                ]
+            )
+        script_lines.extend(
+            [
+                "pyautogui.hotkey('ctrl', 'l')",
+                "time.sleep(0.5)",
+                f"pyautogui.write({url!r}, interval={float(typing_interval)!r})",
+                "pyautogui.press('enter')",
+                f"time.sleep({float(settle_seconds)!r})",
+            ]
+        )
+        payload = json.dumps(
+            {"command": ["python", "-c", "\n".join(script_lines)], "shell": False}
+        )
+        response = requests.post(
+            self.http_server + "/setup/execute",
+            headers={"Content-Type": "application/json"},
+            data=payload,
+            timeout=max(120, int(settle_seconds) + 45),
+        )
+        response.raise_for_status()
+        result = response.json()
+        if result.get("returncode") != 0:
+            raise RuntimeError(
+                "pyautogui_open_url failed: " + (result.get("error") or "unknown error")
+            )
+
     def _chrome_close_tabs_setup(self, urls_to_close: List[str]):
         time.sleep(5)  # Wait for Chrome to finish launching
 
@@ -952,7 +1071,7 @@ class SetupController:
                 mkdir_in_googledrive(params['path'])
             elif operation == 'upload':
                 params = config['args'][oid]
-                url = params['url']
+                url = _resolve_huggingface_url(params['url'])
                 with tempfile.NamedTemporaryFile(mode='wb', delete=False) as tmpf:
                     response = requests.get(url, stream=True)
                     response.raise_for_status()
@@ -1040,7 +1159,9 @@ class SetupController:
 
     def _update_browse_history_setup(self, **config):
         cache_path = os.path.join(self.cache_dir, "history_new.sqlite")
-        db_url = "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/chrome/44ee5668-ecd5-4366-a6ce-c1c9b8d4e938/history_empty.sqlite?download=true"
+        db_url = _resolve_huggingface_url(
+            "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/chrome/44ee5668-ecd5-4366-a6ce-c1c9b8d4e938/history_empty.sqlite?download=true"
+        )
         if not os.path.exists(cache_path):
             max_retries = 3
             downloaded = False

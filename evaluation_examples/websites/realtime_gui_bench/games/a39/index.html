@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convenience Discount 便利店折扣</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Reveal to see the discounts 点揭示查看折扣</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Convenience Discount 便利店折扣</div>
+      <div class="intro-rule">You walk into the store. The <b>e-ink tags</b> on the shelf are flickering — a <b>flash sale</b>! Remember which item has the <b>biggest discount</b> while it's showing, then <b>grab it</b> before the tag refreshes!<br>你走进便利店，货架上的<b>电子价签</b>正在闪动——<b>限时折扣快闪</b>！趁价签显示折扣的这几秒，记住哪件<b>折扣力度最大</b>，价签一刷新就没了，<b>快点点它</b>！</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·数值比较）：便利店货架 4 件商品 + 价格标签（部分带折扣标签）闪现后消失，
+  // 玩家凭记忆点出「折扣力度最大」的那件商品（语义理解 + 数值比较：-50% > -20% > 无折扣）。
+  // IEW 有限（商品+折扣标签闪现后消失）；AVW=∞（作答无时限）。补丁=视频。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const READY_MIN = 300, READY_MAX = 2000;
+  const SHOW_MS = 1500;
+
+  // 4 件商品位置（货架并排）
+  const ITEM_X = [190, 350, 510, 670];
+  const ITEM_Y = 210;         // 商品中心 y
+  const TAG_Y = 320;          // 价格标签中心 y
+  const ITEM_W = 120, ITEM_H = 110;   // 每件商品的点击判定区域
+
+  // 商品类型（简约几何 icon，不同颜色形状）
+  const ITEM_DEFS = [
+    { id:"drink",  color:"#4c7dff", label:"Drink 饮料" },
+    { id:"can",    color:"#f6c453", label:"Can 罐头" },
+    { id:"box",    color:"#34d399", label:"Box 纸盒" },
+    { id:"snack",  color:"#a855f7", label:"Snack 零食" },
+  ];
+  // 原价（整数元）
+  const PRICES = [20, 30, 15, 25];
+  // 折扣档位：一件 -50%、一件 -20%、两件无折扣（随机打乱到 4 个位置）
+  const DEFAULT_DISCOUNTS = ["-50%", "-20%", "", ""];
+
+  const BENCH = { task:"convenience_discount", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | show | answer | done
+  let discounts = [];          // 4 个位置的折扣标签（如 "-50%"/"-20%"/""）
+  let defIdx = [];             // 4 个位置的商品类型索引（固定 0..3，随机打乱）
+  let target = 0;              // 折扣最大商品的位置索引 0..3
+  let clickedIdx = -1;
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, target, discounts: discounts.slice(), defIdx: defIdx.slice(), clickedIdx, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  function shuffle(a){ const r=a.slice(); for(let i=r.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [r[i],r[j]]=[r[j],r[i]]; } return r; }
+
+  function startRound(){
+    discounts = shuffle(DEFAULT_DISCOUNTS);
+    defIdx = shuffle([0,1,2,3]);
+    target = discounts.indexOf("-50%");   // 折扣最大商品
+    clickedIdx = -1;
+    phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Reveal to see the discounts 点揭示查看折扣","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "show"; phaseStart = now; setStatus("Watch the tags… 注意价格标签…","ready"); }
+    }
+    else if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "answer"; setStatus("Tap the biggest discount 点折扣最大的商品","action"); }
+    }
+  }
+
+  // 便利店背景
+  function drawBg(){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#1f2a3d"); g.addColorStop(1,"#141a2a");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 货架背板
+    ctx.fillStyle = "#2c2018";
+    ctx.fillRect(0, 120, CW, 260);
+    // 货架层板
+    ctx.fillStyle = "#3d2e22";
+    ctx.fillRect(0, 250, CW, 14);
+    ctx.fillRect(0, 370, CW, 10);
+    // 货架立柱
+    ctx.fillStyle = "#4a3826";
+    [100, 255, 410, 565, 720].forEach(x=>{ ctx.fillRect(x, 120, 14, 260); });
+    // 顶部招牌
+    ctx.fillStyle = "#1c2743";
+    ctx.beginPath(); ctx.roundRect(280, 70, 240, 40, 8); ctx.fill();
+    ctx.fillStyle = "#f6c453"; ctx.font = "bold 20px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("CONVENIENCE STORE 便利店", 400, 90);
+    // 地面
+    ctx.fillStyle = "#1a1f2e";
+    ctx.fillRect(0, 420, CW, 80);
+  }
+
+  // 商品 icon（有质感：颜色层次 + 高光 + 包装细节，诱人想买）
+  function drawItemIcon(idx, cx, cy){
+    const d = ITEM_DEFS[defIdx[idx]];
+    ctx.save();
+    // 货架投影（让商品更立体）
+    ctx.fillStyle = "rgba(0,0,0,.22)";
+    ctx.beginPath(); ctx.ellipse(cx, cy+40, 30, 7, 0, 0, Math.PI*2); ctx.fill();
+    if (d.id === "drink"){
+      // 饮料瓶：瓶身渐变 + 液体 + 反光 + 瓶盖 + 标签
+      const bg = ctx.createLinearGradient(cx-22, 0, cx+22, 0);
+      bg.addColorStop(0,"#27478f"); bg.addColorStop(.45,"#4c7dff"); bg.addColorStop(1,"#1e3a7a");
+      ctx.fillStyle = bg;
+      ctx.beginPath(); ctx.roundRect(cx-22, cy-24, 44, 62, 12); ctx.fill();
+      // 瓶盖
+      ctx.fillStyle = "#16265c";
+      ctx.beginPath(); ctx.roundRect(cx-9, cy-36, 18, 13, 4); ctx.fill();
+      // 液体（下半）
+      const liq = ctx.createLinearGradient(0,cy+8,0,cy+38);
+      liq.addColorStop(0,"#ffb84c"); liq.addColorStop(1,"#e8931a");
+      ctx.fillStyle = liq;
+      ctx.beginPath(); ctx.roundRect(cx-20, cy+10, 40, 28, 8); ctx.fill();
+      // 液体高光
+      ctx.fillStyle = "rgba(255,255,255,.45)";
+      ctx.beginPath(); ctx.roundRect(cx-16, cy+14, 7, 16, 3); ctx.fill();
+      // 瓶身反光高光带
+      ctx.fillStyle = "rgba(255,255,255,.35)";
+      ctx.beginPath(); ctx.roundRect(cx-18, cy-18, 7, 38, 3); ctx.fill();
+      // 标签
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.roundRect(cx-15, cy-6, 30, 20, 3); ctx.fill();
+      ctx.fillStyle = "#27478f"; ctx.font = "bold 11px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("JUICE", cx, cy+4);
+    } else if (d.id === "can"){
+      // 罐头：金属渐变 + 上下盖 + 标签 + 金属反光
+      const mg = ctx.createLinearGradient(cx-24, 0, cx+24, 0);
+      mg.addColorStop(0,"#9a6b14"); mg.addColorStop(.25,"#e0a832"); mg.addColorStop(.5,"#ffdf8a"); mg.addColorStop(.75,"#d99b28"); mg.addColorStop(1,"#8a5e11");
+      ctx.fillStyle = mg;
+      ctx.beginPath(); ctx.roundRect(cx-24, cy-24, 48, 48, 12); ctx.fill();
+      // 顶部盖
+      ctx.fillStyle = "#dde2e8";
+      ctx.beginPath(); ctx.ellipse(cx, cy-24, 24, 8, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#b9c0c8"; ctx.beginPath(); ctx.ellipse(cx, cy-24, 18, 5, 0, 0, Math.PI*2); ctx.fill();
+      // 底部
+      ctx.fillStyle = "#b0b7bf";
+      ctx.beginPath(); ctx.ellipse(cx, cy+24, 22, 6, 0, 0, Math.PI*2); ctx.fill();
+      // 标签
+      ctx.fillStyle = "#b01818";
+      ctx.beginPath(); ctx.roundRect(cx-17, cy-11, 34, 22, 4); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = "bold 11px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("TUNA", cx, cy);
+      // 金属高光竖条
+      ctx.fillStyle = "rgba(255,255,255,.45)";
+      ctx.beginPath(); ctx.roundRect(cx-20, cy-15, 6, 30, 3); ctx.fill();
+    } else if (d.id === "box"){
+      // 纸盒：盒身渐变 + 顶盖折线 + 高光 + 图案标签
+      const bg = ctx.createLinearGradient(0, cy-26, 0, cy+26);
+      bg.addColorStop(0,"#3ecf8a"); bg.addColorStop(1,"#1b8a52");
+      ctx.fillStyle = bg;
+      ctx.beginPath(); ctx.roundRect(cx-30, cy-24, 60, 54, 8); ctx.fill();
+      // 顶部折盖
+      ctx.fillStyle = "#157a46";
+      ctx.beginPath(); ctx.moveTo(cx-30, cy-12); ctx.lineTo(cx+30, cy-12); ctx.lineTo(cx+30, cy-6); ctx.lineTo(cx-30, cy-6); ctx.closePath(); ctx.fill();
+      // 高光
+      ctx.fillStyle = "rgba(255,255,255,.3)";
+      ctx.beginPath(); ctx.roundRect(cx-26, cy-18, 9, 38, 3); ctx.fill();
+      // 圆形标签图案
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.ellipse(cx+8, cy+4, 10, 14, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#1b8a52"; ctx.font = "bold 11px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("TEA", cx+8, cy+4);
+      // 底部装饰线
+      ctx.fillStyle = "rgba(255,255,255,.22)";
+      ctx.fillRect(cx-26, cy+20, 52, 3);
+    } else {
+      // 零食袋：包装渐变 + 齿形封口 + 条纹花纹 + 高光 + 品牌标签
+      const bg = ctx.createLinearGradient(cx-26, 0, cx+26, 0);
+      bg.addColorStop(0,"#5b21b6"); bg.addColorStop(.45,"#a855f7"); bg.addColorStop(1,"#4c1d95");
+      ctx.fillStyle = bg;
+      ctx.beginPath(); ctx.roundRect(cx-26, cy-30, 52, 66, 8); ctx.fill();
+      // 齿形封口（顶部）
+      ctx.fillStyle = "#c4b5fd";
+      for(let i=0;i<5;i++){ ctx.beginPath(); ctx.moveTo(cx-22+i*11, cy-30); ctx.lineTo(cx-16+i*11, cy-37); ctx.lineTo(cx-11+i*11, cy-30); ctx.closePath(); ctx.fill(); }
+      // 高光
+      ctx.fillStyle = "rgba(255,255,255,.3)";
+      ctx.beginPath(); ctx.roundRect(cx-20, cy-20, 7, 42, 3); ctx.fill();
+      // 斜条纹花纹
+      ctx.fillStyle = "rgba(255,255,255,.16)";
+      ctx.beginPath(); ctx.roundRect(cx-22, cy+2, 44, 8, 3); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(cx-22, cy+14, 44, 8, 3); ctx.fill();
+      // 品牌标签
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.roundRect(cx-15, cy+30, 30, 17, 4); ctx.fill();
+      ctx.fillStyle = "#7c3aed"; ctx.font = "bold 10px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("CHIPS", cx, cy+38);
+    }
+    ctx.restore();
+  }
+
+  // 电子墨水价签（e-ink：灰白磨砂哑光底 + 微颗粒 + 方正圆角屏边框；show 亮起显示折扣，其余刷新擦除变空白淡灰）
+  function drawETag(idx, cx, cy){
+    const d = discounts[idx];
+    const price = PRICES[defIdx[idx]];
+    const showing = (phase === "show");
+    const W = 84, H = 44;
+    const lx = cx - W/2, ly = cy - H/2;
+    // 外壳（深色边框，方正圆角，像实物电子价签）
+    ctx.fillStyle = "#2a2a2e";
+    ctx.beginPath(); ctx.roundRect(lx-4, ly-4, W+8, H+8, 8); ctx.fill();
+    // 电子墨水屏（灰白磨砂，哑光无背光；show 稍亮、刷新后偏暗）
+    ctx.fillStyle = showing ? "#e8e8e2" : "#d4d4cc";
+    ctx.beginPath(); ctx.roundRect(lx, ly, W, H, 5); ctx.fill();
+    // 屏幕内边凹陷阴影（模拟电子墨水屏内嵌）
+    ctx.strokeStyle = "rgba(0,0,0,.18)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(lx+1.5, ly+1.5, W-3, H-3, 4); ctx.stroke();
+    // 屏幕点阵颗粒感（模拟电子墨水像素，细密小点）
+    ctx.fillStyle = "rgba(150,150,145,.28)";
+    for (let gx = lx+6; gx < lx+W; gx += 5){
+      for (let gy = ly+5; gy < ly+H; gy += 5){
+        ctx.fillRect(gx, gy, 1.6, 1.6);
+      }
+    }
+    // 屏幕内容
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    if (showing && d){
+      // 亮起显示折扣（-50% 深红 / -20% 深橙，e-ink 无背光故用深色）
+      ctx.fillStyle = (d === "-50%") ? "#b02a1e" : "#b5651d";
+      ctx.font = "bold 22px sans-serif";
+      ctx.fillText(d, cx, cy);
+    } else if (showing && !d){
+      // 无折扣商品：显示原价（深灰，e-ink 墨色）
+      ctx.fillStyle = "#3a3a36";
+      ctx.font = "bold 16px sans-serif";
+      ctx.fillText("¥" + price, cx, cy);
+    } else {
+      // 折扣快闪结束、价签刷新：字迹「擦除」→ 显示很淡的原价（折扣信息已消失）
+      ctx.fillStyle = "#a8a8a0";
+      ctx.font = "bold 15px sans-serif";
+      ctx.fillText("¥" + price, cx, cy);
+    }
+  }
+
+  function render(){
+    drawBg();
+    for (let i=0;i<4;i++){
+      const x = ITEM_X[i];
+      // 商品常驻（所有阶段都显示，不消失）
+      drawItemIcon(i, x, ITEM_Y);
+      // 电子价签（show 显示折扣，其余刷新恢复原价）
+      drawETag(i, x, TAG_Y);
+      // 作答阶段：被点中的商品加金色高亮框
+      if (phase === "answer" && clickedIdx === i){
+        ctx.strokeStyle = "#f6c453"; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.roundRect(x-ITEM_W/2, ITEM_Y-ITEM_H/2, ITEM_W, ITEM_H, 10); ctx.stroke();
+      }
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let sel = -1;
+    for (let i=0;i<4;i++){
+      const x = ITEM_X[i];
+      if (p.x >= x-ITEM_W/2 && p.x <= x+ITEM_W/2 && p.y >= ITEM_Y-ITEM_H/2 && p.y <= ITEM_Y+ITEM_H/2){ sel = i; break; }
+    }
+    if (sel === -1) return;
+    clickedIdx = sel;
+    const ok = (sel === target);
+    BENCH.results.push(ok ? "hit" : "miss");
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Miss! 未命中","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

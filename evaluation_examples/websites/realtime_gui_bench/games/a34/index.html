@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vent Peek ID 遮挡身份识别</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Wait for the impostor to peek 等待内鬼探头</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">You identified the impostor 你认出了内鬼</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Vent Peek ID 遮挡身份识别</div>
+      <div class="intro-rule">On a spaceship, an <b>impostor</b> sneaks through the vents. It <b>pops its head out of a vent to scout</b>, then <b>ducks back inside</b>. Remember who it was — only the head, hat and shoulders show above the vent — then <b>tap the matching crewmate</b>.<br>在太空船上，一名<b>内鬼</b>正从通风管里潜行。它<b>从通风管探出头张望</b>，然后<b>缩回管内</b>。记住是谁——通风管外只露出头、帽子和肩膀——然后<b>点对应的宇航员</b>。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·遮挡身份识别）：太空船上内鬼从通风管探出头张望（只露头+帽子+肩膀，身体被管遮住），
+  // 片刻后缩回管内（信息消失的自然原因 = 内鬼躲回通风管）。玩家凭露出的颜色+帽子识别身份。
+  // IEW 有限（只探出约 0.9s）；AVW=∞（缩回后作答无时限）。补丁=视频。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const READY_MIN = 300, READY_MAX = 2000;   // 防截图随机延迟（等内鬼探头）
+  const RISE_MS = 250;       // 探头升起动画
+  const SHOW_MS = 900;       // 探头可见总时长（升起+停留，IEW）
+  const HIDE_MS = 450;       // 缩回动画
+  const SETTLE_MS = 450;     // 结算反馈动画
+
+  const ROLES = [
+    { id:"red",    color:"#ff5c7a", hat:"none",   label:"Red 红" },
+    { id:"green",  color:"#34d399", hat:"cap",    label:"Green 绿" },
+    { id:"blue",   color:"#4c7dff", hat:"spike",  label:"Blue 蓝" },
+    { id:"yellow", color:"#f6c453", hat:"round",  label:"Yellow 黄" },
+    { id:"purple", color:"#a855f7", hat:"horns",  label:"Purple 紫" },
+    { id:"orange", color:"#f97316", hat:"goggle", label:"Orange 橙" },
+  ];
+  const GRID_CX = [250, 400, 550], GRID_CY = [130, 255], GRID_S = 48;   // 候选宇航员 3×2
+  const VENT_TOP = 310;      // 通风管口 y 位置（角色从这里探出）
+  const PEEK_RANGE = 104;    // 探出↔缩回的垂直位移（探出露出头+肩，缩回完全入管）
+
+  const BENCH = { task:"vent_peek_id", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | show | hide | answer | winning | losing | done
+  let target = 0;
+  let clickedIdx = -1;
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, target, targetId: ROLES[target].id, clickedIdx, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  function startRound(){
+    target = Math.floor(Math.random()*ROLES.length);
+    clickedIdx = -1;
+    phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Wait for the impostor to peek 等待内鬼探头","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "show"; phaseStart = now; setStatus("Who is that? 那是谁？","ready"); }
+    }
+    else if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "hide"; phaseStart = now; setStatus("It ducked back… 缩回去了…","ready"); }
+    }
+    else if (phase === "hide"){
+      if (now - phaseStart >= HIDE_MS){ phase = "answer"; setStatus("Tap the matching crewmate 点对应的宇航员","action"); }
+    }
+    else if (phase === "winning"){
+      if (now - phaseStart >= SETTLE_MS){
+        phase = "done";
+        BENCH.passed = true; BENCH.status = "passed";
+        setStatus("Success 成功","win"); syncURL(); celebrate();
+      }
+    }
+    else if (phase === "losing"){
+      if (now - phaseStart >= SETTLE_MS){
+        phase = "done";
+        nextAttempt();
+      }
+    }
+  }
+
+  // 探头程度（0=缩回管内，1=完全探出）
+  function peek(){
+    if (phase === "show"){ return Math.min(1, (performance.now()-phaseStart)/RISE_MS); }
+    if (phase === "hide"){ const t = Math.min(1, (performance.now()-phaseStart)/HIDE_MS); return 1 - t; }
+    return 0;
+  }
+
+  function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  function shade(hex, f){
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.round(((n>>16)&255)*f), g = Math.round(((n>>8)&255)*f), b = Math.round((n&255)*f);
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  function drawHat(hat, cx, cy, headR){
+    ctx.fillStyle = "#e8eaf6";
+    if (hat === "none"){ /* 无帽 */ }
+    else if (hat === "cap"){ ctx.fillRect(cx-headR, cy-headR*0.55, headR*2, headR*0.5); ctx.fillRect(cx-headR*1.1, cy-headR*0.2, headR*2.2, headR*0.28); }
+    else if (hat === "spike"){ ctx.beginPath(); ctx.moveTo(cx-headR, cy); ctx.lineTo(cx, cy-headR*1.2); ctx.lineTo(cx+headR, cy); ctx.closePath(); ctx.fill(); }
+    else if (hat === "round"){ ctx.beginPath(); ctx.arc(cx, cy-headR*0.3, headR*0.85, Math.PI, 0); ctx.closePath(); ctx.fill(); }
+    else if (hat === "horns"){ ctx.beginPath(); ctx.moveTo(cx-headR*0.9, cy); ctx.lineTo(cx-headR*1.1, cy-headR*0.9); ctx.lineTo(cx-headR*0.3, cy-headR*0.2); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(cx+headR*0.9, cy); ctx.lineTo(cx+headR*1.1, cy-headR*0.9); ctx.lineTo(cx+headR*0.3, cy-headR*0.2); ctx.closePath(); ctx.fill(); }
+    else if (hat === "goggle"){ ctx.strokeStyle = "#e8eaf6"; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(cx-headR*0.35, cy-headR*0.1, headR*0.3, 0, Math.PI*2); ctx.stroke(); ctx.beginPath(); ctx.arc(cx+headR*0.35, cy-headR*0.1, headR*0.3, 0, Math.PI*2); ctx.stroke(); }
+  }
+
+  function drawRole(role, cx, cy, s){
+    const headR = s*0.4;
+    // 背包（身后，暗色）
+    ctx.fillStyle = shade(role.color, 0.65);
+    roundRect(cx - s*0.4, cy - headR*0.15, s*0.26, s*0.6, 8); ctx.fill();
+    // 身体（圆角矩形）
+    ctx.fillStyle = role.color;
+    roundRect(cx - s*0.3, cy + headR*0.28, s*0.6, s*0.48, 15); ctx.fill();
+    // 头
+    ctx.fillStyle = role.color;
+    ctx.beginPath(); ctx.arc(cx, cy, headR, 0, Math.PI*2); ctx.fill();
+    // 面罩高光
+    ctx.fillStyle = "rgba(255,255,255,.3)";
+    ctx.beginPath(); ctx.arc(cx - headR*0.28, cy - headR*0.28, headR*0.32, 0, Math.PI*2); ctx.fill();
+    // 眼睛
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(cx-headR*0.35, cy-headR*0.1, headR*0.22, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+headR*0.35, cy-headR*0.1, headR*0.22, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#0a0c18";
+    ctx.beginPath(); ctx.arc(cx-headR*0.35, cy-headR*0.1, headR*0.1, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+headR*0.35, cy-headR*0.1, headR*0.1, 0, Math.PI*2); ctx.fill();
+    // 帽子
+    drawHat(role.hat, cx, cy-headR, headR);
+  }
+
+  // 太空船舱壁（金属灰蓝渐变 + 铆钉 + 横向管道 + 警示灯）
+  function drawScene(now){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0, "#242c3d"); g.addColorStop(0.5, "#1c2332"); g.addColorStop(1, "#131826");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 横向管道
+    ctx.fillStyle = "#2c3548";
+    ctx.fillRect(0, 56, CW, 14);
+    ctx.fillRect(0, 82, CW, 6);
+    // 铆钉
+    ctx.fillStyle = "#3d475c";
+    for (let i=0;i<12;i++){ ctx.beginPath(); ctx.arc(42+i*66, 26, 4, 0, Math.PI*2); ctx.fill(); }
+    // 警示灯（顶部右侧，闪烁）
+    const blink = (Math.sin(now/450) > 0) ? 0.95 : 0.4;
+    ctx.fillStyle = "rgba(255,120,90," + blink + ")";
+    ctx.beginPath(); ctx.arc(700, 26, 9, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(255,120,90," + (blink*0.3) + ")";
+    ctx.beginPath(); ctx.arc(700, 26, 20, 0, Math.PI*2); ctx.fill();
+  }
+
+  // 通风管（底部金属管体 + 管口格栅）
+  function drawVent(){
+    // 管体（金属灰渐变）
+    const g = ctx.createLinearGradient(0, VENT_TOP, 0, CH);
+    g.addColorStop(0, "#4a5568"); g.addColorStop(1, "#28303f");
+    ctx.fillStyle = g;
+    ctx.fillRect(30, VENT_TOP, CW-60, CH-VENT_TOP);
+    // 管体横向肋条
+    ctx.fillStyle = "rgba(0,0,0,.18)";
+    for (let i=0;i<4;i++){ ctx.fillRect(30, VENT_TOP + 30 + i*38, CW-60, 6); }
+    // 管口（角色探出的开口，中央，深色内壁）
+    ctx.fillStyle = "#161c28";
+    roundRect(352, VENT_TOP-16, 96, 46, 8); ctx.fill();
+    // 管口格栅（开口内竖条）
+    ctx.fillStyle = "#5a6a80";
+    for (let i=0;i<4;i++){ ctx.fillRect(360 + i*20, VENT_TOP-10, 8, 32); }
+    // 管口铆钉
+    ctx.fillStyle = "#6a7a90";
+    [[348, VENT_TOP+2],[452, VENT_TOP+2],[348, VENT_TOP+22],[452, VENT_TOP+22]].forEach(p=>{
+      ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, Math.PI*2); ctx.fill();
+    });
+  }
+
+  function render(now){
+    drawScene(now);
+    // 探出角色（show/hide 阶段，先画角色再画通风管盖住下半 = 物理遮挡）
+    if (phase === "show" || phase === "hide"){
+      const p = peek();
+      const cy = VENT_TOP + 80 - p * PEEK_RANGE;   // p=1 → VENT_TOP-24 探出露头+肩；p=0 → VENT_TOP+80 完全入管
+      drawRole(ROLES[target], 400, cy, 100);
+    }
+    drawVent();
+    // 候选宇航员（answer/winning/losing 阶段）
+    if (phase === "answer" || phase === "winning" || phase === "losing"){
+      for (let i=0;i<ROLES.length;i++){
+        const cx = GRID_CX[i%3], cy = GRID_CY[Math.floor(i/3)];
+        drawRole(ROLES[i], cx, cy, GRID_S);
+      }
+      // 选中的角色高亮描边（对绿/错红）
+      if (clickedIdx >= 0){
+        const cx = GRID_CX[clickedIdx%3], cy = GRID_CY[Math.floor(clickedIdx/3)];
+        const col = (phase === "winning") ? "#34d399" : (phase === "losing" ? "#f87171" : "#fff");
+        ctx.strokeStyle = col; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.arc(cx, cy, GRID_S*0.75, 0, Math.PI*2); ctx.stroke();
+      }
+    }
+  }
+  function frame(now){ update(now); render(now); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let sel = -1;
+    for (let i=0;i<ROLES.length;i++){
+      const cx = GRID_CX[i%3], cy = GRID_CY[Math.floor(i/3)];
+      if (Math.hypot(p.x-cx, p.y-cy) < GRID_S*0.8){ sel = i; break; }
+    }
+    if (sel === -1) return;
+    clickedIdx = sel;
+    const ok = (sel === target);
+    BENCH.results.push(ok ? "hit" : "miss");
+    phase = ok ? "winning" : "losing";
+    phaseStart = performance.now();
+    if (ok){ setStatus("Correct! 答对了！","win"); }
+    else { setStatus("Wrong crewmate! 认错人了！","lose"); }
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时），进游戏后空格不误触（作答用鼠标点宇航员）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

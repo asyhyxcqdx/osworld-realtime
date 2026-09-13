@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>接星星 Catch the Star</title>
+<style>
+  :root { --bg1:#0a0d1f; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg1);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  }
+  .status { font-size:30px; font-weight:800; min-height:36px; letter-spacing:.4px; }
+  .status.alert { color:#ffd166; } .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:none;
+  }
+  .tip { font-size:12px; color:#7d86ab; letter-spacing:.4px; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(8,10,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:560px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.55; }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,#4c5baa 0%,#3a4684 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+  .next-dots { margin:12px 0 14px; }
+  .next-dot { display:inline-block; width:12px; height:12px; border-radius:50%; margin:0 5px; background:#d1d5db; }
+  .next-dot.on { background:#4c7dff; }
+
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="tip">Move the basket to catch the falling star  移动篮子接住下落的星星</div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功！</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="rulesOverlay">
+    <div class="intro-box">
+      <div class="intro-title">Catch the Star 接星星</div>
+      <div class="intro-rule">一颗星星从夜空中随机位置落下，移动篮子接住它。移动鼠标来移动篮子。<br>A star falls from a random position in the night sky. Move the basket to catch it before it lands. Move the mouse to move the basket.</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+    <div class="overlay" id="nextOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="nextTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="next-dots" id="nextDots"></div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const CATCH_Y = 458;       // 篮子接物口 y
+  const STAR_Y0 = -24;       // 星起始 y（画布外）
+  const VY = 520;            // 下落速度 px/s → 时长约 0.93s
+  const BASKET_W = 120;      // 篮子宽
+  const STAR_R = 16;         // 星半径
+  const MIN_X = 210, MAX_X = 700;   // 落点随机范围（避开初始篮子覆盖区）
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  const BENCH = { task:"catch_star", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  let phase = "waiting";   // waiting | falling | hit | miss
+  let starX = 400, appearAt = 0, fallStart = 0;
+  let basketX = 80;        // 篮子中心 x（初始停在左缘，覆盖 20~140，避开落点范围 210~700）
+  let lastX = null;        // 上一落点（闭包内，非全局，用于避让）
+  let missAt = 0, hitAt = 0;   // 结算动画起点
+
+  window.__dbg = function(){
+    return { phase, starX, starY: phase==="falling" ? STAR_Y0 + VY*(performance.now()-fallStart)/1000 : (phase==="waiting" ? STAR_Y0 : CATCH_Y),
+             basketX, basketHalfW: BASKET_W/2, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status };
+  };
+
+  function pickStarX(){
+    // 落点随机，且与上一落点拉开距离（避开撞大运）
+    let x, tries = 0;
+    do { x = MIN_X + Math.random()*(MAX_X-MIN_X); tries++; }
+    while (lastX !== null && Math.abs(x - lastX) < 130 && tries < 12);
+    lastX = x;
+    return x;
+  }
+
+  function schedule(){
+    phase = "waiting"; starX = pickStarX();
+    appearAt = performance.now() + 600 + Math.random()*800;   // 随机延迟：时机随机
+    setStatus("Get ready… 准备…","");
+  }
+  function drop(){ phase = "falling"; fallStart = performance.now(); setStatus("Catch it! 接住！","alert"); }
+
+  function miss(){
+    phase = "miss";
+    missAt = performance.now();
+    setStatus("Dropped 掉了","lose");
+    setTimeout(()=>{
+      BENCH.results.push(false);
+      BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+        return;
+      }
+      document.getElementById("nextTitle").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + "  尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS;
+      const _d = document.getElementById("nextDots"); _d.innerHTML = "";
+      for (let _i = 0; _i < MAX_ATTEMPTS; _i++) { const _s = document.createElement("span"); _s.className = "next-dot" + (_i < BENCH.attempts ? " on" : ""); _d.appendChild(_s); }
+      document.getElementById("nextOverlay").classList.add("show");
+    }, 600);
+  }
+  function hit(){
+    if (phase !== "falling") return;
+    phase = "hit";
+    hitAt = performance.now();
+    setStatus("Caught! 接住了！","win");
+    // 结算延迟：先播「星星落入篮子发光」动画，再结算（celebrate）
+    setTimeout(()=>{
+      BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+      syncURL(); celebrate();
+    }, 600);
+  }
+
+  function starY(now){ return STAR_Y0 + VY*(now-fallStart)/1000; }
+
+  function update(now){
+    if (phase === "waiting" && now >= appearAt) drop();
+    else if (phase === "falling" && starY(now) >= CATCH_Y) {
+      // 落地瞬间判定：篮子是否覆盖落点
+      if (Math.abs(starX - basketX) <= BASKET_W/2 - STAR_R) hit(); else miss();
+    }
+    // hit / miss 由一次性函数安排下一轮，update 不再触发
+  }
+
+  // ---- 渲染 ----
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,500);
+    g.addColorStop(0,"#0d1230"); g.addColorStop(.6,"#1b2350"); g.addColorStop(1,"#2c3a6b");
+    ctx.fillStyle=g; ctx.fillRect(0,0,800,500);
+    // 背景星星
+    const seeds = [[40,60,1.6],[120,140,1.2],[300,50,2],[460,120,1.4],[620,70,1.8],[740,150,1.2],[90,260,1.3],[540,220,1.5],[200,180,1.1],[690,240,1.4],[30,320,1.2],[760,320,1.3]];
+    seeds.forEach(s=>{ ctx.fillStyle="rgba(255,255,255,"+(0.35+0.25*(s[2]%1))+")"; ctx.beginPath(); ctx.arc(s[0],s[1],s[2],0,7); ctx.fill(); });
+    ctx.fillStyle="rgba(210,220,255,.10)"; ctx.beginPath(); ctx.arc(660,90,60,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(660,90,34,0,7); ctx.fill();
+  }
+  function drawGround(){
+    const g = ctx.createLinearGradient(0,470,0,500);
+    g.addColorStop(0,"#232a54"); g.addColorStop(1,"#141936");
+    ctx.fillStyle=g; ctx.fillRect(0,470,800,30);
+  }
+  function drawStar(x, y, r){
+    ctx.save(); ctx.translate(x, y);
+    ctx.shadowColor = "#ffe08a"; ctx.shadowBlur = 18;
+    ctx.fillStyle = "#ffd257";
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const ang = -Math.PI/2 + i*Math.PI/5;
+      const rr = (i % 2 === 0) ? r : r*0.45;
+      const px = Math.cos(ang)*rr, py = Math.sin(ang)*rr;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(255,255,255,.5)"; ctx.beginPath(); ctx.arc(-r*0.2, -r*0.25, r*0.22, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  function drawBasket(){
+    const x = basketX, hw = BASKET_W/2, top = CATCH_Y;
+    const g = ctx.createLinearGradient(x-hw, top, x+hw, top+34);
+    g.addColorStop(0,"#b9855a"); g.addColorStop(1,"#7a5234");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(x-hw, top); ctx.lineTo(x+hw, top);
+    ctx.lineTo(x+hw-16, top+34); ctx.lineTo(x-hw+16, top+34);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#5d3f26"; ctx.lineWidth = 2; ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x-hw, top); ctx.lineTo(x+hw, top); ctx.stroke();
+  }
+  function render(){
+    drawSky();
+    if (phase === "falling") drawStar(starX, starY(performance.now()), STAR_R);
+    drawGround();
+    drawBasket();
+    if (phase === "hit"){
+      // 接住动画：星星落入篮子发光
+      const a = Math.max(0, 1-(performance.now()-hitAt)/600);
+      ctx.fillStyle="rgba(255,210,90,"+(0.6*a)+")";
+      ctx.beginPath(); ctx.arc(starX, CATCH_Y-6, 20+30*a, 0, 7); ctx.fill();
+      // 光点扩散
+      ctx.strokeStyle="rgba(255,230,140,"+(0.8*a)+")"; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(starX, CATCH_Y-6, 14+40*a, 0, 7); ctx.stroke();
+    }
+    if (phase === "miss"){
+      const a = Math.max(0, 1-(performance.now()-missAt)/600);
+      ctx.fillStyle = "rgba(255,60,60,"+(a*0.28)+")"; ctx.fillRect(0,0,800,500);
+      ctx.fillStyle = "rgba(255,255,255,"+a+")"; ctx.font="700 40px Arial"; ctx.textAlign="center";
+      ctx.fillText("MISS 接空", 400, 140);
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasX(clientX){ const r=cv.getBoundingClientRect(); return (clientX-r.left)*(cv.width/r.width); }
+  window.addEventListener("mousemove",(e)=>{
+    const x = canvasX(e.clientX);
+    basketX = Math.max(BASKET_W/2, Math.min(800-BASKET_W/2, x));
+  });
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const cctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      cctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        cctx.save(); cctx.translate(p.x,p.y); cctx.rotate(p.rot); cctx.fillStyle=p.c; cctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); cctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else cctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 阻止空格/方向键/Tab 触发页面滚动、刷新、焦点切换；空格触发 Start/Next
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
+    if (e.code === "Space" && !e.repeat){
+      const rules = document.getElementById("rulesOverlay");
+      const nextOv = document.getElementById("nextOverlay");
+      if (rules && !rules.classList.contains("hidden")) { startGame(); return; }
+      if (nextOv && nextOv.classList.contains("show")) { nextRound(); return; }
+    }
+  });
+
+  setHint(); syncURL();
+  function startGame(){
+    document.getElementById("rulesOverlay").classList.add("hidden");
+    schedule();
+    showToast("Attempt 1 / " + MAX_ATTEMPTS + "  尝试 1 / " + MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    document.getElementById("nextOverlay").classList.remove("show");
+    schedule();
+    showToast("Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + "  尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS);
+  }
+  let frameStarted = false;
+  document.getElementById("startBtn").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

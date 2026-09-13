@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Crossing Guard 过马路</title>
+<style>
+  :root {
+    --sky1:#6db3e6; --sky2:#c9e4f5;
+    --ground:#4a8754; --ok:#34d399; --bad:#ff5c7a; --gold:#ffd166;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: linear-gradient(180deg, var(--sky2) 0%, var(--sky1) 36%, #82b98c 52%, var(--ground) 52.5%);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color:#1f2937; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:flex-end;
+  }
+
+  /* ===== 顶部 HUD ===== */
+  .hud { position:absolute; top:14px; left:16px; display:flex; flex-direction:column; align-items:flex-start; gap:10px; z-index:30; }
+  .status {
+    font-size:21px; font-weight:800; letter-spacing:.4px; min-height:28px;
+    background:rgba(20,27,45,.8); color:#fff; padding:7px 20px; border-radius:22px;
+    box-shadow:0 6px 18px rgba(0,0,0,.25);
+  }
+  .status.idle { color:#c7cde8; } .status.armed { color:var(--gold); }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:23px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); }
+  .period-note {
+    font-size:14px; font-weight:600; color:#fff;
+    background:rgba(20,27,45,.72); padding:5px 16px; border-radius:18px; letter-spacing:.3px; box-shadow:0 4px 12px rgba(0,0,0,.2);
+  }
+  .period-note b { color:#ffd166; font-weight:800; }
+
+  /* ===== 场景 ===== */
+  .stage { position:relative; width:100%; height:72%; max-width:1150px; }
+
+  /* 左右人行道（草地之上） */
+  .sidewalk-left { position:absolute; left:0; top:14%; width:34%; height:76%; background:linear-gradient(180deg,#c9d4cf,#a4b0ac); }
+  .sidewalk-right { position:absolute; right:0; top:14%; width:34%; height:76%; background:linear-gradient(180deg,#c9d4cf,#a4b0ac); }
+  /* 竖向马路（中间） */
+  .road { position:absolute; left:34%; top:10%; width:32%; height:84%; background:linear-gradient(90deg,#3a414d 0%,#4b5563 50%,#3a414d 100%); }
+  .road-edge-left { position:absolute; left:32.4%; top:10%; width:1.6%; height:84%; background:#e8d68c; }
+  .road-edge-right { position:absolute; left:66%; top:10%; width:1.6%; height:84%; background:#e8d68c; }
+  .dashline {
+    position:absolute; left:49.6%; top:10%; width:4px; height:84%;
+    background:repeating-linear-gradient(180deg,#f3f4f6 0 44px, transparent 44px 88px); opacity:.85;
+  }
+  /* 横向斑马线（行人从左向右穿马路） */
+  .crosswalk {
+    position:absolute; left:34%; top:38%; width:32%; height:26%;
+    background:repeating-linear-gradient(90deg, rgba(248,250,252,.9) 0 14px, transparent 14px 30px);
+  }
+
+  /* 信号灯杆 + 灯盒（靠近马路左缘，带倒计时数字） */
+  .pole { position:absolute; left:30%; top:14%; width:12px; height:46%; background:linear-gradient(180deg,#9aa3b2,#6b7482); border-radius:6px; box-shadow:0 4px 8px rgba(0,0,0,.2); }
+  .signal-box {
+    position:absolute; left:30%; top:5%; width:82px; height:196px; transform:translateX(-50%);
+    background:linear-gradient(180deg,#2c3544,#1a212e); border:5px solid #141a24; border-radius:16px;
+    box-shadow:0 10px 26px rgba(0,0,0,.35); display:flex; flex-direction:column; align-items:center; justify-content:space-evenly; padding:10px 0;
+  }
+  .signal-count {
+    width:58px; height:44px; border-radius:9px; background:#0d1117; border:2px solid #2a3242;
+    color:#ffd166; font-size:29px; font-weight:800; font-variant-numeric:tabular-nums;
+    display:flex; align-items:center; justify-content:center; letter-spacing:1px;
+    box-shadow:inset 0 0 8px rgba(255,209,102,.18);
+  }
+  .lamp {
+    width:48px; height:48px; border-radius:50%; background:#202838; border:3px solid #10151e;
+    transition:background .12s ease, box-shadow .12s ease;
+  }
+  .lamp.red { background:#ff5c7a; box-shadow:0 0 22px rgba(255,92,122,.55), inset 0 0 8px rgba(255,255,255,.35); }
+  .lamp.green { background:#34d399; box-shadow:0 0 22px rgba(52,211,153,.6), inset 0 0 8px rgba(255,255,255,.4); }
+  .lamp.white { background:#eef1f5; box-shadow:0 0 12px rgba(220,230,245,.4); }
+
+  /* 行人（卡通 canvas，站在左侧人行道等绿灯，向右穿过斑马线） */
+  #pedestrian { position:absolute; left:30%; bottom:42%; z-index:15; }
+  #pedCanvas { display:block; }
+
+  /* 车流 canvas（覆盖竖向马路，红灯时车上下通行） */
+  #carCanvas { position:absolute; inset:0; width:100%; height:100%; z-index:12; pointer-events:none; }
+
+  /* GO 护送按钮 */
+  #targetBtn {
+    position:absolute; left:70%; top:84%; width:120px; height:120px; border-radius:50%;
+    border:5px solid #3a7bd5; background:linear-gradient(150deg,#5aa0f0 0%,#3a7bd5 100%);
+    box-shadow:0 14px 34px rgba(58,123,213,.55), inset 0 2px 0 rgba(255,255,255,.35);
+    color:#fff; font-size:30px; font-weight:800; letter-spacing:2px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    transition:transform .1s, box-shadow .1s, background .1s; z-index:20;
+  }
+  #targetBtn:hover { transform:translateY(-3px); }
+  #targetBtn:active { transform:scale(.95); }
+  #targetBtn.hit { box-shadow:0 0 60px rgba(52,211,153,.95); border-color:var(--ok); background:linear-gradient(150deg,#34d399,#0ea371); }
+  #targetBtn .btn-sub { font-size:13px; letter-spacing:1px; font-weight:600; opacity:.9; }
+
+  /* Start 按钮（保留 #startBtn，test 依赖） */
+  #startBtn {
+    position:absolute; left:22%; top:84%; padding:14px 28px; font-size:21px; font-weight:800; letter-spacing:1px;
+    border:none; border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,#4c7dff 0%,#3355d8 100%);
+    box-shadow:0 12px 30px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .12s, opacity .2s; z-index:20;
+  }
+  #startBtn:active { transform:translateY(2px) scale(.98); }
+  #startBtn:disabled { opacity:.35; cursor:default; }
+
+  /* ===== 通用 UI ===== */
+  .hint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); font-size:13px; color:#1f2937; letter-spacing:.5px; background:rgba(255,255,255,.7); padding:4px 14px; border-radius:16px; z-index:30; }
+  .toast {
+    position:fixed; top:74px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  #confetti { position:fixed; inset:0; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.6; }
+  .intro-rule b { color:#1f2937; }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,#4c5baa 0%,#3a4684 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="hud">
+    <div class="status" id="status">Press Start 按开始</div>
+    <div class="period-note">绿灯每 <b>1.5s</b> 亮一次（红 1.0s + 绿 0.5s）— 绿灯亮时过马路 &nbsp; Green every <b>1.5s</b>, cross on the green</div>
+  </div>
+
+  <div class="stage">
+    <div class="sidewalk-left"></div>
+    <div class="sidewalk-right"></div>
+    <div class="road"></div>
+    <div class="road-edge-left"></div>
+    <div class="road-edge-right"></div>
+    <div class="dashline"></div>
+    <div class="crosswalk"></div>
+
+    <div class="pole"></div>
+    <div class="signal-box">
+      <div class="signal-count" id="signalCount">3</div>
+      <div class="lamp" id="lampRed"></div>
+      <div class="lamp" id="lampGreen"></div>
+    </div>
+
+    <div id="pedestrian"><canvas id="pedCanvas" width="64" height="92"></canvas></div>
+    <canvas id="carCanvas"></canvas>
+
+    <button id="startBtn">Start 开始</button>
+    <button id="targetBtn">GO 走<span class="btn-sub">cross now 现在过马路</span></button>
+  </div>
+
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Crossed safely! 安全过马路！</div>
+      <div class="celeb-sub">Crossed safely on the green with no collision 绿灯时车停、无碰撞，行人安全过马路</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 尝试 2 / 3</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Crossing Guard 过马路</div>
+      <div class="intro-rule">
+        一位行人在斑马线旁等候。红灯亮时车流从马路上下通过，绿灯亮时车停。<br>
+        A pedestrian waits at the crosswalk. Red light: cars pass up and down; green light: cars stop.<br>
+        交通灯按 <b>红 1.0s → 绿 0.5s</b> 循环，<b>每 1.5 秒亮一次绿灯</b>（绿灯持续 0.5s）。<br>
+        The light cycles <b>RED 1.0s → GREEN 0.5s</b> — a green light every 1.5s (green lasts 0.5s).<br>
+        等<b>绿灯亮起</b>时按 <b>GO</b> 过马路：绿灯时车已停、安全通过（成功）；红灯时车在走、撞车（失败）。<br>
+        Press <b>GO</b> while the <b>green</b> is lit: cars stopped, cross safely (success); on red cars are moving — you get hit (fail).<br>
+        （绿灯在启动后 1.0s 亮起、持续 0.5s，之后每 1.5s 重复。Green turns on at 1.0s after Start for 0.5s, repeating every 1.5s.）
+      </div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const RED_MS = 1000;
+  const GREEN_MS = 500;
+  const CYCLE_MS = RED_MS + GREEN_MS;
+  const MISS_MS = 4000;              // armed 后 4s 未点击 GO → miss（超时）
+
+  const BENCH = { task:"traffic", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn");
+  const lampRed=document.getElementById("lampRed"), lampGreen=document.getElementById("lampGreen");
+  const signalCount=document.getElementById("signalCount");
+  const targetBtn=document.getElementById("targetBtn");
+  const pedestrian=document.getElementById("pedestrian");
+  const pedCanvas=document.getElementById("pedCanvas");
+  const carCanvas=document.getElementById("carCanvas");
+  const toast=document.getElementById("toast"), overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+  const confettiCv=document.getElementById("confetti");
+
+  // 简约卡通行人（非 emoji）：朝向 right=过马路、left=退回
+  function drawPedestrian(facing){
+    const ctx=pedCanvas.getContext("2d");
+    const W=64,H=92;
+    ctx.clearRect(0,0,W,H);
+    ctx.save();
+    if(facing==="left"){ ctx.translate(W,0); ctx.scale(-1,1); }
+    const cx=W/2;
+    // 头 + 发（棕发普通行人）
+    ctx.fillStyle="#ffd9b3"; ctx.beginPath(); ctx.arc(cx,H-72,13,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#7a4f2a"; ctx.beginPath(); ctx.arc(cx,H-75,13,Math.PI,0); ctx.fill();
+    // 身体（渐变上衣）
+    const bg=ctx.createLinearGradient(cx-14,0,cx+14,0);
+    bg.addColorStop(0,"#e05a74"); bg.addColorStop(1,"#c23a56");
+    ctx.fillStyle=bg;
+    ctx.beginPath();
+    if(ctx.roundRect){ ctx.roundRect(cx-16,H-58,32,34,9); ctx.fill(); }
+    else { ctx.rect(cx-16,H-58,32,34); ctx.fill(); }
+    // 腿（延伸到画布底部，避免悬空）
+    ctx.fillStyle="#3b4d63"; ctx.fillRect(cx-11,H-32,8,H-32+8); ctx.fillRect(cx+3,H-32,8,H-32+8);
+    // 手臂
+    ctx.strokeStyle="#ffd9b3"; ctx.lineWidth=5; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(cx-14,H-50); ctx.lineTo(cx-18,H-32); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx+14,H-50); ctx.lineTo(cx+18,H-32); ctx.stroke();
+    // 眼睛 + 微笑
+    ctx.fillStyle="#2a2a2a";
+    ctx.beginPath(); ctx.arc(cx-4,H-70,1.8,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+4,H-70,1.8,0,7); ctx.fill();
+    ctx.strokeStyle="#2a2a2a"; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(cx,H-64,4,.15,Math.PI-.15); ctx.stroke();
+    ctx.restore();
+  }
+
+  let phase="idle", raf=null, armNow=0;
+
+  function lightState(el){
+    const inCycle = el % CYCLE_MS;
+    const isGreen = inCycle >= RED_MS;
+    const greenIndex = Math.floor(el / CYCLE_MS);
+    return { isGreen, greenIndex };
+  }
+
+  // ===== 车流动画（红灯=车上下通行，绿灯=车停让行人）=====
+  // 简约卡通小车（非 emoji）：dir=1 朝下行驶、-1 朝上行驶
+  function drawCar(ctx, x, y, color, dir){
+    ctx.save();
+    ctx.translate(x, y);
+    if(dir===-1){ ctx.scale(1,-1); }
+    // 车身（圆角矩形，竖向马路里车头朝上/下）
+    const w=34, h=60;
+    const bg=ctx.createLinearGradient(-w/2,0,w/2,0);
+    bg.addColorStop(0, color.light); bg.addColorStop(1, color.dark);
+    ctx.fillStyle=bg;
+    ctx.beginPath();
+    if(ctx.roundRect){ ctx.roundRect(-w/2, -h/2, w, h, 9); }
+    else { ctx.rect(-w/2, -h/2, w, h); }
+    ctx.fill();
+    // 车窗
+    ctx.fillStyle="#bfe3f5";
+    ctx.beginPath();
+    if(ctx.roundRect){ ctx.roundRect(-w/2+6, -6, w-12, 16, 5); }
+    else { ctx.rect(-w/2+6, -6, w-12, 16); }
+    ctx.fill();
+    // 车灯（头部两个亮点）
+    ctx.fillStyle="#ffe08a";
+    ctx.beginPath(); ctx.arc(-w/2+7, h/2-7, 4, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(w/2-7, h/2-7, 4, 0, 7); ctx.fill();
+    // 轮子
+    ctx.fillStyle="#23272f";
+    const wy = h/2 - 12;
+    ctx.beginPath(); ctx.arc(-w/2-3, wy, 6, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(w/2+3, wy, 6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  // 车流数据：lane=0 靠左车道（下行 dir=1）、lane=1 靠右车道（上行 dir=-1）
+  // 每辆车状态 s = 沿本车道的行程（px），往下/往上单调推进，循环 span
+  const cars = [
+    { lane:0, s0:0.08,  dir:1,  color:{light:"#e2574c",dark:"#a83a32"} },
+    { lane:0, s0:0.12,  dir:1,  color:{light:"#f0b03c",dark:"#b87e1e"} },
+    { lane:0, s0:0.16,  dir:1,  color:{light:"#e2574c",dark:"#a83a32"} },
+    { lane:0, s0:0.20,  dir:1,  color:{light:"#f0b03c",dark:"#b87e1e"} },
+    { lane:0, s0:0.24,  dir:1,  color:{light:"#e2574c",dark:"#a83a32"} },
+    { lane:1, s0:0.74,  dir:-1, color:{light:"#4c9de0",dark:"#2f6fb8"} },
+    { lane:1, s0:0.78,  dir:-1, color:{light:"#7e6ae0",dark:"#5346a8"} },
+    { lane:1, s0:0.82,  dir:-1, color:{light:"#4c9de0",dark:"#2f6fb8"} },
+    { lane:1, s0:0.88,  dir:-1, color:{light:"#7e6ae0",dark:"#5346a8"} },
+    { lane:1, s0:0.94,  dir:-1, color:{light:"#4c9de0",dark:"#2f6fb8"} },
+  ];
+  // 车速：红灯（车走）1000ms 正好走 1 整圈（fraction 0→1），绿灯（车停）停在初始相位
+  // 车位置 = 绝对时间的纯函数（无积分漂移）：红灯单调推进、绿灯停，红绿灯严格对齐
+  function carS(c, nowEl){
+    // 游戏未开始（intro/idle/done/reset 后）→ 车流静止在初始相位
+    if(phase !== "armed" && phase !== "crossing") return c.s0;
+    const inCycle = nowEl % CYCLE_MS;
+    const isGreen = inCycle >= RED_MS;
+    if(isGreen){
+      return c.s0;                              // 绿灯（车停）：停在初始相位（斑马线带外）
+    } else {
+      return (c.s0 + inCycle / RED_MS) % 1;     // 红灯（车走）：走 1 整圈，穿过斑马线带
+    }
+  }
+  // 每辆车的像素位置（供绘制 + 碰撞检测）
+  function carPosFor(c, W, H){
+    const roadLeft = 0.34 * W, roadRight = 0.66 * W;
+    const halfW = (roadRight - roadLeft) / 2;
+    const cx = c.lane === 0 ? roadLeft + halfW * 0.5 : roadLeft + halfW * 1.5;
+    const top = 0.10 * H, span = 0.84 * H;
+    const nowEl = performance.now() - armNow;
+    const cy = top + carS(c, nowEl) * span;
+    return { cx, cy, w: 34, h: 62 };
+  }
+  // 车流 rAF：每帧按绝对时间绘制车（位置由 carPosFor 纯函数决定，无积分漂移）
+  function carLoop(now){
+    const W = carCanvas.width = carCanvas.clientWidth || 900;
+    const H = carCanvas.height = carCanvas.clientHeight || 500;
+    const ctx = carCanvas.getContext("2d");
+    ctx.clearRect(0,0,W,H);
+    cars.forEach((c) => {
+      const p = carPosFor(c, W, H);
+      drawCar(ctx, p.cx, p.cy, c.color, c.dir);
+    });
+    requestAnimationFrame(carLoop);
+  }
+  requestAnimationFrame(carLoop);
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  function setLight(el){
+    const inCycle = el % CYCLE_MS;
+    const isGreen = inCycle >= RED_MS;
+    lampRed.classList.toggle("red", !isGreen);
+    lampRed.classList.remove("green");
+    lampGreen.classList.toggle("green", isGreen);
+    lampGreen.classList.remove("red");
+    // 倒计时数字：显示当前灯剩余秒数（十分位，如 1.0 / 0.5，让玩家看到递减）
+    const remainingMs = isGreen ? (CYCLE_MS - inCycle) : (RED_MS - inCycle);
+    const seconds = Math.max(0, remainingMs / 1000);
+    signalCount.textContent = seconds.toFixed(1);
+  }
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false;
+    targetBtn.classList.remove("hit");
+    targetBtn.disabled=false;
+    // 复位行人（站立、无倒地旋转）
+    pedCanvas.style.transition = "none";
+    pedCanvas.style.transform = "";
+    lampRed.classList.add("red"); lampRed.classList.remove("green");
+    lampGreen.classList.remove("green","red");
+    signalCount.textContent = "1.0";
+    pedestrian.style.left="30%";
+    drawPedestrian("right");
+    setStatus("Press Start 按开始","idle"); syncURL();
+  }
+  function arm(){
+    phase="armed"; startBtn.disabled=true;
+    armNow=performance.now();
+    setStatus("绿灯亮时按 GO 过马路！ Press GO on the green!","action"); syncURL();
+    setLight(0);
+    (function tick(now){
+      const el=now-armNow;
+      setLight(el);
+      if(el>=MISS_MS){ miss(); return; }
+      if(phase==="armed") raf=requestAnimationFrame(tick);
+    })(armNow);
+  }
+  function onTarget(){
+    if(phase!=="armed") return;
+    cancelAnimationFrame(raf);
+    // 先行动：无条件触发「走过去」动画，不预设结果
+    phase = "crossing";
+    targetBtn.disabled = true;
+    setStatus("过马路… Crossing…","armed");
+    // 走过去动画：从左侧 30% 走到右侧 70%，用时 480ms（< 绿灯 500ms，绿灯内能走完）
+    const CROSS_FROM = 30, CROSS_TO = 70, CROSS_DUR = 480;
+    const crossStart = performance.now();
+    (function crossTick(now){
+      const t = now - crossStart;
+      const prog = Math.min(1, t / CROSS_DUR);
+      // easeInOut
+      const e = prog<0.5 ? 2*prog*prog : 1 - Math.pow(-2*prog+2,2)/2;
+      const left = CROSS_FROM + (CROSS_TO - CROSS_FROM) * e;
+      pedestrian.style.left = left + "%";
+      drawPedestrian("right");
+
+      // 灯色在走过去过程中持续更新（灯只控制车走/停，不是判定依据）
+      const nowEl = performance.now() - armNow;
+      setLight(nowEl);
+
+      // ===== 实体碰撞检测（判定唯一依据）：行人矩形 vs 每一辆车矩形相交 =====
+      const W = carCanvas.clientWidth, H = carCanvas.clientHeight;
+      const pr = pedestrian.getBoundingClientRect();
+      const cr = carCanvas.getBoundingClientRect();
+      // 行人矩形（相对 carCanvas 坐标）
+      const pedRect = {
+        x: pr.x - cr.x, y: pr.y - cr.y,
+        w: pr.width, h: pr.height
+      };
+      let hit = false;
+      for(const c of cars){
+        const cp = carPosFor(c, W, H);   // 车矩形中心
+        const cRect = { x: cp.cx - cp.w/2, y: cp.cy - cp.h/2, w: cp.w, h: cp.h };
+        // 矩形相交检测
+        const overlap = !(pedRect.x + pedRect.w < cRect.x || cRect.x + cRect.w < pedRect.x ||
+                          pedRect.y + pedRect.h < cRect.y || cRect.y + cRect.h < pedRect.y);
+        if(overlap){ hit = true; break; }
+      }
+      if(hit){
+        carHit();   // 和车的实体碰撞 → 被撞失败
+        return;
+      }
+      if(prog >= 1){
+        // 全程未与车相交 → 安全过马路成功
+        targetBtn.classList.add("hit");
+        BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+        setStatus("Success 成功","win"); syncURL();
+        celebrate();
+        return;
+      }
+      requestAnimationFrame(crossTick);
+    })(crossStart);
+  }
+  // 撞车：行人倒地 + 撞击，然后判定失败
+  function carHit(){
+    phase = "done";
+    // 行人倒地（旋转 canvas 表现被撞倒）
+    pedCanvas.style.transition = "transform .3s";
+    pedCanvas.style.transform = "rotate(90deg) translateY(10px)";
+    lampRed.classList.add("red"); lampRed.classList.remove("green");
+    lampGreen.classList.remove("green","red");
+    failOne("Car hit 撞车");
+  }
+  function miss(){
+    cancelAnimationFrame(raf);
+    if(phase!=="armed") return;
+    phase="done";
+    lampRed.classList.remove("red","green"); lampGreen.classList.remove("red","green");
+    failOne("Missed");
+  }
+  function failOne(reason){
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    const hitByCar = reason.indexOf("撞车")>=0 || reason.indexOf("Car hit")>=0;
+    setStatus(hitByCar ? "Car hit! 撞车了！" : "Missed 未命中","lose");
+    lampRed.classList.add("red");
+    drawPedestrian("left");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){
+      BENCH.status="failed"; syncURL();
+      setTimeout(()=>{ failOverlay.classList.add("show"); }, 500);
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + "  尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS;
+    setTimeout(()=>{ document.getElementById("retryOverlay").classList.add("show"); }, 500);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 空格触发 Start/Next/GO（phase 隔离）
+  function onSpaceKey(){
+    const introEl=document.getElementById("intro");
+    const retryEl=document.getElementById("retryOverlay");
+    if(introEl && !introEl.classList.contains("hidden")){ document.getElementById("introStart").click(); return; }
+    if(retryEl.classList.contains("show")){ document.getElementById("nextBtn").click(); return; }
+    if(phase==="idle"){ startBtn.click(); return; }
+    if(phase==="armed"){ onTarget(); return; }
+  }
+  document.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" "){ e.preventDefault(); onSpaceKey(); }
+  });
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+  targetBtn.addEventListener("click",()=>onTarget());
+
+  document.getElementById("introStart").addEventListener("click",()=>{
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 尝试 1 / "+MAX_ATTEMPTS);
+  });
+  document.getElementById("nextBtn").addEventListener("click",()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  });
+
+  window.__dbg = function(){
+    const el = phase==="armed" ? performance.now()-armNow : 0;
+    const { isGreen } = lightState(el);
+    return {
+      phase,
+      lightColor: isGreen ? "green" : "red",
+      isGreen,
+      remainingGreenMs: isGreen ? (CYCLE_MS - (el % CYCLE_MS)) : 0,
+      cycleMs: CYCLE_MS, redMs: RED_MS, greenMs: GREEN_MS, missMs: MISS_MS,
+      inWindow: isGreen,
+      attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status
+    };
+  };
+
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

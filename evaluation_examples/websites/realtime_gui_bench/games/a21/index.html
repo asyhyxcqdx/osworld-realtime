@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bouncing Ball Drop 弹力球落坑</title>
+<style>
+  :root { --bg1:#1a1210; --ok:#34d399; --bad:#ff5c7a; --warn:#f6c453; --gold:#f6c453; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #3a2a1c 0%, var(--bg1) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; color:#f3ece0; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.reveal { color:var(--gold); } .status.yours { color:#b8ab98; }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .reveal-btn {
+    padding:13px 34px; border-radius:30px; border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(150deg,#9a5a22 0%,#6a3d12 100%); color:#fff;
+    font-size:16px; font-weight:700; letter-spacing:.6px; cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,0,0,.35); transition:transform .15s, opacity .2s;
+  }
+  .reveal-btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .reveal-btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#9d907c; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(30,20,14,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(14,9,6,.68); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  .intro {
+    position:fixed; inset:0; background:rgba(14,9,6,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:540px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.6; }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,#9a5a22 0%,#6a3d12 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3);
+    transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the ball bounce, then tap the pit it rolls into · 看球弹跳，点它滚进的坑</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <button class="reveal-btn" id="revealBtn">Start 开始 (Space)</button>
+  <div class="hint" id="hint">Attempt 0 / 3 · 第 0 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">You tracked the ball to the right pit · 你正确跟踪了球的落坑</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts · 尝试次数用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Bouncing Ball Drop · 弹力球落坑</div>
+      <div class="intro-rule">
+        一颗高弹力的彩色球从上方落下，在地上反复弹跳、越弹越低，同时左右漂移。 A super-bouncy ball drops from above, bounces again and again getting lower while drifting sideways.<br>
+        你要盯着它的弹跳和漂移轨迹。 Track its bouncing and drifting path.<br>
+        弹跳衰减后它滚进 6 个圆形落点坑之一，被坑吞没消失。 When it settles it rolls into one of six pits and vanishes.<br>
+        点出球最终滚进的那个坑。 Tap the pit the ball rolled into.
+      </div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  // 叙事：弹力球落点游戏场。高弹力彩色球从上方落下，在地面反复弹跳（动量反弹衰减）+ 水平漂移（撞墙反弹），
+  // 弹跳衰减停稳后「滚进 6 个圆形落点坑之一被坑吞没」消失（信息消失自然原因 = 球滚进坑，非凭空消失）。
+  // 机制本质区别：这是「连续弹跳衰减（垂直动量反弹）+ 水平漂移」的真实物理模拟，
+  // 区别于 a14（固定离散抛物线跳）、a24（重力下落+钉阵）、a12/a23（平面滑动换位）、a17（圆盘旋转）、a16（环形轨道）。
+  // IEW 有限（落坑只在弹跳动画期间暴露）+ AVW=∞（作答点击坑无时限）。
+  // 判定 = 纯碰撞点击坑；表现与判定同源（targetIdx / SLOTS[targetIdx]）。
+  const CW = 800, CH = 460;
+  const MAX_ATTEMPTS = 3;
+  const SLOTS = [100, 220, 340, 460, 580, 700];   // 6 个落点坑 x
+  const PIT_Y = 320, PIT_R = 40, BALL_R = 18;
+  const GROUND_Y = 320, G = 1100;
+
+  const BENCH = { task:"bounce", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";        // idle | bounce | roll | answer | done
+  let ballX = 400, ballY = 60, vx = 0, vy = 0, lastNow = 0;
+  let targetIdx = 0;
+  let rollFromX = 0, rollT = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, targetIdx, ballX: SLOTS[targetIdx], attempts: BENCH.attempts, passed: BENCH.passed }; };
+
+  function onStart(){
+    if (phase !== "idle") return;
+    ballX = 250 + Math.random()*300;
+    ballY = 60;
+    vx = (Math.random() < 0.5 ? -1 : 1) * (60 + Math.random()*80);
+    vy = 0;
+    lastNow = 0;
+    phase = "bounce"; phaseStart = performance.now();
+    revealBtn.disabled = true;
+    setStatus("Watch the ball bounce… 看球弹跳","reveal");
+    syncURL();
+  }
+
+  function update(now){
+    if (phase === "bounce"){
+      const dt = lastNow ? Math.min((now - lastNow)/1000, 0.04) : 0.016;
+      lastNow = now;
+      vy += G * dt;
+      ballX += vx * dt;
+      ballY += vy * dt;
+      // 左右撞墙反弹
+      if (ballX < BALL_R){ ballX = BALL_R; vx = Math.abs(vx); }
+      if (ballX > CW - BALL_R){ ballX = CW - BALL_R; vx = -Math.abs(vx); }
+      // 落地反弹（衰减）
+      if (ballY >= GROUND_Y){
+        ballY = GROUND_Y;
+        if (Math.abs(vy) > 120){ vy = -vy * 0.7; }
+        else { vy = 0; vx = 0; }
+      }
+      // 弹跳衰减停稳 → 滚进最近坑
+      if (vy === 0 && ballY >= GROUND_Y){
+        let best = 0, bd = Infinity;
+        SLOTS.forEach((sx,i)=>{ const d = Math.abs(ballX - sx); if (d < bd){ bd = d; best = i; } });
+        targetIdx = best;
+        rollFromX = ballX;
+        rollT = 0;
+        phase = "roll"; phaseStart = now;
+        setStatus("It rolls into a pit… 滚进坑里","reveal");
+      }
+    }
+    else if (phase === "roll"){
+      // 球从停点水平滚进坑（easeInOut），再下沉缩进坑里被吞没
+      const t = Math.min(1, (now - phaseStart) / 380);
+      rollT = t;
+      const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+      ballX = rollFromX + (SLOTS[targetIdx] - rollFromX) * e;
+      const sink = Math.max(0, (t - 0.55) / 0.45);   // 后段下沉进坑
+      ballY = GROUND_Y + sink * 26;
+      if (t >= 1){ phase = "answer"; setStatus("Tap the pit the ball rolled into · 点球滚进的坑","action"); }
+    }
+  }
+
+  // ===== 绘制 =====
+  function drawBackground(){
+    // 游戏场：暖色渐变（上方留空 + 地面）
+    const g = ctx.createRadialGradient(400, 180, 40, 400, 180, 520);
+    g.addColorStop(0,"#4a3624"); g.addColorStop(0.6,"#2c1f12"); g.addColorStop(1,"#1a110a");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 地面（沙地/木质地面，暖色）
+    const fg = ctx.createLinearGradient(0, GROUND_Y, 0, CH);
+    fg.addColorStop(0,"#6b4a2a"); fg.addColorStop(1,"#3a2614");
+    ctx.fillStyle = fg; ctx.fillRect(0, GROUND_Y, CW, CH - GROUND_Y);
+    // 地面高光线
+    ctx.fillStyle = "rgba(255,220,170,.15)"; ctx.fillRect(0, GROUND_Y, CW, 4);
+    // 地面木纹
+    ctx.strokeStyle = "rgba(0,0,0,.12)"; ctx.lineWidth = 1;
+    for (let yy=GROUND_Y+14; yy<CH; yy+=16){ ctx.beginPath(); ctx.moveTo(16,yy); ctx.lineTo(CW-16,yy); ctx.stroke(); }
+    // 6 个落点坑（深色圆坑 + 木质凹陷边框）
+    for (const x of SLOTS){
+      // 坑外木质环
+      const ring = ctx.createRadialGradient(x, PIT_Y, PIT_R-16, x, PIT_Y, PIT_R+10);
+      ring.addColorStop(0,"#1c1108"); ring.addColorStop(0.7,"#120b05"); ring.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle = ring; ctx.beginPath(); ctx.arc(x, PIT_Y, PIT_R+10, 0, 7); ctx.fill();
+      // 坑口深色圆
+      ctx.fillStyle = "#0c0703";
+      ctx.beginPath(); ctx.arc(x, PIT_Y, PIT_R-4, 0, 7); ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, PIT_Y, PIT_R-4, 0, 7); ctx.stroke();
+      // 坑口高光
+      ctx.strokeStyle = "rgba(255,220,170,.22)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, PIT_Y, PIT_R-2, Math.PI*1.05, Math.PI*1.95); ctx.stroke();
+    }
+  }
+
+  function drawBall(x, y, r){
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.4)"; ctx.shadowBlur = 6;
+    const bg = ctx.createRadialGradient(x - r*0.4, y - r*0.45, 1, x, y, r);
+    bg.addColorStop(0,"#ffe08a"); bg.addColorStop(0.45,"#f0b640"); bg.addColorStop(1,"#8a5a14");
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.beginPath(); ctx.ellipse(x - r*0.38, y - r*0.4, r*0.24, r*0.16, -0.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    // 球始终绘制（bounce 弹跳可见、roll 滚进坑下沉、answer 已进坑不可见）
+    if (phase === "bounce"){
+      drawBall(ballX, ballY, BALL_R);
+    }
+    else if (phase === "roll"){
+      const sink = Math.max(0, rollT - 0.55) / 0.45;   // 后段下沉进坑
+      const rr = BALL_R * (1 - sink*0.85);             // 下沉时缩小被坑吞没
+      if (rr > 1.5) drawBall(ballX, ballY, rr);
+    }
+    // answer/done 阶段球已滚进坑（不可见，坑吞没）
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let clicked = -1;
+    SLOTS.forEach((x,i)=>{ if (Math.abs(p.x - x) < PIT_R + 8 && p.y > PIT_Y - 40 && p.y < PIT_Y + 40) clicked = i; });
+    if (clicked === -1) return;
+    const ok = clicked === targetIdx;
+    BENCH.results.push(ok);
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success! 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Wrong pit 点错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function startRound(){
+    ballX = 400; ballY = 60; vx = 0; vy = 0; targetIdx = 0; phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Watch the ball bounce, then tap the pit it rolls into · 看球弹跳，点它滚进的坑","");
+    syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  revealBtn.addEventListener("click", onStart);
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    startRound();
+  });
+
+  // 空格触发 Start/Next（弹层显示时；进游戏后空格无动作，不误触）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && retryEl.classList.contains("show")){ e.preventDefault(); retryEl.classList.remove("show"); startRound(); }
+    else if (phase === "idle"){ e.preventDefault(); onStart(); }
+  });
+
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

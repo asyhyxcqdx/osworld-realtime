@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plinko Drop 弹珠机投珠</title>
+<style>
+  :root { --bg1:#1a130c; --ok:#34d399; --bad:#ff5c7a; --warn:#f6c453; --gold:#f6c453; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #3a2a18 0%, var(--bg1) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; color:#f4ede2; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.reveal { color:var(--gold); } .status.yours { color:#b9ad98; }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .reveal-btn {
+    padding:13px 34px; border-radius:30px; border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(150deg,#a05a1e 0%,#70400f 100%); color:#fff;
+    font-size:16px; font-weight:700; letter-spacing:.6px; cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,0,0,.35); transition:transform .15s, opacity .2s;
+  }
+  .reveal-btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .reveal-btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#9d9079; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(30,20,12,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(14,9,5,.68); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  .intro {
+    position:fixed; inset:0; background:rgba(14,9,5,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:540px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.6; }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,#a05a1e 0%,#70400f 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3);
+    transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the ball fall, then tap the slot it lands in · 看球下落，点它滚进的槽</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <button class="reveal-btn" id="revealBtn">Drop 投球 (Space)</button>
+  <div class="hint" id="hint">Attempt 0 / 3 · 第 0 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">You tracked the ball to the right slot · 你正确跟踪了球的落槽</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts · 尝试次数用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Plinko Drop · 弹珠机投珠</div>
+      <div class="intro-rule">
+        一颗玻璃弹珠从弹珠机顶部落下，碰到一排排钉子左右反弹。 A glass marble drops from the top of a Plinko board and bounces off pegs left and right.<br>
+        你要盯着它的下落路径，看它一路碰撞。 Track its falling path as it bounces off every peg.<br>
+        最后它滚进底部一个槽、掉进槽底的暗格里。 Finally it rolls into one of the bottom slots and vanishes into the dark box below.<br>
+        点出弹珠滚进的那个槽。 Tap the slot the marble landed in.
+      </div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  // 叙事：嘉年华弹珠机（Plinko）。玻璃弹珠从顶部落下，撞到钉子左右反弹（重力+碰撞的下落路径），
+  // 最后滚进底部一个槽、掉进槽底暗格消失（信息消失自然原因 = 弹珠滚进槽底暗格，非凭空消失）。
+  // 机制本质区别：这是「重力下落 + 钉阵碰撞反弹」，不同于已优化的「平面滑动/换位/旋转/跳抛」。
+  // IEW 有限（落槽只在弹珠下落动画期间暴露）+ AVW=∞（作答点击槽无时限）。
+  // 判定 = 纯碰撞点击槽；表现与判定同源（targetIdx / SLOTS[targetIdx]）。
+  const CW = 800, CH = 460;
+  const MAX_ATTEMPTS = 3;
+  const SLOTS = [100, 220, 340, 460, 580, 700];
+  const PIN_ROWS = [150, 225, 300, 375];   // 4 排钉子 y（交错排列）
+  const BALL_R = 16;
+  const DROP_MS = 380, HIDE_MS = 380;
+
+  const BENCH = { task:"plinko", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";        // idle | drop | hide | answer | done
+  let ballX = 400, ballY = 56;
+  let targetIdx = 0;
+  let segs = [], segIdx = 0, segStart = 0, phaseStart = 0;
+  let sink = 0;              // 球滚进槽底暗格进度
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, targetIdx, ballX: SLOTS[targetIdx], attempts: BENCH.attempts, passed: BENCH.passed }; };
+
+  function pinX(row, col){
+    return (row % 2 === 0) ? 70 + col*60 : 100 + col*60;
+  }
+
+  function onDrop(){
+    if (phase !== "idle") return;
+    let x = 400;
+    const path = [{x: 400, y: 56}];
+    for (const py of PIN_ROWS){
+      x += Math.random() < 0.5 ? -60 : 60;
+      x = Math.max(70, Math.min(730, x));
+      path.push({x, y: py});
+    }
+    targetIdx = 0;
+    let best = Infinity;
+    SLOTS.forEach((sx,i)=>{ const d = Math.abs(x - sx); if (d < best){ best = d; targetIdx = i; } });
+    path.push({x: SLOTS[targetIdx], y: 400});
+    segs = [];
+    for (let i=0;i<path.length-1;i++){
+      segs.push({ fx: path[i].x, fy: path[i].y, tx: path[i+1].x, ty: path[i+1].y });
+    }
+    segIdx = 0;
+    ballX = 400; ballY = 56;
+    sink = 0;
+    phase = "drop"; segStart = performance.now();
+    revealBtn.disabled = true;
+    setStatus("Track the ball… 跟踪弹珠","reveal");
+    syncURL();
+  }
+
+  function update(now){
+    if (phase === "drop"){
+      const t = (now - segStart) / DROP_MS;
+      const s = segs[segIdx];
+      if (t >= 1){
+        ballX = s.tx; ballY = s.ty;
+        segIdx++;
+        if (segIdx < segs.length){ segStart = now; }
+        else { phase = "hide"; phaseStart = now; }
+      } else {
+        const eY = t*t;
+        const eX = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+        ballX = s.fx + (s.tx - s.fx) * eX;
+        ballY = s.fy + (s.ty - s.fy) * eY;
+      }
+    }
+    else if (phase === "hide"){
+      const t = Math.min(1, (now - phaseStart) / HIDE_MS);
+      sink = 1 - Math.pow(1 - t, 3);
+      ballY = 400 + sink * 30;
+      if (now - phaseStart >= HIDE_MS){ phase = "answer"; setStatus("Tap the slot the marble landed in · 点弹珠滚进的槽","action"); }
+    }
+  }
+
+  function drawBackground(){
+    const g = ctx.createRadialGradient(400, 180, 40, 400, 180, 520);
+    g.addColorStop(0,"#5a4022"); g.addColorStop(0.55,"#3a2a14"); g.addColorStop(1,"#241808");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    ctx.strokeStyle = "rgba(0,0,0,.10)"; ctx.lineWidth = 1;
+    for (let yy=30; yy<CH; yy+=16){ ctx.beginPath(); ctx.moveTo(16,yy); ctx.lineTo(CW-16,yy); ctx.stroke(); }
+    // 顶部投球口
+    ctx.fillStyle = "#1d1308"; ctx.beginPath(); ctx.roundRect(370, 20, 60, 22, 8); ctx.fill();
+    // 钉子
+    for (let r=0;r<PIN_ROWS.length;r++){
+      const py = PIN_ROWS[r];
+      const cols = (r % 2 === 0) ? 11 : 10;
+      for (let cc=0;cc<cols;cc++){
+        const px = pinX(r, cc);
+        if (px < 30 || px > CW-30) continue;
+        ctx.fillStyle = "rgba(0,0,0,.35)";
+        ctx.beginPath(); ctx.arc(px+2, py+2, 6, 0, 7); ctx.fill();
+        const pg = ctx.createRadialGradient(px-2, py-2, 1, px, py, 6);
+        pg.addColorStop(0,"#e8e0d0"); pg.addColorStop(0.6,"#9a8a6a"); pg.addColorStop(1,"#5a4a30");
+        ctx.fillStyle = pg;
+        ctx.beginPath(); ctx.arc(px, py, 6, 0, 7); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,.6)";
+        ctx.beginPath(); ctx.arc(px-1.5, py-2, 1.8, 0, 7); ctx.fill();
+      }
+    }
+    // 底部槽 + 暗格
+    for (const sx of SLOTS){
+      ctx.fillStyle = "#1a1006";
+      ctx.beginPath(); ctx.arc(sx, 400, BALL_R + 10, 0, 7); ctx.fill();
+      ctx.strokeStyle = "rgba(255,220,170,.25)"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sx, 400, BALL_R + 10, 0, 7); ctx.stroke();
+    }
+    const slotBox = ctx.createLinearGradient(0, 420, 0, CH);
+    slotBox.addColorStop(0,"#120b04"); slotBox.addColorStop(1,"#080502");
+    ctx.fillStyle = slotBox; ctx.fillRect(30, 420, CW-60, CH-420);
+    ctx.fillStyle = "#2a1c0a"; ctx.fillRect(30, 418, CW-60, 6);
+  }
+
+  function drawBall(x, y, r){
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.4)"; ctx.shadowBlur = 6;
+    const bg = ctx.createRadialGradient(x - r*0.4, y - r*0.45, 1, x, y, r);
+    bg.addColorStop(0,"#ffe08a"); bg.addColorStop(0.45,"#f0bd34"); bg.addColorStop(1,"#8a5a14");
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(255,255,255,.85)";
+    ctx.beginPath(); ctx.ellipse(x - r*0.38, y - r*0.4, r*0.24, r*0.16, -0.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    if (phase === "drop"){
+      drawBall(ballX, ballY, BALL_R);
+    }
+    else if (phase === "hide"){
+      const rr = BALL_R * (1 - sink*0.7);
+      if (rr > 1.2) drawBall(ballX, ballY + sink*26, rr);
+    }
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let clicked = -1;
+    SLOTS.forEach((x,i)=>{ if (Math.abs(p.x - x) < BALL_R + 14 && p.y > 380 && p.y < 425) clicked = i; });
+    if (clicked === -1) return;
+    const ok = clicked === targetIdx;
+    BENCH.results.push(ok);
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success! 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Wrong slot 点错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function startRound(){
+    ballX = 400; ballY = 56; targetIdx = 0; segs = []; phase = "idle"; sink = 0;
+    revealBtn.disabled = false;
+    setStatus("Watch the ball fall, then tap the slot it lands in · 看球下落，点它滚进的槽","");
+    syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  revealBtn.addEventListener("click", onDrop);
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    startRound();
+  });
+
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && retryEl.classList.contains("show")){ e.preventDefault(); retryEl.classList.remove("show"); startRound(); }
+    else if (phase === "idle"){ e.preventDefault(); onDrop(); }
+  });
+
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

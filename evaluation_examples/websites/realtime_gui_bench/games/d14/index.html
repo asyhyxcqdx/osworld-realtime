@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trace the Circle 画圈封印</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2a2350 0%, #0c0a18 58%);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf0; user-select:none; overflow:hidden;
+  }
+  .status { font-size:22px; font-weight:700; min-height:30px; letter-spacing:.4px; }
+  .status.ready { color:#c9b6ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block;
+  }
+  .hint { font-size:14px; color:#8a93a8; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#8a93a8; }
+  .toast { position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(30,34,44,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay { position:fixed; inset:0; background:rgba(10,8,4,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+  .intro-rule b { color:var(--title); }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .retryOverlay.hidden { display:none; }
+  .retry-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn { margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="keys">Press &amp; hold on the core, drag in a full circle  按住核心，绕它画满一圈</div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Sealed! 封印成功！</div>
+      <div class="celeb-sub">The circle is complete 封印圈完成了</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Trace the Circle 画圈封印</div>
+      <div class="intro-rule">You are a <b>seal mage</b>. A <b>magic core</b> materializes on the altar — if it isn't sealed, its power will burst free. <b>Press and hold</b> on the core, then <b>drag the cursor in a full circle</b> along the glowing ring (either direction) <b>before it fades (2.5s)</b>.<br>你是<b>封印法师</b>。一个<b>魔法核心</b>在祭坛上显形——若不及时封印，它的魔力就会爆发。在它<b>消散（2.5 秒）前</b>，<b>按住核心</b>，然后<b>沿着发光圆环拖动光标画满一圈</b>（顺逆时针皆可）。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Faded 消散了</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const LIFE_MS = 2500;        // 法阵存在时长（窗口，画圈需更久）
+  const R = 40;                // 核心半径
+  const TRACE_R = 64;          // 虚线圆环（画圈建议半径）
+  const MAX_DIST = R*2.5;      // 画圈判定距离上限
+  const APPEAR_MS = 300;       // 出现淡入动画时长
+  const HIT_MS = 650;          // 封印动画时长（结算成功）
+  const MISS_MS = 650;         // 消散动画时长（结算失败）
+
+  const BENCH = { task:"draw_circle", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "waiting";   // waiting | out | hit | miss
+  let cx = 400, cy = 250, appearAt = 0, windowEnd = 0, appearTime = 0;
+  let lastAngle = null, accum = 0, mouseX = 400, mouseY = 250, dragging = false;
+  let settleLock = false;
+  let hitAt = 0, missAt = 0;
+  let lastPos = null;      // 上一出现位置（闭包内，非全局，用于避让）
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, coreX: Math.round(cx), coreY: Math.round(cy), r: R, accumDeg: Math.abs(accum)*180/Math.PI,
+             attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status };
+  };
+
+  function pickCore(){
+    let x, y, tries = 0;
+    do {
+      x = 150 + Math.random()*500; y = 150 + Math.random()*220;
+      tries++;
+    } while (lastPos && Math.hypot(x-lastPos.x, y-lastPos.y) < 170 && tries < 15);
+    lastPos = { x, y };
+    return { x, y };
+  }
+
+  function resetRound(){
+    phase = "waiting";
+    settleLock = false;
+    const p = pickCore(); cx = p.x; cy = p.y;
+    lastAngle = null; accum = 0; dragging = false;
+    appearAt = performance.now() + 500 + Math.random()*800;   // 随机延迟：时机随机
+    setStatus("Get ready… 准备…","ready");
+  }
+  function out(now){ phase = "out"; windowEnd = now + LIFE_MS; appearTime = now; setStatus("Circle it! 画一圈！","action"); }
+
+  function hit(){
+    if (phase !== "out" || settleLock) return;
+    settleLock = true;
+    phase = "hit";
+    hitAt = performance.now();
+    dragging = false;
+    setStatus("Sealed! 封印成功！","win");
+    // 结算延迟：先播「法阵点亮 + 核心爆发」动画，再 celebrate
+    setTimeout(()=>{
+      BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+      syncURL(); celebrate();
+    }, HIT_MS);
+  }
+  function miss(){
+    if (phase !== "out" || settleLock) return;
+    settleLock = true;
+    phase = "miss";
+    missAt = performance.now();
+    dragging = false;
+    setStatus("Faded 消散了","lose");
+    // 结算延迟：先播「核心消散」动画，再安排下一轮/失败框
+    setTimeout(()=>{
+      BENCH.results.push(false);
+      BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+      } else {
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retrySub").textContent = "Faded 消散了";
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }
+    }, MISS_MS);
+  }
+
+  function update(now){
+    if (phase === "waiting" && now >= appearAt) out(now);
+    else if (phase === "out" && now >= windowEnd) miss();
+  }
+
+  function canvasPos(e){ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)*(cv.width/r.width), y:(e.clientY-r.top)*(cv.height/r.height)}; }
+  cv.addEventListener("mousedown",(e)=>{
+    if (phase !== "out") return;
+    const p = canvasPos(e);
+    if (Math.hypot(p.x-cx, p.y-cy) <= R + 18) { dragging = true; lastAngle = null; accum = 0; }
+  });
+  window.addEventListener("mouseup",()=>{ dragging = false; });
+  window.addEventListener("mousemove",(e)=>{
+    const p = canvasPos(e); mouseX = p.x; mouseY = p.y;
+    if (phase !== "out" || !dragging) return;
+    const dist = Math.hypot(p.x-cx, p.y-cy);
+    if (dist > MAX_DIST) { lastAngle = null; return; }   // 移出画圈范围，重置角度锚点（保留 accum）
+    const ang = Math.atan2(p.y-cy, p.x-cx);
+    if (lastAngle !== null) {
+      let d = ang - lastAngle;
+      if (d > Math.PI) d -= 2*Math.PI;
+      if (d < -Math.PI) d += 2*Math.PI;
+      accum += d;
+    }
+    lastAngle = ang;
+    if (Math.abs(accum) >= Math.PI*2) hit();
+  });
+
+  // ============ 渲染 ============
+  function drawBg(){
+    // 魔法夜空（紫黑渐变）
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#0b0e16"); g.addColorStop(.6,"#121625"); g.addColorStop(1,"#090c12");
+    ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+    // 祭坛石台（核心下方圆形平台）
+    const altar = ctx.createRadialGradient(cx, cy, 8, cx, cy, 150);
+    altar.addColorStop(0,"rgba(120,100,200,.12)"); altar.addColorStop(1,"rgba(120,100,200,0)");
+    ctx.fillStyle = altar; ctx.beginPath(); ctx.arc(cx, cy, 150, 0, 7); ctx.fill();
+    ctx.strokeStyle="rgba(150,130,220,.22)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(cx, cy, 150, 0, 7); ctx.stroke();
+    // 四周魔法光点
+    ctx.fillStyle="rgba(150,140,220,.4)";
+    [[100,80],[720,100],[140,420],[680,430],[400,60],[60,250],[740,260]].forEach(p=>{ ctx.beginPath(); ctx.arc(p[0],p[1],3.5,0,7); ctx.fill(); });
+  }
+
+  function drawCore(grow, alpha){
+    const pulse = 1 + Math.sin(performance.now()/120)*0.08;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const r = R * pulse * grow;
+    // 虚线圆环（画圈提示）
+    ctx.setLineDash([10, 8]); ctx.lineDashOffset = -performance.now()/40;
+    ctx.strokeStyle = "rgba(200,185,255,.85)"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx, cy, TRACE_R*grow, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+    // 起点标记（金色三角，提示从顶部开始）
+    ctx.fillStyle = "#ffd166";
+    ctx.beginPath(); ctx.moveTo(cx, cy-TRACE_R*grow-14); ctx.lineTo(cx-8, cy-TRACE_R*grow+2); ctx.lineTo(cx+8, cy-TRACE_R*grow+2); ctx.closePath(); ctx.fill();
+    // 已完成进度弧（画圈进度）
+    if (Math.abs(accum) > 0.05) {
+      ctx.strokeStyle = "#7fe8ff"; ctx.lineWidth = 6; ctx.lineCap = "round";
+      const start = accum > 0 ? -Math.PI/2 : Math.PI/2;
+      ctx.beginPath(); ctx.arc(cx, cy, TRACE_R*grow, start, start + accum); ctx.stroke();
+    }
+    // 核心（紫色光球 + 光晕 + 脉冲）
+    const halo = ctx.createRadialGradient(cx,cy,2,cx,cy,r*2.4);
+    halo.addColorStop(0,"rgba(190,150,255,.6)"); halo.addColorStop(1,"rgba(190,150,255,0)");
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(cx,cy,r*2.4,0,7); ctx.fill();
+    const body = ctx.createRadialGradient(cx-R*0.3,cy-R*0.3,2,cx,cy,r);
+    body.addColorStop(0,"#f0ecff"); body.addColorStop(.5,"#a88cff"); body.addColorStop(1,"#4a33a8");
+    ctx.fillStyle = body; ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fill();
+    // 高光
+    ctx.fillStyle="rgba(255,255,255,.85)"; ctx.beginPath(); ctx.arc(cx-r*0.25, cy-r*0.3, r*0.2, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCursor(){
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.shadowColor="rgba(0,0,0,.6)"; ctx.shadowBlur=3;
+    ctx.beginPath(); ctx.arc(mouseX, mouseY, 8, 0, 7); ctx.stroke();
+    ctx.shadowBlur=0; ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(mouseX,mouseY,2,0,7); ctx.fill();
+  }
+
+  function render(){
+    const now = performance.now();
+    drawBg();
+    if (phase === "out"){
+      const tA = Math.min(1, (now - appearTime)/APPEAR_MS);
+      const grow = 0.3 + 0.7 * (1 - Math.pow(1-tA, 3));
+      drawCore(grow, tA);
+    }
+    if (phase === "hit"){
+      // 封印动画：法阵点亮 + 核心爆发金光/紫光
+      const a = Math.min(1, (now - hitAt)/HIT_MS);
+      drawCore(1, 1);
+      ctx.strokeStyle="rgba(200,185,255,"+(0.9*(1-a))+")"; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(cx, cy, TRACE_R, 0, 7); ctx.stroke();
+      ctx.strokeStyle="rgba(150,255,210,"+(0.8*(1-a))+")"; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(cx, cy, TRACE_R*(0.6+a*2.0), 0, 7); ctx.stroke();
+      ctx.fillStyle="rgba(190,150,255,"+(0.7*(1-a))+")";
+      ctx.beginPath(); ctx.arc(cx, cy, R*(1+a*1.8), 0, 7); ctx.fill();
+    }
+    if (phase === "miss"){
+      // 消散动画：核心淡出 + 光点向外飘散
+      const a = Math.min(1, (now - missAt)/MISS_MS);
+      drawCore(1-a*0.4, 1-a);
+      for (let i=0;i<6;i++){
+        const ang = i*Math.PI/3 + a*0.5;
+        const d = 20 + a*54;
+        ctx.fillStyle = "rgba(190,150,255,"+(0.5*(1-a))+")";
+        ctx.beginPath(); ctx.arc(cx+Math.cos(ang)*d, cy+Math.sin(ang)*d-a*36, 2.5*(1-a), 0, 7); ctx.fill();
+      }
+    }
+    drawCursor();
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 阻止空格/方向键/Tab 触发页面滚动、刷新、焦点切换；空格触发 Start/Next（phase 隔离）
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode||e.which||0;
+    if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
+    if (e.code === "Space" && !e.repeat){
+      if (!introEl.classList.contains("hidden")) { startGame(); return; }
+      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    }
+  });
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

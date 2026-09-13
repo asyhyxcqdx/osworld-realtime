@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shotgun Spread 霰弹云缩放</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    color:#e8eaf6;user-select:none;overflow:hidden;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;}
+  .status{font-size:22px;font-weight:700;min-height:30px;letter-spacing:.4px;text-align:center;}
+  .status.win{color:var(--ok1);} .status.lose{color:var(--fail1);}
+  .status.action{font-size:30px;font-weight:800;color:var(--gold);text-shadow:0 0 14px rgba(246,196,83,.55);letter-spacing:.5px;}
+  canvas{border-radius:16px;box-shadow:0 16px 44px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);display:block;}
+  .hint{font-size:14px;color:#9aa3c7;letter-spacing:.5px;}
+  .tip{font-size:13px;color:#9aa3c7;letter-spacing:.4px;}
+  .keys{display:flex;gap:8px;align-items:center;font-size:13px;color:#9aa3c7;}
+  .key{display:inline-block;min-width:26px;height:26px;line-height:26px;text-align:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-radius:6px;color:#cdd3ea;font-weight:700;padding:0 6px;}
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 52px;text-align:center;max-width:640px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:40px 50px;text-align:center;max-width:540px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the spread… 观察散布圈…</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="keys"><span class="key">Space</span> Fire 击发</div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功！</div>
+      <div class="celeb-sub">Target down, hostage safe 目标倒下，人质无恙</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Shotgun Spread 霰弹云缩放</div>
+      <div class="intro-rule">Night ambush — an enemy <b>commander</b> is in your sights, but <b>civilians</b> huddle close behind him. Your breathing makes the <b>shotgun spread circle</b> keep <b>randomly growing and shrinking</b>.<br>Press <b>SPACE</b> to fire only when the spread circle <b>covers the enemy</b> yet stays <b>out of the red civilian zone</b>.<br><br>夜间伏击——敌方<b>指挥官</b>进入你的准星，但他身后紧贴着<b>平民人质</b>。你的呼吸让<b>霰弹散布圈</b>持续<b>随机放大缩小</b>。<br>当散布圈<b>包住敌人</b>、但<b>没侵入红色人质区</b>时，按<b>空格</b>击发。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Wrong spread! 散布不对！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const W = 800, H = 500;
+  const CX = W/2, CY = H/2;
+  const TARGET_R = 58;          // 敌人（指挥官）圆半径：散布圈必须覆盖它
+  const HAZARD_IN = 68;         // 人质安全区内边界：散布圈不能超过它
+  const R_MIN = 30, R_MAX = 140;
+  const CENTER = (TARGET_R + HAZARD_IN) / 2;   // 63（合法区间中心）
+
+  // —— 速度随机游走参数（帧率无关，速度单位 px/s）——
+  const V_SLOW = 31;            // 慢速区速度上限（r 靠近合法区间时减速，停留够久但不过长）
+  const V_FAST = 66;            // 快速区速度上限（r 远离合法区间时快速扫过）
+  const V_FAST_MIN = 21;        // 快速区最小速度（防止随机游走让 r 长时间爬行，保证往返节奏）
+  const A_FAST = 30;            // 快速区速度扰动幅度（60fps 下每帧 v 变化 ±15 px/s，持续随机、不可预判）
+  const A_SLOW = 10;            // 慢速区速度扰动幅度（小：让 r 在合法区间内平稳穿过而非抖动，停留稳定）
+  const SLOW_ZONE = 5;          // 慢速区半径 |r-CENTER| < 5（即合法区间 [58,68]）
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const introEl = document.getElementById("intro");
+  const retryOverlay = document.getElementById("retryOverlay");
+  const nextBtn = document.getElementById("nextBtn");
+
+  const BENCH = { task:"shotgun_spread", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  let phase = "idle";        // idle(散布圈随机游走) | resolve(击发后果动画) | over(结算)
+  let r = 0;                 // 散布圈半径（持续随机游走）
+  let v = 0;                 // 半径变化速度（px/s，随机游走）
+  let resolveT0 = 0;         // 击发后果动画起始时间
+  let resolveResult = null;  // "hit" | "miss"
+  let lastT = performance.now();
+  let started = false;
+
+  window.__dbg = function(){ return { phase, r:+r.toFixed(2), v:+v.toFixed(2), inRange:(r>=TARGET_R && r<=HAZARD_IN), attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status }; };
+
+  function resetRound(){
+    phase = "idle";
+    r = 46 + Math.random()*11;     // 初始散布 [46,57]（敌人圆内部偏小，观察它长进合法区间）
+    v = (Math.random()-0.5)*20;    // 初始速度 [-10,10]（每次 retry 重新掷）
+    resolveT0 = 0; resolveResult = null;
+    setStatus("Watch the spread… 观察散布圈…","action");
+  }
+
+  function fire(){
+    if (phase !== "idle") return;
+    phase = "resolve";
+    resolveT0 = performance.now();
+    resolveResult = (r >= TARGET_R && r <= HAZARD_IN) ? "hit" : "miss";
+    if (resolveResult === "hit") {
+      setStatus("Perfect! 精准！","win");
+    } else if (r > HAZARD_IN) {
+      setStatus("Hostage hit! 误伤人质！","lose");
+    } else {
+      setStatus("Too tight! 散布太小！","lose");
+    }
+    syncURL();
+  }
+
+  function settle(){
+    // 后果动画播完后结算
+    if (resolveResult === "hit") {
+      BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+      syncURL(); celebrate();
+    } else {
+      BENCH.results.push("miss");
+      BENCH.attempts += 1; setHint(); syncURL();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; failOverlay.classList.add("show");
+        return;
+      }
+      document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+      document.getElementById("retrySub").textContent =
+        (resolveResult === "miss" && resolveR() > HAZARD_IN) ? "Hostage hit! 误伤了人质！" : "Too tight! 散布太小，没打中敌人！";
+      retryOverlay.classList.remove("hidden");
+    }
+  }
+
+  function resolveR(){ return r; }   // resolve 阶段 r 已凝固，用于文案判定
+
+  function update(dt){
+    if (phase !== "idle") return;
+    // 速度随机游走：v 每帧随机扰动（持续随机，无法从当前外推下一帧）
+    // 用 sqrt(dt*60) 归一化，保证随机游走的扩散速率帧率无关（60fps 时 = 1）
+    const inSlow = Math.abs(r - CENTER) < SLOW_ZONE;
+    v += (Math.random()-0.5) * (inSlow ? A_SLOW : A_FAST) * Math.sqrt(dt * 60);
+    // 慢速区：速度上限骤降 → 散布圈在合法区间附近减速、停留够久（人类可反应）
+    const lim = inSlow ? V_SLOW : V_FAST;
+    v = Math.max(-lim, Math.min(lim, v));
+    // 快速区最小速度：防止随机游走让 r 长时间爬行，保证往返节奏
+    if (!inSlow && Math.abs(v) < V_FAST_MIN) v = (v >= 0 ? 1 : -1) * V_FAST_MIN;
+    r += v * dt;
+    // 硬边界反弹（散布范围 [30,140]）
+    if (r < R_MIN) { r = R_MIN; v = Math.abs(v); }
+    if (r > R_MAX) { r = R_MAX; v = -Math.abs(v); }
+  }
+
+  // ---- 渲染 ----
+  function drawBack(){
+    // 夜间伏击天空
+    const g = ctx.createLinearGradient(0,0,0,CY-10);
+    g.addColorStop(0,"#0a1020"); g.addColorStop(0.55,"#16233f"); g.addColorStop(1,"#27395c");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,CY-10);
+    // 月亮 + 光晕
+    const mg = ctx.createRadialGradient(640,84,4,640,84,44);
+    mg.addColorStop(0,"#f4f8ff"); mg.addColorStop(0.35,"rgba(220,232,255,.55)"); mg.addColorStop(1,"rgba(220,232,255,0)");
+    ctx.fillStyle=mg; ctx.beginPath(); ctx.arc(640,84,44,0,7); ctx.fill();
+    ctx.fillStyle="#e8eefc"; ctx.beginPath(); ctx.arc(640,84,20,0,7); ctx.fill();
+    ctx.fillStyle="rgba(190,205,235,.5)"; ctx.beginPath(); ctx.arc(633,80,4,0,7); ctx.arc(646,89,3,0,7); ctx.arc(641,75,2.6,0,7); ctx.fill();
+    // 星星
+    ctx.fillStyle="rgba(220,230,255,.5)";
+    [[80,60],[180,110],[320,50],[470,90],[560,50],[720,140],[410,130]].forEach(p=>{ ctx.beginPath(); ctx.arc(p[0],p[1],1.5,0,7); ctx.fill(); });
+    // 地面
+    const gg = ctx.createLinearGradient(0,CY-10,0,H);
+    gg.addColorStop(0,"#2a3550"); gg.addColorStop(1,"#161c2e");
+    ctx.fillStyle=gg; ctx.fillRect(0,CY-10,W,H-CY+10);
+    // 地面纹理（柔和椭圆光斑，非硬边矩形）
+    ctx.fillStyle="rgba(70,86,120,.20)";
+    for (let i=0;i<14;i++){ ctx.beginPath(); ctx.ellipse((i*53+20)%W, CY+16+(i%3)*64, 26, 10, 0, 0, 7); ctx.fill(); }
+  }
+
+  function drawTarget(){
+    // 敌人（指挥官）环形靶：红白同心环
+    const rings = [
+      { r: TARGET_R, c: "#d8dce8" },
+      { r: 48, c: "#c93a32" },
+      { r: 38, c: "#d8dce8" },
+      { r: 27, c: "#c93a32" },
+      { r: 16, c: "#d8dce8" },
+    ];
+    for (const ring of rings) {
+      ctx.fillStyle = ring.c;
+      ctx.beginPath(); ctx.arc(CX, CY, ring.r, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = "#c93a32"; ctx.beginPath(); ctx.arc(CX, CY, 7, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(CX, CY, TARGET_R, 0, 7); ctx.stroke();
+  }
+
+  function drawHazard(){
+    // 人质安全区：红色危险环带（散布圈 r > 68 会侵入这里 = 误伤人质）
+    const grad = ctx.createRadialGradient(CX, CY, HAZARD_IN, CX, CY, HAZARD_IN + 30);
+    grad.addColorStop(0, "rgba(255,80,70,.55)");
+    grad.addColorStop(0.45, "rgba(255,80,70,.30)");
+    grad.addColorStop(1, "rgba(255,80,70,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(CX, CY, HAZARD_IN + 30, 0, 7); ctx.fill();
+    // 危险环边界（醒目红线）
+    ctx.strokeStyle = "rgba(255,95,85,.95)"; ctx.lineWidth = 4.5;
+    ctx.setLineDash([9,7]);
+    ctx.beginPath(); ctx.arc(CX, CY, HAZARD_IN, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+    // 人质剪影（4 个，环带内，更醒目）
+    ctx.fillStyle = "rgba(255,105,95,.8)";
+    const hh = HAZARD_IN + 15;
+    [[0,-1],[0,1],[-1,0],[1,0]].forEach(([dx,dy])=>{
+      const px = CX + dx*hh, py = CY + dy*hh;
+      ctx.beginPath(); ctx.arc(px, py-7, 5.5, 0, 7); ctx.fill();
+      ctx.fillRect(px-4, py-4, 8, 11);
+    });
+  }
+
+  function drawSpreadCircle(rr, inRange){
+    // 合法区间时加一层柔光环，增强「可击发」辨识度
+    if (inRange) {
+      const glow = ctx.createRadialGradient(CX, CY, rr-4, CX, CY, rr+6);
+      glow.addColorStop(0, "rgba(255,214,94,.28)");
+      glow.addColorStop(1, "rgba(255,214,94,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(CX, CY, rr+6, 0, 7); ctx.fill();
+    }
+    // 散布圈：虚线粒子圈（r 越大点数越多）
+    const n = Math.max(40, Math.round(rr * 0.7));
+    let col, dot;
+    if (inRange) { col = "#ffd75e"; dot = 3.4; }
+    else if (rr > HAZARD_IN) { col = "rgba(255,110,100,.95)"; dot = 2.6; }
+    else { col = "rgba(216,220,232,.6)"; dot = 2.6; }
+    for (let i = 0; i < n; i++) {
+      const ang = (i / n) * Math.PI * 2;
+      const px = CX + Math.cos(ang) * rr;
+      const py = CY + Math.sin(ang) * rr;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(px, py, dot, 0, 7); ctx.fill();
+    }
+  }
+
+  function drawCrosshair(){
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 3;
+    ctx.beginPath();
+    ctx.moveTo(CX-24,CY); ctx.lineTo(CX-7,CY); ctx.moveTo(CX+7,CY); ctx.lineTo(CX+24,CY);
+    ctx.moveTo(CX,CY-24); ctx.lineTo(CX,CY-7); ctx.moveTo(CX,CY+7); ctx.lineTo(CX,CY+24);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(CX, CY, 12, 0, 7); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#ff4d4d"; ctx.beginPath(); ctx.arc(CX, CY, 2.2, 0, 7); ctx.fill();
+  }
+
+  function render(){
+    const now = performance.now();
+    drawBack();
+    drawHazard();
+    drawTarget();
+    const inRange = r >= TARGET_R && r <= HAZARD_IN;
+    drawSpreadCircle(r, inRange);
+    drawCrosshair();
+
+    // 击发后的后果动画（开火闪光 + 命中/脱靶）
+    if (phase === "resolve" || phase === "over") {
+      const el = now - resolveT0;
+      // 开火闪光（前 0.18s 快速衰减）
+      if (el < 180) {
+        const a = 1 - el/180;
+        const fg = ctx.createRadialGradient(CX, CY, 6, CX, CY, R_MAX);
+        fg.addColorStop(0, `rgba(255,246,210,${0.85*a})`);
+        fg.addColorStop(0.35, `rgba(255,220,150,${0.4*a})`);
+        fg.addColorStop(1, "rgba(255,220,150,0)");
+        ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(CX, CY, R_MAX, 0, 7); ctx.fill();
+      }
+      if (resolveResult === "hit") {
+        // 命中：靶心爆开红点 + 扩散环
+        const t = Math.min(1, el/700);
+        const e = 1 - Math.pow(1-t, 2);
+        ctx.fillStyle = "#ff4d4d";
+        ctx.beginPath(); ctx.arc(CX, CY, 6 + e*14, 0, 7); ctx.fill();
+        ctx.strokeStyle = `rgba(52,211,153,${1-t})`; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(CX, CY, TARGET_R + e*24, 0, 7); ctx.stroke();
+        ctx.fillStyle = `rgba(255,255,255,${1-t})`;
+        ctx.font = "700 40px Arial"; ctx.textAlign = "center";
+        ctx.fillText("HIT 命中", W/2, 120);
+      } else {
+        // 脱靶/误伤：红屏淡入 + 文案
+        const t = Math.min(1, el/700);
+        const a = t * 0.32;
+        ctx.fillStyle = `rgba(255,60,60,${a})`; ctx.fillRect(0,0,W,H);
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(1,t*1.2)})`;
+        ctx.font = "700 40px Arial"; ctx.textAlign = "center";
+        const txt = r > HAZARD_IN ? "HOSTAGE HIT 误伤人质" : "TOO TIGHT 散布太小";
+        ctx.fillText(txt, W/2, 120);
+      }
+    }
+    if (phase === "idle" && inRange) {
+      ctx.fillStyle="#f6c453"; ctx.font="800 19px Arial"; ctx.textAlign="center";
+      ctx.fillText("FIRE! 击发！", CX, CY - R_MAX - 12);
+    }
+  }
+
+  function frame(now){
+    if (!started) { requestAnimationFrame(frame); return; }
+    const dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
+    if (dt > 0) {
+      update(dt);
+      if (phase === "resolve" && now - resolveT0 >= 700) { phase = "over"; settle(); }
+    }
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("keydown",(e)=>{
+    if (e.code !== "Space" || e.repeat) return;
+    e.preventDefault();
+    // phase 隔离：intro/retry 页空格触发按钮，游戏内空格才击发
+    if (!introEl.classList.contains("hidden")) { startGame(); return; }
+    if (!retryOverlay.classList.contains("hidden")) { nextRound(); return; }
+    fire();
+  });
+
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+  }
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  nextBtn.addEventListener("click", nextRound);
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

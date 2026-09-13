@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parkour Vault 跑酷翻越</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Run and jump over the obstacle 奔跑跳过障碍</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Space</span> Jump 跳跃</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Vaulted over 翻越成功</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Parkour Vault 跑酷翻越</div>
+      <div class="intro-rule">The runner sprints toward a low obstacle. Jump <b>Space</b> at the right moment to arc over it — jump too early and he lands before it, too late and he crashes into it.<br>跑者冲向低矮障碍，在<b>正确时机</b>按空格跳起、沿弧线越过障碍——跳太早落在障碍前、太晚撞上障碍。<br><br>Press Space to jump 按空格跳跃</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Jump Space at the right moment 在正确时机按空格跳</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+
+  /* ================================================================
+   * 跑酷翻越物理（复用二段跳 C1 的主角 + 跳跃物理）
+   *   跑者以 VMOVE 速度向右奔跑接近障碍（自动奔跑），玩家按空格跳跃：
+   *     跳跃：vy = -VJUMP（向上），重力 G 下落，形成抛物线弧线。
+   *   物理参数继承 C1：G=1800、VJUMP=620、VMOVE=300。
+   *   跳跃最高点上升 ≈107px（障碍高 70px，能越过），空中 0.689s、水平 207px。
+   *   判定（碰撞 + 落地）：
+   *     跳跃弧线越过障碍（不撞 + 落地在障碍后）→ 成功；
+   *     跳太早（落地在障碍前）/ 太晚（撞上障碍）→ 失败。
+   *   时机藏在「奔跑接近 + 跳跃弧线」中 → c 类。
+   * ================================================================ */
+  const G = 1800, VJUMP = 620, VMOVE = 300;   // 继承 C1 跳跃物理
+  const START_X = 80;
+  const OBS_X = 480, OBS_W = 20, OBS_H = 70;  // 障碍 x/宽/高
+  const GROUND_Y = 340;
+  const SIZE = 34;                             // 跑者尺寸（继承 C1）
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"parkour_vault", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "run";     // run(奔跑接近) | air(跳跃空中) | over
+  let x = START_X, y = GROUND_Y, vx = VMOVE, vy = 0;
+  let onGround = true;
+  let prevY = GROUND_Y;
+  let squash = 1;
+  let settleT = 0;
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status); }catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, x:Math.round(x), y:Math.round(y), vy:+vy.toFixed(0), onGround,
+             obsX:OBS_X, attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "run"; x = START_X; y = GROUND_Y; vx = VMOVE; vy = 0;
+    onGround = true; prevY = GROUND_Y; squash = 1; settleT = 0;
+    setStatus("Run and jump over the obstacle 奔跑跳过障碍","");
+  }
+
+  function jump(){
+    if (phase !== "run") return;
+    if (!onGround) return;   // 只有落地了才能再跳（允许跳多次，但空中不能二段跳）
+    // 起跳（继承 C1 跳跃：vy = -VJUMP）
+    vy = -VJUMP; onGround = false; squash = 1.30;
+    phase = "air";
+    setStatus("Jump! 跳！","action");
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Vaulted over! 翻越成功！","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Failed 失败","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Failed 失败","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt){
+    if (phase === "over") return;
+
+    if (phase === "run") {
+      // 自动向右奔跑接近障碍
+      x += vx * dt;
+      // 撞上障碍（跑者身体碰到障碍前，没跳）→ 撞墙失败
+      if (x + SIZE/2 >= OBS_X - OBS_W/2) {
+        x = OBS_X - OBS_W/2 - SIZE/2;
+        phase = "over";
+        BENCH.results.push(false); BENCH.attempts += 1; setHint();
+        if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+          BENCH.status = "failed"; setStatus("Crashed 撞墙了","lose"); syncURL(); failOverlay.classList.add("show"); return;
+        }
+        setStatus("Crashed 撞墙了","lose");
+        setTimeout(()=>{ retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; retryOverlay.classList.remove("hidden"); }, 700);
+      }
+    } else if (phase === "air") {
+      // 空中：跳跃抛物线（重力 + 水平匀速）
+      prevY = y;
+      vy += G * dt;
+      x += vx * dt;
+      y += vy * dt;
+      squash += (1 - squash) * 12 * dt;
+      // 撞障碍（空中撞上障碍侧面/顶）
+      if (x + SIZE/2 > OBS_X - OBS_W/2 && x - SIZE/2 < OBS_X + OBS_W/2 && y > GROUND_Y - OBS_H && prevY >= GROUND_Y - OBS_H) {
+        // 撞上障碍（侧面或顶）
+        phase = "over"; settleT = 0;
+        BENCH.results.push(false); BENCH.attempts += 1; setHint();
+        if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+          BENCH.status = "failed"; setStatus("Crashed 撞墙了","lose"); syncURL(); failOverlay.classList.add("show"); return;
+        }
+        setStatus("Crashed 撞墙了","lose");
+        setTimeout(()=>{ retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; retryOverlay.classList.remove("hidden"); }, 700);
+        return;
+      }
+      // 落地
+      if (y >= GROUND_Y && vy >= 0 && prevY < GROUND_Y) {
+        y = GROUND_Y; vy = 0; onGround = true; squash = 0.74;
+        // 纯碰撞判定：落地在障碍后 → 成功（已越过）；落地在障碍前 → 继续跑（不判死）
+        if (x - SIZE/2 > OBS_X + OBS_W/2) {
+          phase = "over"; settleT = 0;
+          BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+          setStatus("Vaulted over! 翻越成功！","win"); syncURL(); celebrate();
+        } else {
+          // 跳太早落障碍前：不判死，回到 run 继续跑，最终撞上障碍才失败
+          phase = "run";
+          setStatus("Run and jump over the obstacle 奔跑跳过障碍","");
+        }
+      }
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#2b3a5c"); g.addColorStop(.5,"#4a6a94"); g.addColorStop(1,"#7a9ac0");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+  }
+  function drawRoof(){
+    ctx.fillStyle="#40506a"; ctx.fillRect(0, GROUND_Y, 800, 120);
+    ctx.fillStyle="#54647e"; ctx.fillRect(0, GROUND_Y, 800, 8);
+    ctx.fillStyle="rgba(30,40,58,.6)";
+    ctx.fillRect(60,240,80,100); ctx.fillRect(600,200,90,140); ctx.fillRect(720,260,70,80);
+    ctx.strokeStyle="rgba(255,255,255,.15)"; ctx.lineWidth=1;
+    for(let xx=0;xx<800;xx+=80){ ctx.beginPath(); ctx.moveTo(xx,GROUND_Y); ctx.lineTo(xx,460); ctx.stroke(); }
+  }
+  function drawObstacle(){
+    const ox = OBS_X, oy = GROUND_Y;
+    ctx.fillStyle="#8a6a4a"; ctx.fillRect(ox-OBS_W/2, oy-OBS_H, OBS_W, OBS_H);
+    ctx.fillStyle="#a07a55"; ctx.fillRect(ox-OBS_W/2, oy-OBS_H, OBS_W, 10);
+    ctx.fillStyle="#c9a86a"; ctx.fillRect(ox-OBS_W/2-2, oy-OBS_H-2, OBS_W+4, 6);
+  }
+  // 跑者（复用 C1 二段跳主角素材：青蓝渐变方块小人）
+  function drawRunner(){
+    const py = y - SIZE * squash;
+    ctx.save();
+    ctx.translate(x, py + SIZE * squash);
+    ctx.scale(1, squash);
+    const grd = ctx.createLinearGradient(0,-SIZE,0,0);
+    grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+    ctx.fillStyle=grd; ctx.beginPath(); rr(-SIZE/2,-SIZE,SIZE,SIZE,9); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.25)"; ctx.beginPath(); rr(-SIZE/2+3,-SIZE+4,SIZE-6,SIZE/2-5,6); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(SIZE/2-9,-SIZE+14,5.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-22,-SIZE+14,5.5,0,7); ctx.fill();
+    ctx.fillStyle="#123039"; ctx.beginPath(); ctx.arc(SIZE/2-7,-SIZE+14,2.6,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-20,-SIZE+14,2.6,0,7); ctx.fill();
+    ctx.strokeStyle="#123039"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(SIZE/2-16,-SIZE+24,5,.1,Math.PI-.1); ctx.stroke();
+    ctx.restore();
+  }
+
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function render(){
+    drawSky();
+    drawRoof();
+    drawObstacle();
+    drawRunner();
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 空格跳跃 + 空格触发 Start/Next（phase 隔离：intro/retry 页空格触发按钮，游戏内空格=跳跃）
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const isSpace = k===" "||c==="Space"||kc===32;
+    if (isSpace) {
+      e.preventDefault();
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+      else jump();   // 进入游戏后空格 = 跳跃
+    }
+  });
+  cv.addEventListener("mousedown", ()=>jump());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

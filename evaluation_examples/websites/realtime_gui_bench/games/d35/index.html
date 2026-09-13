@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shadow Circle Escape 幽影包围圈逃离</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:22px; font-weight:700; min-height:30px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:12px; color:#7d86ab; }
+  .key { display:inline-block; min-width:24px; height:24px; line-height:24px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 5px; }
+  .toast { position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay { position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+  .intro-rule b { color:var(--title); }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .retryOverlay.hidden { display:none; }
+  .retry-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn { margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Escape through the gap! 从缺口逃出去！</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="keys">
+    <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> 移动 · 从幽影缺口逃出包围圈
+  </div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Escaped! 逃出生天！</div>
+      <div class="celeb-sub">You slipped through the gap 你穿过了缺口</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Caught by a shadow 被幽影抓住了</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Shadow Circle Escape 幽影包围圈逃离</div>
+      <div class="intro-rule">You are <b>surrounded</b> by drifting <b>shadows</b> that circle around you, leaving a <b>gap</b> that shifts randomly. Wait for the gap, then <b>WASD</b> through it before it closes! Touching a shadow ends you.<br>你被一群<b>幽影</b>包围，它们绕着你<b>随机飘移</b>，中间留有一个<b>不断移动的缺口</b>。趁缺口出现，用 <b>WASD</b> 穿过去逃出包围圈！碰到幽影就完了。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Caught by a shadow! 被幽影抓住了！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const CX = 400, CY = 250;               // 圆心（主人公初始位置）
+  const RING_R = 175;                      // 包围圈半径
+  const GHOST_COUNT = 9;                    // 幽影数量（加到 9 个，包围圈更密、缺口更小）
+  const GAP_MIN = 0.50;                     // 可逃缺口的最小角度（弧度，约 28.6°）——太窄穿不过
+  const HERO_SPEED = 170;                   // 主人公 WASD 移动速度 px/s
+  const HERO_SIZE = 30;                     // 主角小人尺寸
+  const GHOST_DRIFT_MIN = 0.6, GHOST_DRIFT_MAX = 1.4;  // 幽影随机漂移角速度（加快，缺口变化更快）
+
+  const BENCH = { task:"shadow_circle_escape", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "run";          // run(游走中) | escape(成功) | caught(被抓失败)
+  let heroX = CX, heroY = CY; // 主人公位置（初始圆心）
+  let ghosts = [];            // 幽影：{angle, w} 角度 + 漂移角速度
+  let keys = { up:false, down:false, left:false, right:false };
+  let autoDir = null;         // test 自动移动方向角（null = 用手动 WASD）
+  let settleLock = false;
+  let lastTime = 0;
+  let escapeAt = 0, caughtAt = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  function norm(a){ return ((a % (Math.PI*2)) + Math.PI*2) % (Math.PI*2); }
+
+  // 计算当前「最大缺口」（相邻幽影间角度差最大的一段）
+  function computeGap(){
+    const sorted = ghosts.map(g=>g.angle).slice().sort((a,b)=>a-b);
+    let best = 0, bestStart = 0, bestEnd = 0;
+    for (let i=0;i<sorted.length;i++){
+      const a = sorted[i];
+      const b = sorted[(i+1)%sorted.length] + (i===sorted.length-1 ? Math.PI*2 : 0);
+      const gap = b - a;
+      if (gap > best){ best = gap; bestStart = a; bestEnd = b; }
+    }
+    const center = norm((bestStart + bestEnd)/2);
+    return { start: norm(bestStart), end: norm(bestEnd), center, half: best/2, size: best };
+  }
+
+  window.__dbg = function(){
+    const g = computeGap();
+    const heroAng = Math.atan2(heroY - CY, heroX - CX);
+    const heroR = Math.hypot(heroX - CX, heroY - CY);
+    return {
+      phase, heroX:Math.round(heroX), heroY:Math.round(heroY), heroR:Math.round(heroR), heroAng:+heroAng.toFixed(3),
+      gapStart:+g.start.toFixed(3), gapEnd:+g.end.toFixed(3), gapCenter:+g.center.toFixed(3), gapSize:+g.size.toFixed(3),
+      ghosts: ghosts.map(x=>+x.angle.toFixed(3)),
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status
+    };
+  };
+
+  function resetRound(){
+    phase = "run";
+    heroX = CX; heroY = CY;
+    ghosts = [];
+    for (let i=0;i<GHOST_COUNT;i++){
+      const w = (Math.random()<0.5?-1:1) * (GHOST_DRIFT_MIN + Math.random()*(GHOST_DRIFT_MAX-GHOST_DRIFT_MIN));
+      ghosts.push({ angle: i*(Math.PI*2/GHOST_COUNT), w });
+    }
+    settleLock = false;
+    setStatus("Escape through the gap! 从缺口逃出去！","action");
+  }
+
+  function succeedEscape(){
+    if (settleLock) return;
+    settleLock = true;
+    phase = "escape";
+    escapeAt = performance.now();
+    BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Escaped! 逃出生天！","win"); syncURL(); celebrate();
+  }
+  function failCaught(){
+    if (settleLock) return;
+    settleLock = true;
+    phase = "caught";
+    caughtAt = performance.now();
+    setStatus("Caught by a shadow! 被幽影抓住了！","lose"); syncURL();
+    setTimeout(()=>{
+      BENCH.results.push("miss");
+      BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+      } else {
+        document.getElementById("retrySub").textContent = "Caught by a shadow! 被幽影抓住了！";
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }
+    }, 900);
+  }
+
+  function update(now){
+    if (phase !== "run") return;
+    if (!lastTime) lastTime = now;
+    const dt = Math.min((now - lastTime)/1000, 0.033);
+    lastTime = now;
+
+    // 幽影随机漂移（随机游走）
+    for (const g of ghosts){
+      g.angle += g.w * dt;
+      g.w += (Math.random()-0.5) * 0.5;
+      g.w = Math.max(-GHOST_DRIFT_MAX, Math.min(GHOST_DRIFT_MAX, g.w));
+      if (Math.abs(g.w) < 0.5) g.w = (Math.random()<0.5?-1:1) * 0.6;
+      g.angle = norm(g.angle);
+    }
+
+    // 主人公移动：优先 test 自动方向（__setAngle），否则 WASD
+    let dx = 0, dy = 0;
+    if (autoDir !== null){
+      dx = Math.cos(autoDir);
+      dy = Math.sin(autoDir);
+    } else {
+      if (keys.left) dx -= 1;
+      if (keys.right) dx += 1;
+      if (keys.up) dy -= 1;
+      if (keys.down) dy += 1;
+    }
+    if (dx || dy){
+      const len = Math.hypot(dx, dy);
+      heroX += (dx/len)*HERO_SPEED*dt;
+      heroY += (dy/len)*HERO_SPEED*dt;
+    }
+    // 主人公限制在画面内
+    heroX = Math.max(20, Math.min(CW-20, heroX));
+    heroY = Math.max(20, Math.min(CH-20, heroY));
+
+    // 越出包围圈（圆环外）→ 判定
+    const heroR = Math.hypot(heroX - CX, heroY - CY);
+    if (heroR >= RING_R){
+      const heroAng = Math.atan2(heroY - CY, heroX - CX);
+      const g = computeGap();
+      let d = Math.abs(norm(heroAng - g.center));
+      if (d > Math.PI) d = Math.PI*2 - d;
+      if (d < g.half && g.size >= GAP_MIN){
+        succeedEscape();
+      } else {
+        failCaught();
+      }
+    }
+  }
+
+  // ============ 渲染 ============
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function drawBg(){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#0a1224"); g.addColorStop(.55,"#122238"); g.addColorStop(1,"#0c1a24");
+    ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+    ctx.fillStyle="rgba(6,10,18,.55)";
+    ctx.beginPath(); ctx.arc(CX,CY,RING_R+40,0,7); ctx.fill();
+    ctx.fillStyle="rgba(140,220,255,.2)";
+    [[60,80],[700,90],[520,70],[140,50]].forEach(p=>{ ctx.beginPath(); ctx.arc(p[0],p[1],1.6,0,7); ctx.fill(); });
+    // 包围圈虚线环
+    ctx.strokeStyle="rgba(160,140,220,.18)"; ctx.lineWidth=2; ctx.setLineDash([5,6]);
+    ctx.beginPath(); ctx.arc(CX,CY,RING_R,0,7); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  function drawGhost(cx, cy, seed, t){
+    const pulse = 1 + Math.sin(seed + t/120)*0.12;
+    const r = 16 * pulse;
+    const bob = Math.sin(seed + t/400)*3;
+    const gy = cy + bob - 6;
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "#a07ce0";
+    ctx.beginPath(); ctx.arc(cx, gy, r*2.2, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.30;
+    ctx.fillStyle = "#b8a0f0";
+    ctx.beginPath(); ctx.arc(cx, gy, r*1.4, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = "#c4b8f0";
+    ctx.beginPath();
+    ctx.arc(cx, gy-r*0.25, r, Math.PI, 0);
+    const wl = gy + r*0.75;
+    ctx.lineTo(cx+r, wl);
+    ctx.quadraticCurveTo(cx+r*0.7, wl-r*0.5, cx+r*0.35, wl);
+    ctx.quadraticCurveTo(cx, wl-r*0.5, cx-r*0.35, wl);
+    ctx.quadraticCurveTo(cx-r*0.7, wl-r*0.5, cx-r, wl);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(30,18,60,.9)";
+    ctx.beginPath(); ctx.arc(cx-r*0.32, gy-r*0.2, r*0.18, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+r*0.32, gy-r*0.2, r*0.18, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(30,18,60,.85)";
+    ctx.beginPath(); ctx.ellipse(cx, gy+r*0.3, r*0.16, r*0.22, 0, 0, 7); ctx.fill();
+  }
+
+  function drawGhosts(){
+    for (let i=0;i<ghosts.length;i++){
+      const a = ghosts[i].angle;
+      const gx = CX + Math.cos(a)*RING_R;
+      const gy = CY + Math.sin(a)*RING_R;
+      drawGhost(gx, gy, i*1.7, performance.now());
+    }
+  }
+
+  function drawGapHint(){
+    if (phase !== "run") return;
+    const g = computeGap();
+    if (g.size >= GAP_MIN){
+      const a = 0.4 + 0.4*Math.sin(performance.now()/60);
+      ctx.strokeStyle=`rgba(52,211,153,${a})`; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(CX, CY, RING_R, g.start, g.end); ctx.stroke();
+    }
+  }
+
+  function drawHero(){
+    const S = HERO_SIZE;
+    ctx.save();
+    ctx.translate(heroX, heroY);
+    const grd = ctx.createLinearGradient(0,-S,0,0); grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+    ctx.fillStyle = grd; rr(-S/2,-S,S,S,7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.25)"; rr(-S/2+3,-S+4,S-6,S/2-5,5); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(S/2-8,-S+13,5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(S/2-20,-S+13,5,0,7); ctx.fill();
+    ctx.fillStyle="#123039"; ctx.beginPath(); ctx.arc(S/2-6,-S+13,2.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(S/2-18,-S+13,2.5,0,7); ctx.fill();
+    ctx.strokeStyle="#123039"; ctx.lineWidth=1.8; ctx.beginPath(); ctx.arc(S/2-14,-S+22,4.5,.1,Math.PI-.1); ctx.stroke();
+    ctx.restore();
+  }
+
+  function render(){
+    const now = performance.now();
+    drawBg();
+    drawGapHint();
+    drawGhosts();
+    if (phase !== "caught") drawHero();
+    if (phase === "escape"){
+      const a = Math.max(0, 1-(now-escapeAt)/500);
+      ctx.strokeStyle="rgba(52,211,153,"+a+")"; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(heroX, heroY, 40+a*20, 0, 7); ctx.stroke();
+    }
+    if (phase === "caught"){
+      const a = Math.max(0, 1-(now-caughtAt)/900);
+      ctx.fillStyle="rgba(255,60,60,"+(a*0.3)+")"; ctx.fillRect(0,0,CW,CH);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 44px Arial"; ctx.textAlign="center";
+      ctx.fillText("CAUGHT 被抓住了", CW/2, 120);
+    }
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  // ============ 输入 ============
+  window.addEventListener("keydown",(e)=>{
+    const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
+    const up    = k==="w"||k==="arrowup"||c==="KeyW"||c==="ArrowUp"||kc===87||kc===38;
+    const down  = k==="s"||k==="arrowdown"||c==="KeyS"||c==="ArrowDown"||kc===83||kc===40;
+    const left  = k==="a"||k==="arrowleft"||c==="KeyA"||c==="ArrowLeft"||kc===65||kc===37;
+    const right = k==="d"||k==="arrowright"||c==="KeyD"||c==="ArrowRight"||kc===68||kc===39;
+    if (kc === 32 || up || down || left || right) e.preventDefault();
+    if (up) keys.up = true;
+    if (down) keys.down = true;
+    if (left) keys.left = true;
+    if (right) keys.right = true;
+    if (e.code === "Space" && !e.repeat){
+      if (!introEl.classList.contains("hidden")) { startGame(); return; }
+      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    }
+  });
+  window.addEventListener("keyup",(e)=>{
+    const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
+    if (k==="w"||k==="arrowup"||c==="KeyW"||c==="ArrowUp"||kc===87||kc===38) keys.up = false;
+    if (k==="s"||k==="arrowdown"||c==="KeyS"||c==="ArrowDown"||kc===83||kc===40) keys.down = false;
+    if (k==="a"||k==="arrowleft"||c==="KeyA"||c==="ArrowLeft"||kc===65||kc===37) keys.left = false;
+    if (k==="d"||k==="arrowright"||c==="KeyD"||c==="ArrowRight"||kc===68||kc===39) keys.right = false;
+  });
+
+  // 测试/checker 接口：设置主人公自动移动方向角（连续角度，朝缺口精确移动）
+  window.__setAngle = function(a){ autoDir = a; };
+  window.__clearAuto = function(){ autoDir = null; };
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

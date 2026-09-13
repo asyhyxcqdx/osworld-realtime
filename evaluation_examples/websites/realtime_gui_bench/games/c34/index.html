@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Combat Roll 翻滚卸力</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:600px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">He's sent flying 他被击飞了</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">R</span> Roll to recover 翻滚卸力</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Rolled out and stood up 翻滚卸力站起</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Combat Roll 翻滚卸力</div>
+      <div class="intro-rule">You are knocked flying across the ring. Press <b>R</b> <b>just before landing</b> to roll and shed the impact, then stand up.<br>你在擂台上被击飞，在<b>快落地时</b>按 R 翻滚卸力，卸掉冲击站起。<br><br>Press R just before landing 快落地时按 R</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Press R just before landing 在快落地时按 R 翻滚</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+
+  /* ================================================================
+   * 击飞抛物线物理（硬编码可复现，非随机——随机为 d 类）
+   *   主角在擂台上被击飞，做抛体运动：
+   *     x(t) = X0 + VX·t
+   *     y(t) = GROUND_Y + VY0·t + ½·G·t²      （VY0 < 0 向上击飞）
+   *   落地时刻（y 回到地面）：
+   *     VY0·t + ½·G·t² = 0  →  t = 0 或 t = -2·VY0/G  = T_LAND
+   *   翻滚窗口：落地时刻 T_LAND 前后 ±WINDOW_MS，按 R 命中窗口才翻滚卸力成功。
+   *   （Python 定稿：T_LAND=0.886s，落点 x=498，最高点离地 137px）
+   * ================================================================ */
+  const G = 1400;      // 重力
+  const VX = 280;      // 击飞水平速度（向右）
+  const VY0 = -620;    // 击飞垂直初速度（向上）
+  const X0 = 250;      // 击飞点 x
+  const GROUND_Y = 340; // 擂台地面 y
+  const T_LAND = -2 * VY0 / G;  // 落地时刻 0.886s
+  const WINDOW_MS = 130;         // 翻滚卸力窗口 ±130ms
+  const SIZE = 34;     // 主角尺寸
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"combat_roll", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "launched"; // launched(击飞飞行) | recover(翻滚卸力成功) | fall(倒地硬直) | over
+  let t = 0;              // 击飞后经过的时间（秒）
+  let px = X0, py = GROUND_Y;     // 主角位置
+  let pressedAt = null;  // 按 R 的时刻（秒），null=未按
+  let recoverT = 0;      // 翻滚/倒地动画计时
+  let settleT = 0;       // 结算延迟计时
+  let finalPose = null;  // 结算后的最终姿势："stand"(成功站直) | "lie"(失败横躺)，用于 over 阶段保持姿势不瞬移
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status); }catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, t:+t.toFixed(3), x:Math.round(px), y:Math.round(py),
+             tLand:+T_LAND.toFixed(3), windowMs:WINDOW_MS, pressedAt:(pressedAt===null?null:+pressedAt.toFixed(3)),
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "launched"; t = 0; px = X0; py = GROUND_Y; pressedAt = null; recoverT = 0; settleT = 0; finalPose = null;
+    setStatus("He's sent flying 他被击飞了","");
+  }
+
+  // 按 R 翻滚卸力：记录按下的时刻（只在飞行中有效）
+  function pressRecover(){
+    if (phase !== "launched") return;
+    if (pressedAt === null) pressedAt = t;  // 只记录第一次按 R
+    setStatus("Roll! 翻滚！","action");
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    finalPose = "stand";   // 成功站直（站在滚动终点，位置已在 recover 阶段推进）
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Success 成功","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    finalPose = "lie";     // 失败保持横躺（不站起，避免形态瞬移）
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Hard knockdown 倒地硬直","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Hard knockdown 倒地硬直","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt){
+    if (phase === "over") return;
+
+    if (phase === "launched") {
+      t += dt;
+      px = X0 + VX * t;
+      py = GROUND_Y + VY0 * t + 0.5 * G * t * t;
+      // 落地（py 回到地面）
+      if (t >= T_LAND) {
+        py = GROUND_Y;
+        // 判定翻滚卸力：按 R 时刻距落地时刻 ≤ WINDOW_MS
+        if (pressedAt !== null && Math.abs(pressedAt * 1000 - T_LAND * 1000) <= WINDOW_MS) {
+          phase = "recover"; recoverT = 0;
+          setStatus("Rolled! 翻滚卸力成功！","action");
+        } else {
+          phase = "fall"; recoverT = 0;
+          setStatus("Knocked down 倒下了","lose");
+        }
+      }
+    } else if (phase === "recover") {
+      // 翻滚卸力成功：前滚翻动画（结算延迟，让玩家看到动作后果）
+      // 滚动时同步推进 px（团身滚动位置写回主角位置，避免结算后主角突兀瞬移回落点）
+      recoverT += dt;
+      const r = Math.min(1, recoverT / 0.5);
+      px = X0 + VX * T_LAND + r * 70;   // 落点(498) → 滚动终点(568)
+      if (recoverT >= 0.5) { win(); }
+    } else if (phase === "fall") {
+      // 倒地硬直动画（结算延迟）
+      recoverT += dt;
+      if (recoverT >= 0.45) { fail(); }
+    }
+  }
+
+  // ---- 渲染 ----
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#1a1026"); g.addColorStop(.5,"#2a1a3a"); g.addColorStop(1,"#3a2440");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+  }
+  // 擂台（格斗场）
+  function drawRing(){
+    // 围绳
+    ctx.strokeStyle="#c99b4a"; ctx.lineWidth=4;
+    ctx.strokeRect(40, 90, 720, 250);
+    ctx.strokeStyle="rgba(201,155,74,.5)"; ctx.lineWidth=2;
+    ctx.strokeRect(48, 130, 704, 210);
+    // 擂台地面（垫子）
+    ctx.fillStyle="#b0603a"; ctx.fillRect(40, GROUND_Y, 720, 8);
+    ctx.fillStyle="#8a4428"; ctx.fillRect(40, GROUND_Y+8, 720, 4);
+    // 地面纹理
+    const s=ctx.createLinearGradient(0,GROUND_Y+12,0,460);
+    s.addColorStop(0,"#5c3a2a"); s.addColorStop(1,"#332017");
+    ctx.fillStyle=s; ctx.fillRect(40,GROUND_Y+12,720,460-GROUND_Y-12);
+    // 地面格线
+    ctx.strokeStyle="rgba(255,255,255,.14)"; ctx.lineWidth=1;
+    for(let xx=60;xx<760;xx+=60){ ctx.beginPath(); ctx.moveTo(xx,GROUND_Y+12); ctx.lineTo(xx,460); ctx.stroke(); }
+  }
+  // 观众席（远处剪影）
+  function drawCrowd(){
+    ctx.fillStyle="rgba(20,14,30,.7)";
+    for(let i=0;i<16;i++){
+      const cx=50+i*48;
+      ctx.beginPath(); ctx.arc(cx, 58, 12, Math.PI, 0); ctx.fill();
+    }
+  }
+  // 主角（canvas 简约卡通格斗角色：被击飞 / 翻滚卸力 / 倒地）
+  function drawHero(){
+    const S = SIZE;
+    let cx = px, cy = py - S/2;
+    ctx.save();
+
+    // 翻滚卸力成功：团身贴地前滚（圆形身体与地面相切，永不穿模；px 已在 update 中同步推进）
+    if (phase === "recover") {
+      const r = Math.min(1, recoverT / 0.5);
+      const spin = r * Math.PI * 2;              // 团身旋转（体现滚动）
+      const circleX = px;                        // px 已推进到滚动位置
+      const circleY = GROUND_Y - S/2;            // 圆心贴着地面上方（圆与地面相切）
+      // 团身圆身体
+      const bg = ctx.createLinearGradient(0,circleY-S/2,0,circleY+S/2);
+      bg.addColorStop(0,"#f0b860"); bg.addColorStop(1,"#d08a34");
+      ctx.fillStyle="#3a2410";
+      ctx.beginPath(); ctx.arc(circleX, circleY, S/2+2, 0, 7); ctx.fill();  // 轮廓
+      ctx.fillStyle=bg;
+      ctx.beginPath(); ctx.arc(circleX, circleY, S/2, 0, 7); ctx.fill();   // 团身
+      // 团身上旋转的标记（头带 + 眼睛，随 spin 转，体现「在滚」）
+      ctx.save();
+      ctx.translate(circleX, circleY);
+      ctx.rotate(spin);
+      ctx.fillStyle="#d03a2a";
+      ctx.fillRect(-S/2, -3, S, 6);   // 头带
+      ctx.fillStyle="#fff";
+      ctx.beginPath(); ctx.arc(S/2-12, -2, 4, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(S/2-18, -2, 4, 0, 7); ctx.fill();
+      ctx.fillStyle="#2a1808";
+      ctx.beginPath(); ctx.arc(S/2-11, -2, 1.8, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(S/2-17, -2, 1.8, 0, 7); ctx.fill();
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
+
+    // 倒地硬直：横躺贴地（身体下缘精确贴在地面线上，永不穿模；over 阶段失败也保持横躺）
+    if (phase === "fall" || finalPose === "lie") {
+      const r = Math.min(1, recoverT / 0.35);
+      const lieY = GROUND_Y;                       // 身体下缘 = 地面线
+      const w = S, h = S/2;                        // 横躺身体：宽 S、高 S/2（躺平厚度）
+      const bx = px, by = lieY - h/2;              // 身体中心：下缘贴地面
+      const bg = ctx.createLinearGradient(0,by-h/2,0,by+h/2);
+      bg.addColorStop(0,"#f0b860"); bg.addColorStop(1,"#d08a34");
+      ctx.fillStyle="#3a2410"; rr(bx-w/2-2, by-h/2-2, w+4, h+4, 9); ctx.fill();   // 轮廓（横躺）
+      ctx.fillStyle=bg; rr(bx-w/2, by-h/2, w, h, 9); ctx.fill();                 // 横躺身体
+      ctx.fillStyle="rgba(255,255,255,.22)"; rr(bx-w/2+3, by-h/2+3, w-6, h/2-3, 5); ctx.fill();
+      // 侧脸（头带 + 眼睛，朝右躺）
+      ctx.fillStyle="#d03a2a"; ctx.fillRect(bx+w/2-8, by-h/2, 8, h);   // 头带在头部（右端）
+      ctx.fillStyle="#fff";
+      ctx.beginPath(); ctx.arc(bx+w/2-4, by-h/2+5, 3, 0, 7); ctx.fill();   // 眼睛
+      ctx.fillStyle="#2a1808";
+      ctx.beginPath(); ctx.arc(bx+w/2-3, by-h/2+5, 1.5, 0, 7); ctx.fill();
+      // 眩晕标记（倒地硬直）
+      ctx.strokeStyle="rgba(246,196,83,.9)"; ctx.lineWidth=2;
+      for (let i=0;i<3;i++){
+        const sx = bx - w/2 - 6 - i*5, sy = by - h/2 - 4 - (i%2)*4;
+        ctx.beginPath(); ctx.arc(sx, sy, 2.5, Math.PI, 2*Math.PI); ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
+
+    let squat = 1, tilt = 0;
+    if (phase === "launched" && t > T_LAND * 0.3) {
+      // 飞行后半段：身体稍后仰
+      tilt = 0.15;
+    }
+    ctx.translate(cx, cy + S/2);
+    ctx.rotate(tilt);
+    ctx.scale(1, squat);
+    ctx.translate(0, -S/2);
+    // 身体
+    const bg = ctx.createLinearGradient(0,-S/2,0,S/2);
+    bg.addColorStop(0,"#f0b860"); bg.addColorStop(1,"#d08a34");
+    ctx.fillStyle="#3a2410"; rr(-S/2-2, -S/2-2, S+4, S+4, 10); ctx.fill();
+    ctx.fillStyle=bg; rr(-S/2, -S/2, S, S, 9); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.22)"; rr(-S/2+3, -S/2+4, S-6, S/2-5, 6); ctx.fill();
+    // 头带（格斗者）
+    ctx.fillStyle="#d03a2a"; ctx.fillRect(-S/2, -S/2-3, S, 6);
+    // 眼睛（受击表情）
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(S/2-9, -6, 5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(S/2-21, -6, 5, 0, 7); ctx.fill();
+    ctx.fillStyle="#2a1808";
+    ctx.beginPath(); ctx.arc(S/2-8, -6, 2.4, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(S/2-20, -6, 2.4, 0, 7); ctx.fill();
+    // 嘴（受击张口）
+    ctx.fillStyle="#7a2010";
+    ctx.beginPath(); ctx.arc(S/2-16, +3, 4, 0, Math.PI); ctx.fill();
+    ctx.restore();
+  }
+  // 击飞拖尾
+  const trail = [];
+  function spawnTrail(){ if (phase==="launched") trail.push({x:px,y:py-SIZE/2,t:0}); }
+  function drawTrail(){
+    for (let i=trail.length-1;i>=0;i--){
+      const tr=trail[i]; tr.t+=16;
+      if(tr.t>200){trail.splice(i,1);continue;}
+      const a=Math.max(0,1-tr.t/200)*.22;
+      ctx.fillStyle=`rgba(240,184,96,${a})`;
+      rr(tr.x-SIZE/2, tr.y-SIZE/2, SIZE, SIZE, 9); ctx.fill();
+    }
+  }
+
+  function render(){
+    drawSky();
+    drawCrowd();
+    drawRing();
+    drawTrail();
+    drawHero();
+    if (phase === "launched") spawnTrail();
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 翻滚键 R + 空格触发 Start/Next（phase 隔离）
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const isSpace = k===" "||c==="Space"||kc===32;
+    const isR = k==="r"||c==="KeyR"||kc===82;
+    if (isR) { e.preventDefault(); pressRecover(); }
+    if (isSpace) {
+      e.preventDefault();
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+    }
+  });
+  cv.addEventListener("mousedown", ()=>pressRecover());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

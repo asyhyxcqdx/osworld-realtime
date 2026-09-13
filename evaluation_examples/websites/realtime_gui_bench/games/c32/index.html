@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Batter Up 挥棒击球</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:600px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Swing at the pitch 挥棒击球</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Space</span> Swing 挥棒</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Home run! 击中了！</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Strike out 三振出局</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Batter Up 挥棒击球</div>
+      <div class="intro-rule">On the ball diamond, a fast ball is pitched your way.<br>Swing <b>just as the ball crosses the plate</b> to send it flying.<br>棒球场上，投手掷出快球——在<b>球飞过本垒板</b>的瞬间挥棒，把球击飞出去。<br><br>Space to swing 按空格挥棒</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Swing at the pitch 挥棒击球</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  // 物理参数：棒球场，投手掷出快球，击球手挥棒击球。
+  // 判定 = 纯碰撞：挥棒期间每帧检测「球棒线段」与「球圆」最短距离 < 球半径 → 击中。
+  const BALL_X0 = 60, BALL_Y = 280, BALL_R = 12, BALL_VX = 400;
+  const BATTER_X = 400, GROUND_Y = 360;
+  const GRIP_X = 415, GRIP_Y = 300;      // 握棒点
+  const BAT_LEN = 78;                    // 棒长
+  const SWING_FROM = -1.25, SWING_TO = 0.55;   // 挥棒起止角（rad，y 向下）
+  const SWING_MS = 180;                  // 挥棒时长
+  const PLATE_END = 460;                 // 球飞过此 x 未击中 → 挥空失败
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"batter_up", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "incoming";     // incoming | resolve（后果动画） | over
+  let ballX = BALL_X0, ballY = BALL_Y;
+  let swingT0 = -1;           // 挥棒开始时刻（-1 = 未挥）
+  let swingDone = false;      // 本次挥棒是否已结束
+  let deflected = false, ballVX = BALL_VX, ballVy = 0;   // 击中后球被击飞
+  let resolveT0 = 0, resolveResult = null;   // 后果动画
+  let particles = [];
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, ballX:Math.round(ballX), swinging: swingT0 >= 0,
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "incoming"; ballX = BALL_X0; ballY = BALL_Y;
+    swingT0 = -1; swingDone = false; deflected = false; ballVX = BALL_VX; ballVy = 0;
+    resolveT0 = 0; resolveResult = null; particles = [];
+    setStatus("Swing at the pitch 挥棒击球","");
+  }
+
+  // 挥棒角（y 向下坐标系，角 0 = 水平向右）
+  function swingAngle(){
+    if (swingT0 < 0) return SWING_FROM;
+    const t = Math.min(1, (performance.now() - swingT0) / SWING_MS);
+    const e = 1 - Math.pow(1 - t, 2);   // easeOut（挥前半快后半缓，更像真实挥棒）
+    return SWING_FROM + (SWING_TO - SWING_FROM) * e;
+  }
+  // 球棒线段端点
+  function batSegment(){
+    const a = swingAngle();
+    return { ax:GRIP_X, ay:GRIP_Y, bx:GRIP_X + BAT_LEN*Math.cos(a), by:GRIP_Y + BAT_LEN*Math.sin(a) };
+  }
+  // 点到线段最近距离
+  function segDist(px, py, ax, ay, bx, by){
+    const vx = bx-ax, vy = by-ay, wx = px-ax, wy = py-ay;
+    const c1 = vx*wx + vy*wy;
+    if (c1 <= 0) return Math.hypot(px-ax, py-ay);
+    const c2 = vx*vx + vy*vy;
+    if (c2 <= c1) return Math.hypot(px-bx, py-by);
+    const t = c1/c2;
+    return Math.hypot(px-(ax+vx*t), py-(ay+vy*t));
+  }
+
+  function swing(e){
+    if (e && e.repeat) return;
+    if (phase !== "incoming") return;
+    if (swingT0 >= 0) return;    // 每次尝试只挥一次
+    swingT0 = performance.now();
+    setStatus("Swing! 挥棒！","action");
+  }
+
+  function hitBall(now){
+    deflected = true;
+    // 球沿击中方向飞出（向上抛物线）
+    ballVX = BALL_VX * 1.5;
+    ballVy = -520;
+    spawnHitSparks();
+    phase = "resolve";
+    resolveT0 = now;
+    resolveResult = "hit";
+    setStatus("Hit! 击中了！","win");
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Home run! 击中了！","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Strike out 三振出局","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Missed 挥空","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt, now){
+    if (phase === "incoming") {
+      ballX += ballVX * dt;
+      // 挥棒期间的纯碰撞检测：球棒线段 vs 球圆
+      if (swingT0 >= 0 && !swingDone) {
+        const t = (now - swingT0) / SWING_MS;
+        if (t >= 1) swingDone = true;
+        const { ax, ay, bx, by } = batSegment();
+        if (segDist(ballX, ballY, ax, ay, bx, by) < BALL_R) {
+          hitBall(now);
+          return;
+        }
+      }
+      // 球飞过本垒板末端未击中 → 挥空失败（含挥太晚/不挥）
+      if (ballX > PLATE_END && !deflected) {
+        phase = "resolve";
+        resolveT0 = now;
+        resolveResult = "miss";
+        setStatus("Missed 挥空","lose");
+      }
+    } else if (phase === "resolve") {
+      // 后果动画：击中=球飞远；挥空=球继续飞离画面
+      ballX += ballVX * dt;
+      ballVy += 1400 * dt;
+      ballY += ballVy * dt;
+      particles.forEach(p => { p.life += dt*1000; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 900*dt; });
+      particles = particles.filter(p => p.life < p.max);
+      const el = now - resolveT0;
+      if (el > (resolveResult === "hit" ? 700 : 600)) {
+        if (resolveResult === "hit") win(); else fail();
+      }
+    }
+    // over 不更新
+  }
+
+  function spawnHitSparks(){
+    particles = [];
+    for (let i=0;i<18;i++){
+      particles.push({ x:ballX, y:ballY, vx:-60+Math.random()*260, vy:-(80+Math.random()*240),
+        r:2+Math.random()*2.5, life:0, max:400+Math.random()*400, c:Math.random()<0.5?"#ffe9a8":"#f6c453" });
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawBG(){
+    // 棒球场：天空 + 看台剪影 + 草地 + 本垒板
+    // 天空（上层蓝紫 → 地平线暖橙，明显的天空感）
+    const g = ctx.createLinearGradient(0,0,0,300);
+    g.addColorStop(0,"#6b9ad6"); g.addColorStop(0.55,"#a6c6e8"); g.addColorStop(0.85,"#f2c890"); g.addColorStop(1,"#e8a86a");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,300);
+    // 云朵
+    ctx.fillStyle = "rgba(255,255,255,.5)";
+    ctx.beginPath(); ctx.ellipse(140, 70, 46, 16, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(190, 82, 34, 13, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(600, 50, 40, 14, 0, 0, Math.PI*2); ctx.fill();
+    // 看台（观众席，两层，靠近地平线 y~180）
+    ctx.fillStyle = "#4a4a5a";
+    ctx.fillRect(0, 180, 800, 30);
+    ctx.fillStyle = "#3a3a4a";
+    ctx.fillRect(0, 210, 800, 24);
+    // 观众席彩色小点（人群）
+    for (let i=0;i<40;i++){
+      ctx.fillStyle = ["#e85d3a","#f6c453","#34d399","#7c5cff","#f2f2f2"][i%5];
+      ctx.fillRect(14+i*19, 186+(i%2)*9, 8, 7);
+    }
+    // 球场草地
+    const gg = ctx.createLinearGradient(0,300,0,460);
+    gg.addColorStop(0,"#5d9e4f"); gg.addColorStop(1,"#3d7a38");
+    ctx.fillStyle = gg; ctx.fillRect(0,300,800,160);
+    // 草皮纹理
+    ctx.fillStyle = "rgba(46,105,42,.4)";
+    for (let i=0;i<20;i++){ ctx.fillRect((i*37+7)%800, 320+(i*11)%120, 12, 3); }
+    // 内野泥地
+    ctx.fillStyle = "#b98a56"; ctx.fillRect(300, 330, 200, 60);
+    // 击打时机提醒：本垒板光晕（球接近时越来越亮，柔和低 alpha）
+    const glow = plateGlow();
+    if (glow > 0.01) {
+      // 外圈大光晕
+      const rg = ctx.createRadialGradient(BATTER_X, GROUND_Y-11, 6, BATTER_X, GROUND_Y-11, 60);
+      rg.addColorStop(0, `rgba(255,244,170,${0.9*glow})`);
+      rg.addColorStop(0.4, `rgba(255,210,80,${0.5*glow})`);
+      rg.addColorStop(1, "rgba(255,210,80,0)");
+      ctx.fillStyle = rg;
+      ctx.beginPath(); ctx.arc(BATTER_X, GROUND_Y-11, 60, 0, Math.PI*2); ctx.fill();
+      // 内层白热核心（提升对比，像「球压过来了」）
+      const core = ctx.createRadialGradient(BATTER_X, GROUND_Y-11, 2, BATTER_X, GROUND_Y-11, 20);
+      core.addColorStop(0, `rgba(255,255,255,${0.85*glow})`);
+      core.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = core;
+      ctx.beginPath(); ctx.arc(BATTER_X, GROUND_Y-11, 20, 0, Math.PI*2); ctx.fill();
+    }
+    // 本垒板（五边形）：球靠近时变亮金色
+    if (glow > 0.01) {
+      const pg = ctx.createLinearGradient(0, GROUND_Y-34, 0, GROUND_Y);
+      pg.addColorStop(0, `rgba(255,238,150,${0.75+0.25*glow})`);
+      pg.addColorStop(1, `rgba(255,214,90,${0.75+0.25*glow})`);
+      ctx.fillStyle = pg;
+    } else {
+      ctx.fillStyle = "#f2f2f2";
+    }
+    ctx.beginPath();
+    ctx.moveTo(BATTER_X-22, GROUND_Y-4); ctx.lineTo(BATTER_X+22, GROUND_Y-4);
+    ctx.lineTo(BATTER_X, GROUND_Y-34); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = glow > 0.3 ? "#e0a830" : "#c9c9c9"; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  function drawBatter(){
+    // 卡通击球手：球衣 + 头盔 + 眼睛 + 球棒
+    const bx = BATTER_X;
+    // 双腿（蹲踞击球姿态）
+    ctx.fillStyle = "#2a3450"; ctx.fillRect(bx-20, GROUND_Y-40, 13, 40);
+    ctx.fillStyle = "#2a3450"; ctx.fillRect(bx+8, GROUND_Y-40, 13, 40);
+    // 身体（球衣）
+    const bg = ctx.createLinearGradient(0,GROUND_Y-92,0,GROUND_Y-40);
+    bg.addColorStop(0,"#e85d3a"); bg.addColorStop(1,"#c14326");
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.ellipse(bx, GROUND_Y-62, 22, 30, 0, 0, Math.PI*2); ctx.fill();
+    // 球衣条纹
+    ctx.fillStyle = "#f2f2f2"; ctx.fillRect(bx-20, GROUND_Y-78, 40, 4);
+    // 头（肤色）
+    ctx.fillStyle = "#f0c9a0"; ctx.beginPath(); ctx.arc(bx, GROUND_Y-104, 14, 0, Math.PI*2); ctx.fill();
+    // 头盔（带帽檐）
+    const hg = ctx.createLinearGradient(0,GROUND_Y-118,0,GROUND_Y-100);
+    hg.addColorStop(0,"#3a4a70"); hg.addColorStop(1,"#263354");
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(bx, GROUND_Y-106, 14, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = "#263354"; ctx.fillRect(bx-2, GROUND_Y-108, 26, 4);   // 帽檐
+    // 眼睛（看向来球方向，右侧）
+    ctx.fillStyle = "#2a1a12";
+    ctx.beginPath(); ctx.arc(bx+4, GROUND_Y-100, 2.2, 0, Math.PI*2); ctx.fill();
+
+    // 球棒（绕握点旋转，挥棒动画 easing）
+    const a = swingAngle();
+    const px = GRIP_X, py = GRIP_Y;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(a);
+    const g2 = ctx.createLinearGradient(0,0,BAT_LEN,0);
+    g2.addColorStop(0,"#8a6a3a"); g2.addColorStop(0.5,"#c8a060"); g2.addColorStop(1,"#6b4e26");
+    ctx.strokeStyle = g2; ctx.lineWidth = 9; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(BAT_LEN,0); ctx.stroke();
+    // 棒头
+    ctx.fillStyle = "#5a3d1c"; ctx.beginPath(); ctx.arc(BAT_LEN, 0, 5, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBall(){
+    // 击打时机提醒：球接近击打区时加金色光晕（更醒目）
+    const glow = plateGlow();
+    if (glow > 0.01) {
+      const bg = ctx.createRadialGradient(ballX, ballY, BALL_R*0.4, ballX, ballY, BALL_R*4.4);
+      bg.addColorStop(0, `rgba(255,252,230,${0.95*glow})`);
+      bg.addColorStop(0.4, `rgba(255,214,90,${0.55*glow})`);
+      bg.addColorStop(1, "rgba(255,210,80,0)");
+      ctx.fillStyle = bg;
+      ctx.beginPath(); ctx.arc(ballX, ballY, BALL_R*4.4, 0, Math.PI*2); ctx.fill();
+    }
+    // 棒球（带缝线的球）
+    const g = ctx.createRadialGradient(ballX-3, ballY-3, 2, ballX, ballY, BALL_R);
+    g.addColorStop(0,"#ffffff"); g.addColorStop(1,"#d9d9d9");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ballX, ballY, BALL_R, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#c0392b"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(ballX, ballY, BALL_R, -0.9, 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(ballX-0.5, ballY, BALL_R*0.7, 2.4, 3.9); ctx.stroke();
+    // 拖尾
+    if (phase === "incoming") {
+      const tr = ctx.createLinearGradient(ballX,0,ballX-70,0);
+      tr.addColorStop(0,"rgba(255,255,255,.5)"); tr.addColorStop(1,"rgba(255,255,255,0)");
+      ctx.fillStyle = tr; ctx.fillRect(ballX-70, ballY-2, 70, 4);
+    }
+  }
+
+  function drawParticles(){
+    particles.forEach(p => {
+      ctx.fillStyle = p.c;
+      ctx.globalAlpha = Math.max(0, 1 - p.life/p.max);
+      ctx.fillRect(p.x - p.r/2, p.y - p.r/2, p.r, p.r);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // 击打时机提醒：球真正逼近本垒板/击打区时才明显增强（观察运动的连续增强提示，非时间标注）
+  function plateGlow(){
+    // 发光区间收窄推迟到球临板：x 不到 360 完全不亮，360→400 快速爬升，400→460（挥空点）回落
+    const GLOW_LO = 360, PEAK = BATTER_X, GLOW_HI = 460;
+    // 仅在球飞行（incoming）阶段提示；球未进入/已飞过提醒区间则无光晕
+    if (phase !== "incoming") return 0;
+    if (ballX <= GLOW_LO || ballX >= GLOW_HI) return 0;
+    // 两段 smoothstep：上升段 [GLOW_LO→PEAK] 爬升，下降段 [PEAK→GLOW_HI] 回落
+    let u;
+    if (ballX <= PEAK) {
+      u = (ballX - GLOW_LO) / (PEAK - GLOW_LO);
+    } else {
+      u = 1 - (ballX - PEAK) / (GLOW_HI - PEAK);
+    }
+    u = Math.max(0, Math.min(1, u));
+    return u * u * (3 - 2 * u);   // smoothstep
+  }
+
+  function render(){
+    drawBG();
+    drawBatter();
+    drawBall();
+    drawParticles();
+  }
+
+  function frame(t){ if (!started) { requestAnimationFrame(frame); return; }
+    const dt = Math.min((t - (frame.last||t))/1000, 0.05); frame.last = t;
+    update(dt, t);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  addEventListener("keydown",(e)=>{
+    // 空格触发 Start / Next（phase 隔离：intro / retry 页生效）
+    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
+      const introShown = !introEl.classList.contains("hidden");
+      const retryShown = !retryOverlay.classList.contains("hidden");
+      if (introShown) { e.preventDefault(); startGame(); return; }
+      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
+    }
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    const swingKey = k===" " || k==="w" || k==="arrowup" || c==="Space" || c==="KeyW" || c==="ArrowUp" || kc===32 || kc===87 || kc===38;
+    if (swingKey) swing(e);
+  });
+  cv.addEventListener("mousedown", ()=>swing());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

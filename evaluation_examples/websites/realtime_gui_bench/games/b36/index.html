@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slide Note 滑动到尾端</title>
+<style>
+:root{
+  --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+  --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+  --accent1:#4c5baa; --accent2:#3a4684;
+  --accent3:#4c7dff; --accent4:#3355d8;
+  --ok1:#34d399; --ok2:#0ea371;
+  --fail1:#f87171; --fail2:#dc2626;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; }
+body{
+  background:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+    radial-gradient(900px 650px at 50% -8%, #2a3a5a 0%, #161d2e 58%, #0d1119 100%);
+  background-size:44px 44px, 44px 44px, 100% 100%;
+  font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:#e8eaf6; user-select:none; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+}
+.status{ font-size:24px; font-weight:800; min-height:32px; letter-spacing:.4px; text-align:center; }
+.status.idle{ color:#8b93b8; } .status.armed{ color:var(--gold); }
+.status.win{ color:var(--ok1); } .status.lose{ color:var(--fail1); }
+.status.action{ font-size:29px; font-weight:800; color:var(--gold); text-shadow:0 0 16px rgba(246,196,83,.6); letter-spacing:.5px; }
+
+/* 倒计时 */
+.clock{ display:flex; flex-direction:column; align-items:center; gap:2px; }
+.clock-num{ font-size:48px; font-weight:800; font-variant-numeric:tabular-nums; color:#e8eaf6; min-width:160px; text-align:center; }
+.clock-num.zero{ color:var(--gold); }
+.clock-lbl{ font-size:12px; color:#7d86ab; letter-spacing:3px; text-transform:uppercase; }
+
+/* 滑轨舞台 */
+.stage{ position:relative; width:760px; height:360px; border-radius:20px; overflow:hidden;
+  background:linear-gradient(160deg,#1a2333 0%,#0f131c 100%); border:2px solid rgba(255,255,255,.10);
+  box-shadow:inset 0 0 70px rgba(0,0,0,.4); }
+/* 滑轨（水平轨道） */
+.track{ position:absolute; left:60px; right:60px; top:50%; height:14px; margin-top:-7px;
+  border-radius:8px; background:linear-gradient(180deg,#2a3350,#1c2743);
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.08); }
+.track-zone{ position:absolute; top:50%; height:14px; margin-top:-7px; border-radius:8px;
+  right:60px; width:110px; background:linear-gradient(180deg,#0e3a2a,#0a241b);
+  box-shadow:0 0 14px rgba(52,211,153,.5), inset 0 0 0 1px rgba(52,211,153,.5); }
+.track-label{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  font-size:13px; font-weight:800; color:#e8eaf6; z-index:4; }
+/* 起点标记 */
+.start-mark{ position:absolute; top:50%; left:90px; transform:translate(-50%,-50%);
+  font-size:11px; color:#7d86ab; z-index:4; letter-spacing:1px; }
+/* 尾端标记 */
+.end-mark{ position:absolute; top:50%; right:88px; transform:translate(50%,-50%);
+  font-size:13px; font-weight:800; color:var(--ok1); z-index:4; letter-spacing:1px; }
+/* 滑块（音符钮） */
+.knob{ position:absolute; left:60px; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px;
+  border-radius:50%; cursor:grab; z-index:5;
+  background:radial-gradient(circle at 36% 30%, #ffd28a, #f6c453 60%, #e09b2f);
+  box-shadow:0 6px 18px rgba(246,196,83,.5), inset 0 -2px 0 rgba(0,0,0,.2);
+  display:flex; align-items:center; justify-content:center; font-size:20px; color:#3a2a08; font-weight:800; }
+.knob.dragging{ cursor:grabbing; box-shadow:0 0 0 4px rgba(255,255,255,.3), 0 6px 18px rgba(246,196,83,.7); }
+.knob.hit{ background:radial-gradient(circle at 36% 30%, #6ee7b7, #34d399 60%, #0ea371);
+  box-shadow:0 0 18px rgba(52,211,153,.8); animation:knobPop .4s ease-out forwards; }
+.knob.bad{ background:radial-gradient(circle at 36% 30%, #fca5a5, #ef4444 60%, #b91c1c); }
+@keyframes knobPop{ 0%{transform:scale(1);} 40%{transform:scale(1.25);} 100%{transform:scale(.7); opacity:.4;} }
+
+.feedback{ font-size:16px; font-weight:700; min-height:22px; color:#8b93b8; text-align:center; }
+.feedback.good{ color:var(--ok1); } .feedback.warn{ color:var(--gold); } .feedback.bad{ color:var(--fail1); }
+
+.row{ display:flex; align-items:center; gap:30px; }
+.btn{ padding:16px 38px; font-size:21px; font-weight:800; letter-spacing:1px; border:none; border-radius:14px;
+  cursor:pointer; color:#fff; background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+  box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25); transition:transform .12s; }
+.btn:active{ transform:translateY(2px) scale(.98); }
+.btn:disabled{ opacity:.35; cursor:default; }
+.hint{ font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+
+.toast{ position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+  background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+  padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+  opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.overlay{ position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+.overlay.show{ opacity:1; pointer-events:auto; }
+.celeb-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+  transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.overlay.show .celeb-box{ transform:scale(1); }
+.celeb-check{ width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+.celeb-check.ok{ background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+.celeb-check.fail{ background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+.celeb-title{ font-size:30px; font-weight:800; color:var(--title); }
+.celeb-sub{ font-size:15px; color:var(--sub); margin-top:6px; }
+#confetti{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+
+.intro{ position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+.intro.hidden{ display:none; }
+.intro-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:660px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.intro-title{ font-size:28px; font-weight:800; color:var(--title); }
+.intro-rule{ font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+.intro-rule b{ color:var(--title); }
+.intro-start{ margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+.intro-start:hover{ transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Press Start 按开始</div>
+
+  <div class="clock">
+    <div class="clock-num" id="clockNum">2.00</div>
+    <div class="clock-lbl">seconds 秒</div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="track" id="track"></div>
+    <div class="track-zone" id="trackZone"></div>
+    <div class="end-mark" id="endMark">END 尾端 ✓</div>
+    <div class="start-mark">START 起点</div>
+    <div class="knob" id="knob">♪</div>
+  </div>
+
+  <div class="feedback" id="feedback">Slide the knob to the end 把滑块滑到尾端</div>
+
+  <div class="row">
+    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <div class="hint" id="hint">Attempt 0 / 3 第0/3次</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">Note slid to the end 滑到尾端</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Slide Note 滑动到尾端</div>
+      <div class="intro-rule">In this rhythm game, drag the <b>note knob</b> along the straight track from <b>START</b> to the green <b>END</b> zone <b>within 2 seconds</b>. The countdown shows the remaining time — finish (release the knob at END) before it reaches 0.00. Dragging the knob off the track fails, and running out of time fails.<br>在这款音游里，沿直线滑轨把<b>音符滑块</b>从<b>起点</b>拖到绿色<b>尾端 END</b>区，须在 <b>2 秒内</b>完成。倒计时显示剩余时间——在它走到 0.00 之前完成（在 END 松手）。拖出轨道会失败，超时也会失败。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const DURATION_MS = 2000;     // 限时 2 秒内拖到尾端（倒计时显示剩余时间）
+  const WARN_MS = 1000;         // 最后 1s 倒计时变红提醒（非判定窗口）
+  const MISS_MS = 500;          // 归零后 500ms 仍未完成 → miss
+  const DERAIL_PX = 34;         // 拖动时 y 偏离轨道中线超此值 → 脱轨
+
+  const BENCH = { task:"slide_note", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn"), clockNum=document.getElementById("clockNum");
+  const knob=document.getElementById("knob"), stage=document.getElementById("stage");
+  const track=document.getElementById("track"), trackZone=document.getElementById("trackZone");
+  const feedback=document.getElementById("feedback");
+  const toast=document.getElementById("toast");
+  const overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+
+  let phase="idle", raf=null, armNow=0;
+  let dragging=false, derailed=false;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+" 第"+BENCH.attempts+"/"+MAX_ATTEMPTS+"次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+  function setFeedback(t,c){ feedback.textContent=t; feedback.className="feedback "+(c||""); }
+
+  // 轨道几何（相对 stage）
+  function trackGeom(){
+    const tr=track.getBoundingClientRect(), st=stage.getBoundingClientRect();
+    return { left:tr.left-st.left, right:tr.right-st.left, cy:(tr.top-st.top)+tr.height/2 };
+  }
+  function endZoneGeom(){
+    const z=trackZone.getBoundingClientRect(), st=stage.getBoundingClientRect();
+    return { left:z.left-st.left, right:z.right-st.left };
+  }
+  function knobX(){ const r=knob.getBoundingClientRect(), st=stage.getBoundingClientRect(); return (r.left-st.left)+r.width/2; }
+
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false; dragging=false; derailed=false;
+    knob.className="knob";
+    knob.style.left="60px"; knob.style.top="50%"; knob.style.margin="-22px 0 0 -22px";
+    setClock(DURATION_MS);
+    setFeedback("Slide the knob to the end 把滑块滑到尾端","");
+    setStatus("Press Start 按开始","idle"); syncURL();
+  }
+
+  function setClock(r){ const s=Math.max(0,r/1000).toFixed(2); clockNum.textContent=s; clockNum.classList.toggle("zero", r<=WARN_MS && r>0); }
+
+  function arm(){
+    phase="armed"; startBtn.disabled=true; armNow=performance.now();
+    dragging=false; derailed=false;
+    knob.className="knob"; knob.style.left="60px"; knob.style.top="50%"; knob.style.margin="-22px 0 0 -22px";
+    setStatus("Slide to END within 2s! 2 秒内滑到尾端！","action");
+    setFeedback("Drag now 现在拖动", "warn");
+    syncURL();
+    (function tick(now){
+      const el=now-armNow;
+      setClock(DURATION_MS-el);
+      if(el>=DURATION_MS+MISS_MS){ miss(); return; }
+      if(phase==="armed") raf=requestAnimationFrame(tick);
+    })(armNow);
+  }
+
+  // 拖动
+  knob.addEventListener("mousedown",(e)=>{
+    if(phase!=="armed") return;
+    e.preventDefault();
+    dragging=true; derailed=false;
+    knob.classList.add("dragging");
+  });
+  document.addEventListener("mousemove",(e)=>{
+    if(!dragging || phase!=="armed") return;
+    const st=stage.getBoundingClientRect();
+    const g=trackGeom();
+    const mx=e.clientX-st.left, my=e.clientY-st.top;
+    // x 限制在轨道范围内
+    const nx=Math.max(g.left, Math.min(g.right, mx));
+    knob.style.left=nx+"px"; knob.style.top="50%"; knob.style.margin="-22px 0 0 -22px";
+    // 脱轨判定：y 偏离轨道中线
+    if(Math.abs(my-g.cy) > DERAIL_PX){
+      if(!derailed){ derailed=true; knob.classList.remove("dragging"); knob.classList.add("bad"); }
+      finishRound(false, "Derailed 脱轨");
+    }
+  });
+  document.addEventListener("mouseup",(e)=>{
+    if(!dragging || phase!=="armed") return;
+    dragging=false; knob.classList.remove("dragging");
+    if(derailed) return;   // 已失败
+    const now=performance.now();
+    const remain=DURATION_MS-(now-armNow);
+    setClock(remain);
+    const z=endZoneGeom();
+    const x=knobX();
+    const inEnd = x>=(z.left) && x<=(z.right+22);   // 滑块中心到达尾端区
+    if(inEnd && remain>0){
+      knob.classList.add("hit");
+      finishRound(true);
+    } else if(!inEnd){
+      finishRound(false, "Not at END");
+    } else {
+      finishRound(false, "Out of time");
+    }
+  });
+
+  function miss(){ cancelAnimationFrame(raf); if(phase!=="armed") return; phase="done"; startBtn.disabled=true; failOne("Missed 未完成"); }
+  function finishRound(win, reason){
+    if(phase!=="armed") return;
+    phase="done"; cancelAnimationFrame(raf); startBtn.disabled=true;
+    if(win){
+      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      setStatus("Success 成功","win"); syncURL(); celebrate();
+    } else {
+      failOne(reason||"Failed 失败");
+    }
+  }
+  function failOne(reason){
+    if(BENCH.status==="passed") return;
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    setStatus("Missed 未命中","lose");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    const cv=document.getElementById("confetti"); cv.width=innerWidth; cv.height=innerHeight;
+    const ctx=cv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,cv.width,cv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<cv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,cv.width,cv.height);
+    })(t0);
+  }
+
+  // 空格触发 Start/Next
+  function onIntroStart(){
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
+  }
+  function onNext(){
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+  }
+  function onSpaceKey(e){
+    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
+    if(e.repeat) return;
+    const introEl=document.getElementById("intro");
+    const retryEl=document.getElementById("retryOverlay");
+    if(!introEl.classList.contains("hidden") && phase!=="armed"){ e.preventDefault(); onIntroStart(); return; }
+    if(retryEl.classList.contains("show") && phase!=="armed"){ e.preventDefault(); onNext(); return; }
+    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }
+  }
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+  window.addEventListener("keydown", onSpaceKey);
+  document.getElementById("introStart").addEventListener("click", onIntroStart);
+  document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  window.__dbg = function(){
+    return { phase, dragging, derailed, knobX:Math.round(knobX()), remainingMs:Math.round(DURATION_MS-(performance.now()-armNow)),
+      durationMs:DURATION_MS, endZone:endZoneGeom(),
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

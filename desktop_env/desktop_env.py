@@ -308,8 +308,11 @@ class DesktopEnv(gym.Env):
 
             if task_config is not None:
                 if task_config.get("proxy", False) and self.enable_proxy:
-                    # If using proxy and proxy is enabled, set up the proxy configuration
-                    self.setup_controller._proxy_setup(self.client_password)
+                    external_proxy_url = os.getenv("OSWORLD_VM_PROXY_URL", "").strip()
+                    if not external_proxy_url:
+                        # The external proxy is already reachable from the VM and
+                        # does not require installing tinyproxy in the snapshot.
+                        self.setup_controller._proxy_setup(self.client_password)
                 self._set_task_info(task_config)
                 self.setup_controller.reset_cache_dir(self.cache_dir)
                 logger.info("Setting up environment...")
@@ -454,6 +457,26 @@ class DesktopEnv(gym.Env):
         observation = self._get_obs()
 
         return observation, reward, done, info
+
+    def step_sequence(self, actions, pause=0):
+        """Send the complete list once; observe only after the VM finishes it."""
+        if self.action_space != "computer_13":
+            raise ValueError("Realtime sequences require the existing computer_13 action space")
+        from desktop_env.controllers.python import SequenceExecutionError
+        try:
+            result = self.controller.execute_sequence(actions, pause)
+        except SequenceExecutionError as exc:
+            attempted = [entry["action"] for entry in exc.details.get("actions", [])]
+            self.action_history.extend(attempted)
+            self._step_no += len(attempted)
+            self.is_environment_used = True
+            raise
+        executed = [entry["action"] for entry in result["actions"]]
+        self.action_history.extend(executed)
+        self._step_no += len(executed)
+        self.is_environment_used = True
+        observation = self._get_obs()
+        return observation, 0, result["done"], {**result["info"], "sequence_actions": result["actions"]}
 
     def evaluate(self):
         """

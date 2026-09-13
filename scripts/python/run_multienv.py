@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse
 import datetime
+import fcntl
 import json
 import logging
 import os
@@ -16,7 +17,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 import lib_run_single
 from desktop_env.desktop_env import DesktopEnv
-from mm_agents.agent import PromptAgent
 
 # Global variables for signal handling
 active_environments = []
@@ -74,6 +74,18 @@ def config() -> argparse.Namespace:
     parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--max_tokens", type=int, default=1500)
     parser.add_argument("--stop_token", type=str, default=None)
+    parser.add_argument(
+        "--api_format",
+        choices=["auto", "openai_chat", "anthropic_messages", "openai_responses"],
+        default="auto",
+        help="Wire format used to call the model API",
+    )
+    parser.add_argument(
+        "--api_base_url",
+        type=str,
+        default=os.environ.get("PACKY_API_BASE_URL"),
+        help="Model API gateway root URL; protocol paths are appended automatically",
+    )
     
     # example config
     parser.add_argument("--domain", type=str, default="all")
@@ -102,7 +114,50 @@ def config() -> argparse.Namespace:
     parser.add_argument(
         "--screen_height", type=int, default=1080, help="Screen height"
     )
+    parser.add_argument("--agent_variant", choices=["agent1", "agent2", "agent3", "agent4"], default=None)
+    parser.add_argument(
+        "--run_id", default=None,
+        help="Four-agent experiment ID; reuse it across agents and for resume. Defaults to a new timestamp.",
+    )
+    parser.add_argument("--tool_format", choices=["native", "json"], default="native")
+    parser.add_argument("--max_frame_queries", type=int, default=0,
+                        help="Frame queries per decision; 0 (default) means unlimited")
+    parser.add_argument("--thinking_summary", action="store_true",
+                        help="Request adaptive thinking summaries from a compatible Anthropic Messages model")
+    parser.add_argument("--max_sequence_actions", type=int, default=16)
+    parser.add_argument("--recording_fragment_ms", type=int, default=100)
+    parser.add_argument("--environment_ready_wait_s", type=float, default=60)
+    parser.add_argument("--evaluation_settle_s", type=float, default=20)
+    parser.add_argument("--install_realtime_server", action="store_true", help="Install the realtime extension in the VM after reset")
     args = parser.parse_args()
+    if args.agent_variant:
+        if args.action_space != "computer_13" or args.observation_type != "screenshot":
+            parser.error("Four-agent experiments require --action_space computer_13 --observation_type screenshot")
+        if not 1 <= args.max_sequence_actions <= 16 or args.max_frame_queries < 0:
+            parser.error("Invalid sequence/query budget")
+        if args.thinking_summary and not (
+                args.api_format == "anthropic_messages"
+                or (args.api_format == "auto" and args.model.startswith("claude"))):
+            parser.error("--thinking_summary requires Anthropic Messages")
+        if min(args.sleep_after_execution, args.environment_ready_wait_s, args.evaluation_settle_s) < 0:
+            parser.error("Wait values must be nonnegative")
+        started = datetime.datetime.now().astimezone()
+        args.agent_started_at = started.isoformat(timespec="microseconds")
+        if args.run_id is None:
+            args.run_id = started.strftime("%Y%m%dT%H%M%S.%f%z")
+        if (not args.run_id or args.run_id in {".", ".."}
+                or any(c in args.run_id for c in "/\\")
+                or any(ord(c) < 32 for c in args.run_id)):
+            parser.error("run_id must be a single nonempty directory name")
+        # Group comparisons by model and experiment; isolate each agent's resume
+        # checks and scores. The timestamp is created once for all worker VMs.
+        args.result_dir = os.path.join(
+            args.result_dir, args.model, args.run_id, args.agent_variant
+        )
+    elif args.run_id is not None:
+        parser.error("run_id is supported by the four-agent runner; set --agent_variant")
+    elif args.api_format == "openai_responses":
+        parser.error("openai_responses is supported by the four-agent runner; set --agent_variant")
     return args
 
 args = config()  # Get command line arguments first
@@ -148,6 +203,65 @@ def distribute_tasks(test_all_meta: dict) -> List[tuple]:
         for example_id in examples:
             all_tasks.append((domain, example_id))
     return all_tasks
+
+
+def get_result_dir(
+    result_dir, action_space, observation_type, use_model, agent_variant=None
+):
+    """Resolve the same run directory for writing, resume checks and scores.
+
+    config() scopes result_dir to <root>/<model>/<run_id>/<agent> for four-agent runs.
+    Legacy runs still place the model beneath the observation type.
+    """
+    parts = [result_dir, action_space, observation_type]
+    if not agent_variant:
+        parts.append(use_model)
+    return os.path.join(*parts)
+
+
+def write_run_configuration(args):
+    target = get_result_dir(
+        args.result_dir, args.action_space, args.observation_type,
+        args.model, args.agent_variant,
+    )
+    os.makedirs(target, exist_ok=True)
+    with open(os.path.join(target, "args.json"), "w", encoding="utf-8") as f:
+        json.dump(vars(args), f, indent=4)
+    if args.agent_variant:
+        # The shared run_id identifies the comparison batch, not a simultaneous
+        # start. Append each launch (including resume) instead of overwriting it.
+        launch = {
+            "run_id": args.run_id,
+            "model": args.model,
+            "agent_variant": args.agent_variant,
+            "agent_started_at": args.agent_started_at,
+        }
+        with open(os.path.join(args.result_dir, "launches.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(launch) + "\n")
+        batch_root = os.path.dirname(args.result_dir)
+        os.makedirs(batch_root, exist_ok=True)
+        manifest_path = os.path.join(batch_root, "experiment_manifest.json")
+        # The four commands may start concurrently. Keep the first launch as
+        # the batch creation time and serialize the shared append log.
+        with open(os.path.join(batch_root, ".experiment.lock"), "a", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            if not os.path.exists(manifest_path):
+                manifest = {
+                    "run_id": args.run_id,
+                    "model": args.model,
+                    "created_at": args.agent_started_at,
+                    "action_space": args.action_space,
+                    "observation_type": args.observation_type,
+                    "agents": ["agent1", "agent2", "agent3", "agent4"],
+                }
+                temporary = manifest_path + f".tmp.{os.getpid()}"
+                with open(temporary, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, indent=2)
+                    f.write("\n")
+                os.replace(temporary, manifest_path)
+            with open(os.path.join(batch_root, "launches.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps(launch) + "\n")
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def process_signal_handler(signum, frame, env_idx):
@@ -201,16 +315,30 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                 env_kwargs["snapshot_name"] = snapshot_name
         env = DesktopEnv(**env_kwargs)
         active_environments.append(env)
-        agent = PromptAgent(
-            model=args.model,
-            max_tokens=args.max_tokens,
-            top_p=args.top_p,
-            temperature=args.temperature,
-            action_space=args.action_space,
-            observation_type=args.observation_type,
-            max_trajectory_length=args.max_trajectory_length,
-            client_password=args.client_password
-        )
+        if args.agent_variant:
+            from mm_agents.realtime_agent import RealtimeAgent
+            agent = RealtimeAgent(
+                variant=args.agent_variant, model=args.model, max_tokens=args.max_tokens,
+                temperature=args.temperature, max_trajectory_length=args.max_trajectory_length,
+                api_format=args.api_format, api_base_url=args.api_base_url,
+                pause=args.sleep_after_execution, max_sequence_actions=args.max_sequence_actions,
+                max_frame_queries=args.max_frame_queries, tool_format=args.tool_format,
+                thinking_summary=args.thinking_summary,
+            )
+        else:
+            from mm_agents.agent import PromptAgent
+            agent = PromptAgent(
+                model=args.model,
+                max_tokens=args.max_tokens,
+                top_p=args.top_p,
+                temperature=args.temperature,
+                action_space=args.action_space,
+                observation_type=args.observation_type,
+                max_trajectory_length=args.max_trajectory_length,
+                client_password=args.client_password,
+                api_format=args.api_format,
+                api_base_url=args.api_base_url,
+            )
 
         logger.info(f"Process {current_process().name} started.")
         while True:
@@ -229,10 +357,10 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                 logger.info(f"[{current_process().name}][Example ID]: {example_id}")
                 logger.info(f"[{current_process().name}][Instruction]: {example['instruction']}")
                 example_result_dir = os.path.join(
-                    args.result_dir,
-                    args.action_space,
-                    args.observation_type,
-                    args.model,
+                    get_result_dir(
+                        args.result_dir, args.action_space,
+                        args.observation_type, args.model, args.agent_variant,
+                    ),
                     domain,
                     example_id,
                 )
@@ -253,9 +381,8 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     logger.error(f"Exception in {current_process().name} {domain}/{example_id}: {e}")
                     logger.error(traceback.format_exc())
                     try:
-                        env.controller.end_recording(
-                            os.path.join(example_result_dir, "recording.mp4")
-                        )
+                        if not args.agent_variant:
+                            env.controller.end_recording(os.path.join(example_result_dir, "recording.mp4"))
                     except Exception as rec_e:
                         logger.error(f"Failed to end recording: {rec_e}")
                     with open(os.path.join(example_result_dir, "traj.jsonl"), "a") as f:
@@ -395,9 +522,12 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
 
 
 def get_unfinished(
-    action_space, use_model, observation_type, result_dir, total_file_json
+    action_space, use_model, observation_type, result_dir, total_file_json,
+    agent_variant=None,
 ):
-    target_dir = os.path.join(result_dir, action_space, observation_type, use_model)
+    target_dir = get_result_dir(
+        result_dir, action_space, observation_type, use_model, agent_variant
+    )
 
     if not os.path.exists(target_dir):
         return total_file_json
@@ -431,8 +561,13 @@ def get_unfinished(
     return total_file_json
 
 
-def get_result(action_space, use_model, observation_type, result_dir, total_file_json):
-    target_dir = os.path.join(result_dir, action_space, observation_type, use_model)
+def get_result(
+    action_space, use_model, observation_type, result_dir, total_file_json,
+    agent_variant=None,
+):
+    target_dir = get_result_dir(
+        result_dir, action_space, observation_type, use_model, agent_variant
+    )
     if not os.path.exists(target_dir):
         print("New experiment, no result yet.")
         return None
@@ -475,19 +610,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler)  # Handle termination signal
     
     try:
-        args = config()
-        
-        # save args to json in result_dir/action_space/observation_type/model/args.json
-        path_to_args = os.path.join(
-            args.result_dir,
-            args.action_space,
-            args.observation_type,
-            args.model,
-            "args.json",
-        )
-        os.makedirs(os.path.dirname(path_to_args), exist_ok=True)
-        with open(path_to_args, "w", encoding="utf-8") as f:
-            json.dump(vars(args), f, indent=4)
+        write_run_configuration(args)
 
         with open(args.test_all_meta_path, "r", encoding="utf-8") as f:
             test_all_meta = json.load(f)
@@ -501,6 +624,7 @@ if __name__ == "__main__":
             args.observation_type,
             args.result_dir,
             test_all_meta,
+            args.agent_variant,
         )
         left_info = ""
         for domain in test_file_list:
@@ -513,6 +637,7 @@ if __name__ == "__main__":
             args.observation_type,
             args.result_dir,
             test_all_meta,
+            args.agent_variant,
         )
         test(args, test_file_list)
     except KeyboardInterrupt:

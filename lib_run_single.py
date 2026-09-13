@@ -6,12 +6,32 @@ import time
 from multiprocessing import current_process
 
 from wrapt_timeout_decorator import *
-from lib_results_logger import log_task_completion
+from lib_results_logger import log_task_completion, update_realtime_gui_bench_summary
 
 logger = logging.getLogger("desktopenv.experiment")
 
 
+def _evaluate_with_details(env, example_result_dir, *args, result_root=None):
+    """Evaluate a task and atomically persist optional structured details."""
+
+    env._evaluation_details = None
+    result = env.evaluate(*args)
+    details = getattr(env, "_evaluation_details", None)
+    if details is not None:
+        result_path = os.path.join(example_result_dir, "result.json")
+        temporary_path = f"{result_path}.tmp.{os.getpid()}"
+        with open(temporary_path, "w", encoding="utf-8") as result_file:
+            json.dump(details, result_file, ensure_ascii=False, indent=2)
+            result_file.write("\n")
+        os.replace(temporary_path, result_path)
+        update_realtime_gui_bench_summary(example_result_dir, result_root=result_root)
+    return result
+
+
 def run_single_example(agent, env, example, max_steps, instruction, args, example_result_dir, scores):
+    if getattr(args, "agent_variant", None):
+        from lib_run_realtime import run_realtime_example
+        return run_realtime_example(agent, env, example, max_steps, instruction, args, example_result_dir, scores)
     runtime_logger = setup_logger(example, example_result_dir)
 
     # Reset environment first to get fresh VM IP
@@ -62,7 +82,7 @@ def run_single_example(agent, env, example, max_steps, instruction, args, exampl
                 break
         step_idx += 1
     time.sleep(20) # Wait for the environment to settle
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -99,7 +119,7 @@ def run_single_example_human(env, example, max_steps, instruction, args, example
         f.write("\n")
     
     # Evaluate the result
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -155,7 +175,7 @@ def run_single_example_kimi(agent, env, example, max_steps, instruction, args, e
         step_idx += 1
 
     time.sleep(30) # Wait for the environment to settle
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -215,7 +235,7 @@ def run_single_example_agi(agent, env, example, max_steps, instruction, args, ex
                 logger.info("The episode is done.")
                 break
         step_idx += 1
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -276,7 +296,7 @@ def run_single_example_openaicua(agent, env, example, max_steps, instruction, ar
                 logger.info("The episode is done.")
                 break
         step_idx += 1
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -381,7 +401,7 @@ def run_single_example_gpt54(agent, env, example, max_steps, instruction, args, 
                 break
         step_idx += 1
     time.sleep(20) # Wait for the environment to settle
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -437,7 +457,7 @@ def run_single_example_opencua(agent, env, example, max_steps, instruction, args
         step_idx += 1
 
     time.sleep(20) # Wait for the environment to settle
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -501,7 +521,7 @@ def run_single_example_autoglm(agent, env, example, max_steps, instruction, args
     if not done: # not completed the task yet
         env.action_history.append('FAIL')
     
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -561,7 +581,7 @@ def run_single_example_mano(agent, env, example, max_steps, instruction, args, e
                 logger.info("The episode is done.")
                 break
         step_idx += 1
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -617,7 +637,7 @@ def run_single_example_uipath(agent, env, example, max_steps, instruction, args,
                 logger.info("The episode is done.")
                 break
         step_idx += 1
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -696,7 +716,7 @@ def run_single_example_os_symphony(agent, env, example, max_steps, instruction, 
                 break
         step_idx += 1
     end_time = time.time()
-    result = float(env.evaluate())
+    result = float(_evaluate_with_details(env, example_result_dir))
     logger.info("Result: %.2f", result)
     scores.append(result)
     with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -794,7 +814,7 @@ def run_single_example_evocua(agent, env, example, max_steps, instruction, args,
         step_idx += 1
         
     time.sleep(20) # Wait for environment to settle
-    result = env.evaluate()
+    result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
     
@@ -862,7 +882,7 @@ def run_single_example_mobileagent_v3(agent, env, example, max_steps, instructio
         step_idx += 1
 
     if eval_flag:
-        result = env.evaluate()
+        result = _evaluate_with_details(env, example_result_dir)
         logger.info("Result: %.2f", result)
         scores.append(result)
         with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
@@ -1080,7 +1100,7 @@ def run_single_example_vlaa_gui(agent, env, example, max_steps, instruction, arg
             step_idx += 1
 
         time.sleep(20)
-        result = env.evaluate()
+        result = _evaluate_with_details(env, example_result_dir)
         logger.info("Result: %.2f", result)
         scores.append(result)
         with open(
@@ -1142,7 +1162,7 @@ def run_single_example_pointer(agent, env, example, max_steps, instruction, args
                 break
         step_idx += 1
     time.sleep(20) # Wait for the environment to settle
-    result = env.evaluate(eval_logger)
+    result = _evaluate_with_details(env, example_result_dir, eval_logger)
     logger.info("Result: %.2f", result)
     agent.log_usage()
     scores.append(result)
@@ -1469,7 +1489,7 @@ def run_single_example_gemini(
         result = 0.0
     else:
         logger.info("Evaluating model_response: %s", model_response)
-        result = env.evaluate()
+        result = _evaluate_with_details(env, example_result_dir)
     logger.info("Result: %.2f", result)
     scores.append(result)
 

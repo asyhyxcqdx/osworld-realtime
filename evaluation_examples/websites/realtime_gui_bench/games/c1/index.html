@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Platform</title>
+<style>
+  :root { --bg1:#0e1520; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg1);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block;
+  }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:12px; color:#7d86ab; }
+  .key {
+    display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center;
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px;
+    color:#cdd3ea; font-weight:700; padding:0 6px;
+  }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  #confetti { position:fixed; inset:0; pointer-events:none; z-index:110;  width:100%; height:100%; }
+
+  
+  
+  
+  
+  
+  
+  
+
+  /* 关键操作提示放大（统一覆盖） */
+  .status { font-size:25px !important; font-weight:800 !important; }
+  .rule { font-size:27px !important; font-weight:900 !important; color:#ffd166 !important; text-shadow:0 0 18px rgba(255,209,102,.5) !important; }
+  .tip { font-size:16px !important; font-weight:700 !important; color:#e8eaf6 !important; }
+  
+  
+  
+  
+  
+  
+
+  .status.action { font-size:32px !important; font-weight:900 !important; color:#ffd166 !important; text-shadow:0 0 22px rgba(255,209,102,.75) !important; letter-spacing:1px !important; }
+
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:560px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.55; text-align:left; }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,#4c5baa 0%,#3a4684 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Reach the far platform</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys">
+    <span class="key">A</span><span class="key">D</span> move &nbsp;·&nbsp;
+    <span class="key">W</span><span class="key">Space</span> jump (double)
+  </div>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success!</div>
+      <div class="celeb-sub">Task completed</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed</div>
+      <div class="celeb-sub">Out of attempts</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 1 / 3</div>
+      <button class="intro-start" id="nextBtn">Next</button>
+    </div>
+  </div>
+    <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Double Jump</div>
+      <div class="intro-rule">Reach the far platform by double-jumping. Jump once, then jump again mid-air to cross the gap.<br>A / D to move &nbsp;·&nbsp; W or Space to jump (twice)</div>
+      <button class="intro-start" id="startBtn">Start</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const G = 1800, VJ1 = 620, VJ2 = 560, VMOVE = 300;
+  const GROUND_L = 360, GROUND_R = 220, PLAT_END = 300, GAP_END = 560, BOTTOM = 460;
+  const START_X = 140;
+  const SIZE = 34;
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  const BENCH = { task:"double_jump", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro");
+  const startBtn = document.getElementById("startBtn");
+  let started = false;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  let x = START_X, y = GROUND_L, vx = 0, vy = 0;
+  let onGround = true, canDouble = false;
+  let state = "playing";
+  let squash = 1;
+  let facing = 1;
+  let prevY = GROUND_L;
+  const keys = { left:false, right:false };
+  const particles = [];
+
+  window.__dbg = function(){ return { x:Math.round(x), y:Math.round(y), onGround, state, squash:+squash.toFixed(2), vy:+vy.toFixed(0), prevY:Math.round(prevY) }; };
+
+  function reset(){
+    x = START_X; y = GROUND_L; vx = 0; vy = 0; prevY = GROUND_L;
+    onGround = true; canDouble = false; state = "playing"; facing = 1; squash = 1;
+    setStatus("Reach the far platform","action");
+  }
+
+  function jump(e){
+    if (e && e.repeat) return;   // 忽略长按的 auto-repeat（长按只跳一次）
+    if (state !== "playing") return;
+    if (onGround) { vy = -VJ1; onGround = false; canDouble = true; squash = 1.30; puff(x, y); }
+    else if (canDouble) { vy = -VJ2; canDouble = false; squash = 1.24; ring(x, y); }
+  }
+
+  function puff(px, py){
+    for(let i=0;i<10;i++) particles.push({x:px+(-8+Math.random()*16), y:py-2, vx:-1+Math.random()*2, vy:-.5-Math.random()*1.5, life:1, size:2+Math.random()*3, c:"#cfd6e4"});
+  }
+  function ring(px, py){
+    for(let i=0;i<14;i++) particles.push({x:px, y:py-16, vx:Math.cos(i/14*Math.PI*2)*2.2, vy:Math.sin(i/14*Math.PI*2)*2.2, life:1, size:3, c:"#8fd0ff", ring:true});
+  }
+
+  function groundSupport(){
+    if (y >= GROUND_R && x + SIZE/2 > GAP_END) return GROUND_R;
+    if (y >= GROUND_L && x - SIZE/2 < PLAT_END) return GROUND_L;
+    return null;
+  }
+
+  function update(dt){
+    const target = (keys.right?1:0) - (keys.left?1:0);
+    if (target !== 0) { vx = target * VMOVE; facing = target; }
+    else if (onGround) vx = 0;
+
+    if (!onGround) vy += G * dt;
+
+    prevY = y;
+    x += vx * dt;
+    y += vy * dt;
+
+    // 画布左右边界（撞墙停止，不穿过）
+    if (x - SIZE/2 < 0) { x = SIZE/2; vx = 0; }
+    if (x + SIZE/2 > 800) { x = 800 - SIZE/2; vx = 0; }
+
+    squash += (1 - squash) * 12 * dt;
+
+    // 落地检测（从上方）——必须先于撞墙，否则「落在高台顶部」会被撞墙钳制
+    const g = groundSupport();
+    if (g !== null && vy >= 0 && y >= g && prevY < g) {
+      y = g; vy = 0;
+      const justLanded = !onGround;
+      onGround = true;
+      if (justLanded) { squash = .74; puff(x, y); }
+      if (g === GROUND_R && state === "playing") {
+        state = "done";
+        BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+        setStatus("Success","win"); syncURL(); celebrate();
+      }
+      return;
+    }
+
+    // 撞高台侧面：前一刻已在侧面（prevY > GROUND_R）且水平进入高台区域 → 撞墙，不算落地
+    if (prevY > GROUND_R && y > GROUND_R && x + SIZE/2 > GAP_END && x - SIZE/2 < GAP_END) {
+      x = GAP_END - SIZE/2; vx = 0;
+    }
+
+    if (g === null) onGround = false;
+
+    if (y > BOTTOM) {
+      state = "done"; y = BOTTOM;
+      BENCH.results.push(false); BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) { BENCH.status = "failed"; setStatus("Game over","lose"); syncURL(); failOverlay.classList.add("show"); return; }
+      setStatus("Fell","lose");
+      setTimeout(()=>{
+        retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        retryOverlay.classList.add("show");
+      }, 700);
+    }
+  }
+
+  function nextRound(){
+    retryOverlay.classList.remove("show");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  // ---- 渲染 ----
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,BOTTOM);
+    g.addColorStop(0,"#3a4a78"); g.addColorStop(.55,"#5c74a8"); g.addColorStop(1,"#9fb2d4");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,BOTTOM);
+  }
+  function drawCloud(cx,cy,s,o){ ctx.fillStyle="rgba(255,255,255,"+o+")";
+    ctx.beginPath(); ctx.arc(cx,cy,16*s,0,7); ctx.arc(cx+20*s,cy-8*s,20*s,0,7); ctx.arc(cx+44*s,cy,15*s,0,7); ctx.arc(cx+20*s,cy+4*s,17*s,0,7); ctx.fill(); }
+  function drawGround(x0,x1,top,bottom){
+    ctx.fillStyle="#4caf50"; ctx.fillRect(x0,top,x1-x0,14);
+    ctx.fillStyle="#43a047"; ctx.fillRect(x0,top+14,x1-x0,5);
+    const s=ctx.createLinearGradient(0,top+19,0,bottom); s.addColorStop(0,"#8d6e63"); s.addColorStop(1,"#5d4037");
+    ctx.fillStyle=s; ctx.fillRect(x0,top+19,x1-x0,bottom-top-19);
+  }
+  function drawGap(){
+    const s=ctx.createLinearGradient(0,GROUND_L,0,BOTTOM);
+    s.addColorStop(0,"#141c2e"); s.addColorStop(1,"#0a101c");
+    ctx.fillStyle=s; ctx.fillRect(PLAT_END,GROUND_L,GAP_END-PLAT_END,BOTTOM-GROUND_L);
+    ctx.fillStyle="#7a5a3e"; ctx.fillRect(PLAT_END-4,GROUND_L,4,BOTTOM-GROUND_L);
+    ctx.fillStyle="#7a5a3e"; ctx.fillRect(GAP_END,GROUND_R,4,BOTTOM-GROUND_R);
+  }
+  function drawShadow(){
+    let sy = (x > GAP_END) ? GROUND_R : GROUND_L;
+    const h = Math.min(1, Math.max(0, (sy - y)/260));
+    const w = SIZE * (0.5 + 0.5*(1-h));
+    ctx.fillStyle = "rgba(0,0,0,"+(0.28*(1-h*0.5))+")";
+    ctx.beginPath(); ctx.ellipse(x, sy+3, w, 4, 0, 0, 7); ctx.fill();
+  }
+  function drawPlayer(){
+    const py = y - SIZE*squash;
+    ctx.save();
+    ctx.translate(x, py + SIZE*squash);
+    ctx.scale(facing, 1);
+    ctx.scale(1, squash);
+    const grd = ctx.createLinearGradient(0,-SIZE,0,0); grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+    ctx.fillStyle=grd; ctx.beginPath(); roundRect(-SIZE/2,-SIZE,SIZE,SIZE,9); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.25)"; ctx.beginPath(); roundRect(-SIZE/2+3,-SIZE+4,SIZE-6,SIZE/2-5,6); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(SIZE/2-9,-SIZE+14,5.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-22,-SIZE+14,5.5,0,7); ctx.fill();
+    ctx.fillStyle="#123039"; ctx.beginPath(); ctx.arc(SIZE/2-7,-SIZE+14,2.6,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-20,-SIZE+14,2.6,0,7); ctx.fill();
+    ctx.strokeStyle="#123039"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(SIZE/2-16,-SIZE+24,5,.1,Math.PI-.1); ctx.stroke();
+    ctx.restore();
+  }
+  function drawParticles(){
+    particles.forEach(p=>{ ctx.globalAlpha = p.life; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.size*p.life+.5, 0, 7); ctx.fill(); });
+    ctx.globalAlpha = 1;
+  }
+  function roundRect(px,py,w,h,r){ ctx.moveTo(px+r,py); ctx.arcTo(px+w,py,px+w,py+h,r); ctx.arcTo(px+w,py+h,px,py+h,r); ctx.arcTo(px,py+h,px,py,r); ctx.arcTo(px,py,px+w,py,r); ctx.closePath(); }
+
+  function render(){
+    drawSky();
+    drawCloud(120,70,1,.9); drawCloud(540,120,.8,.8); drawCloud(680,55,1.1,.85);
+    drawGap();
+    drawGround(0,PLAT_END,GROUND_L,BOTTOM);
+    drawGround(GAP_END,800,GROUND_R,BOTTOM);
+    drawShadow();
+    drawPlayer();
+    drawParticles();
+  }
+
+  function frame(t){ if (!started) { requestAnimationFrame(frame); return; } 
+    const dt = Math.min((t - (frame.last||t))/1000, 0.05); frame.last = t;
+    if (state === "playing") update(dt);
+    particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; if(!p.ring) p.vy+=0.05; p.life-=0.03; });
+    for(let i=particles.length-1;i>=0;i--) if(particles[i].life<=0) particles.splice(i,1);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 键盘：key + code + keyCode 三重识别（WASD 与方向键都响应，兼容各类 GUI agent 框架）
+  addEventListener("keydown",(e)=>{
+    const k = (e.key || "").toLowerCase();
+    const c = e.code || "";
+    const kc = e.keyCode || e.which || 0;
+    if (["ArrowLeft","ArrowRight","ArrowUp","Space"].includes(c)) e.preventDefault();
+    const left  = k==="a" || k==="arrowleft"  || c==="KeyA" || c==="ArrowLeft"  || kc===65 || kc===37;
+    const right = k==="d" || k==="arrowright" || c==="KeyD" || c==="ArrowRight" || kc===68 || kc===39;
+    const up    = k==="w" || k===" " || k==="arrowup" || c==="KeyW" || c==="Space" || c==="ArrowUp" || kc===87 || kc===32 || kc===38;
+    if (left) keys.left = true;
+    if (right) keys.right = true;
+    if (up) jump(e);
+  });
+  addEventListener("keyup",(e)=>{
+    const k = (e.key || "").toLowerCase();
+    const c = e.code || "";
+    const kc = e.keyCode || e.which || 0;
+    if (k==="a" || k==="arrowleft"  || c==="KeyA" || c==="ArrowLeft"  || kc===65 || kc===37) keys.left = false;
+    if (k==="d" || k==="arrowright" || c==="KeyD" || c==="ArrowRight" || kc===68 || kc===39) keys.right = false;
+  });
+  cv.addEventListener("mousedown", ()=>jump());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.style.display = "none";
+    reset();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS);
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+  })();
+</script>
+</body>
+</html>

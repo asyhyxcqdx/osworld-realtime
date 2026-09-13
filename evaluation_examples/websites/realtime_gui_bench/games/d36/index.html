@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Erratic-Rush Dodge 随机暴冲闪避</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:22px; font-weight:700; min-height:30px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  .status.danger { font-size:30px; font-weight:800; color:#ff5c5c; text-shadow:0 0 16px rgba(255,80,80,.6); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:12px; color:#7d86ab; }
+  .key { display:inline-block; min-width:24px; height:24px; line-height:24px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 5px; }
+  .toast { position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay { position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+  .intro-rule b { color:var(--title); }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .retryOverlay.hidden { display:none; }
+  .retry-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn { margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys">
+    <span class="key">J</span> 翻滚闪避 · 幽影暴冲逼近时翻滚躲开
+  </div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Dodged! 躲开了！</div>
+      <div class="celeb-sub">The shadow rushed past 幽影扑空了</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Erratic-Rush Dodge 随机暴冲闪避</div>
+      <div class="intro-rule">A <b>shadow ghost</b> rushes at you with <b>randomly changing acceleration</b> (sometimes slow, sometimes a sudden burst). Dodge by <b>rolling under it</b> with <b>J</b> right before it reaches you!<br>一只<b>幽影</b>朝你暴冲，它的<b>加速度随机变化</b>（时而慢、时而突然暴冲）。在它逼近的瞬间按 <b>J</b> <b>翻滚压低</b>从它下面躲开！</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Hit! 被击中了！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const CW = 800, CH = 460;
+  const MAX_ATTEMPTS = 3;
+  const GROUND_Y = 360;             // 地面 y
+
+  // 几何（碰撞检测坐标）：身体中心 y = GROUND_Y - lift（lift=离地高度）
+  const ENEMY_START_X = 60;         // 幽影起始 x
+  const PLAYER_X = 640;             // 玩家 x（固定）
+  const GHOST_LIFT = 60;            // 幽影飘浮离地高度（扑击抬高，与主角视觉分离）
+  const GHOST_R = 20;               // 幽影身体半径
+  const HERO_STAND_LIFT = 22;       // 玩家站立离地高度（= 半高，脚底贴地）
+  const HERO_ROLL_LIFT = 10;        // 玩家翻滚最低离地高度（= 半高，贴地不悬空）
+  const HERO_STAND_R = 22;          // 玩家站立身体半径（= 半高，与 lift 相等保证贴地）
+  const HERO_ROLL_R = 10;           // 玩家翻滚身体半径（= 半高，贴地）
+
+  const V_MIN = 260, V_MAX = 520;   // 幽影速度范围（下限提高，避免慢到躲闪窗口覆盖不了）
+  const ACC_MIN = -240, ACC_MAX = 320; // 加速度范围（可正可负 → 时加速时减速/暴冲）
+  const ROLL_MS = 500;              // 翻滚持续时间（延长低身躲闪窗口，让玩家能覆盖幽魂到达时刻）
+  const ROUND_LIMIT = 5000;         // 幽影必须在 5s 内冲过来（否则超时失败）
+  const COLLIDE_MS = 380;           // 撞击停顿时长（幽影撞到玩家后停顿，播放撞击再结算失败）
+  const PASS_DIST = 170;            // 冲过距离（幽影越过玩家后再冲这段距离才结算成功）
+
+  const BENCH = { task:"erratic_rush_dodge", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "rush";          // rush(冲刺) | collide(撞击停顿) | pass(冲过) | dodge(躲开) | hit(被击中)
+  let enemyX = ENEMY_START_X;
+  let enemyV = 200;            // 幽影速度
+  let enemyA = 0;              // 幽影加速度（随机游走）
+  let rolling = false;         // 玩家是否正在翻滚
+  let rollStart = 0;           // 翻滚开始时刻
+  let roundStart = 0;
+  let settleLock = false;
+  let lastTime = 0;
+  let dodgeAt = 0, hitAt = 0, collideAt = 0, passAt = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  // 当前玩家身体参数（离地高度 + 半径），随翻滚进度变化
+  function playerPose(){
+    if (!rolling) return { lift: HERO_STAND_LIFT, r: HERO_STAND_R };
+    const t = Math.min(1, (performance.now()-rollStart)/ROLL_MS);
+    // 翻滚：前半段压低到最低，后半段起身（平滑正弦）
+    const dip = Math.sin(t * Math.PI);   // 0→1→0，中间最低
+    const lift = HERO_STAND_LIFT - (HERO_STAND_LIFT - HERO_ROLL_LIFT) * dip;
+    const r = HERO_STAND_R - (HERO_STAND_R - HERO_ROLL_R) * dip;
+    return { lift, r, dip, t };
+  }
+
+  window.__dbg = function(){
+    const pose = playerPose();
+    return {
+      phase, enemyX:Math.round(enemyX), enemyV:Math.round(enemyV), enemyA:+enemyA.toFixed(1),
+      rolling, playerLift:+pose.lift.toFixed(1), distance:Math.round(PLAYER_X - enemyX),
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status
+    };
+  };
+
+  function resetRound(){
+    phase = "rush";
+    enemyX = ENEMY_START_X;
+    // ★ 持续随机：每次 retry 都重新随机初始速度 + 加速度从 0 重新随机游走（每次 retry 轨迹完全不同）
+    enemyV = 160 + Math.random()*150;
+    enemyA = 0;
+    rolling = false;
+    roundStart = performance.now();
+    settleLock = false;
+    setStatus("Dodge! 闪避！","action");
+  }
+
+  function doRoll(){
+    if (phase !== "rush") return;
+    if (rolling) return;
+    rolling = true;
+    rollStart = performance.now();
+  }
+
+  function succeedDodge(){
+    if (settleLock) return;
+    settleLock = true;
+    phase = "dodge";
+    dodgeAt = performance.now();
+    BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Dodged! 躲开了！","win"); syncURL(); celebrate();
+  }
+  function failHit(){
+    if (settleLock) return;
+    settleLock = true;
+    phase = "hit";
+    hitAt = performance.now();
+    setStatus("Hit! 被击中了！","lose"); syncURL();
+    setTimeout(()=>{
+      BENCH.results.push("miss");
+      BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+      } else {
+        document.getElementById("retrySub").textContent = "Hit! 被击中了！";
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }
+    }, 900);
+  }
+
+  // 撞击停顿：幽影撞到玩家，停在玩家位置，播放撞击动画 COLLIDE_MS 后再结算失败
+  function beginCollide(){
+    if (settleLock) return;
+    phase = "collide";
+    collideAt = performance.now();
+    setStatus("撞！","danger");
+    setTimeout(()=>{ if (phase === "collide") failHit(); }, COLLIDE_MS);
+  }
+  // 冲过：幽影越过了玩家，继续向右冲远 PASS_DIST 后再结算成功（让玩家看到冲过去的完整过程）
+  function beginPass(){
+    if (settleLock) return;
+    phase = "pass";
+    passAt = performance.now();
+    setStatus("冲过去了…","");
+  }
+
+  function update(now){
+    if (phase === "collide"){
+      // 撞击停顿：幽影停在玩家位置（不再移动），到时长后结算
+      if (rolling && now - rollStart >= ROLL_MS) rolling = false;
+      if (now - collideAt >= COLLIDE_MS) failHit();
+      return;
+    }
+    if (phase === "pass"){
+      // 冲过：幽影继续向右冲远，越过 PASS_DIST 后结算成功
+      if (!lastTime) lastTime = now;
+      const dt = Math.min((now - lastTime)/1000, 0.033);
+      lastTime = now;
+      enemyX += Math.abs(enemyV) * dt;   // 保持当前速度继续向右冲
+      if (rolling && now - rollStart >= ROLL_MS) rolling = false;
+      if (enemyX > PLAYER_X + PASS_DIST) succeedDodge();
+      return;
+    }
+    if (phase !== "rush") {
+      if (rolling && now - rollStart >= ROLL_MS) rolling = false;
+      return;
+    }
+    if (!lastTime) lastTime = now;
+    const dt = Math.min((now - lastTime)/1000, 0.033);
+    lastTime = now;
+
+    // ★ 持续随机（每次 retry 轨迹不同）：加速度每帧随机游走，速度累积，到达时机不可预判
+    enemyA += (Math.random()-0.5) * 220;
+    enemyA = Math.max(ACC_MIN, Math.min(ACC_MAX, enemyA));
+    enemyV += enemyA * dt;
+    enemyV = Math.max(V_MIN, Math.min(V_MAX, enemyV));
+    enemyX += enemyV * dt;
+
+    // 翻滚计时
+    if (rolling && now - rollStart >= ROLL_MS) rolling = false;
+
+    // 碰撞检测：幽影（离地 GHOST_LIFT，半径 GHOST_R）vs 玩家（离地 lift，半径 r）
+    const pose = playerPose();
+    const dx = Math.abs(enemyX - PLAYER_X);
+    const dy = Math.abs(GHOST_LIFT - pose.lift);
+    const collideX = GHOST_R + pose.r;
+    const collideY = GHOST_R + pose.r;
+
+    // 撞到玩家 → 进入「撞击停顿」（幽影停在玩家位置，播放撞击后结算失败，不是瞬间结算）
+    if (dx < collideX && dy < collideY){
+      beginCollide();
+      return;
+    }
+
+    // 幽影冲过玩家（越过碰撞区）→ 进入「冲过」阶段（幽影继续向右冲远后结算成功）
+    if (enemyX > PLAYER_X + collideX){
+      beginPass();
+      return;
+    }
+
+    // 限时：幽影 5s 内没冲过来 → 失败
+    if (now - roundStart > ROUND_LIMIT){
+      failHit();
+      return;
+    }
+
+    // 危险圈提示
+    if (PLAYER_X - enemyX < 150){
+      setStatus("Burst incoming! 暴冲来袭！","danger");
+    }
+  }
+
+  // ============ 渲染 ============
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function drawBg(){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#141024"); g.addColorStop(.55,"#1e1630"); g.addColorStop(1,"#0f0c1a");
+    ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+    ctx.fillStyle="#1a1424";
+    ctx.beginPath(); ctx.moveTo(0,300); ctx.lineTo(150,240); ctx.lineTo(320,300); ctx.lineTo(500,250); ctx.lineTo(800,300); ctx.lineTo(800,360); ctx.lineTo(0,360); ctx.closePath(); ctx.fill();
+    // 地面
+    ctx.fillStyle="#241a30"; ctx.fillRect(0,GROUND_Y,CW,CH-GROUND_Y);
+    ctx.fillStyle="#342642"; ctx.fillRect(0,GROUND_Y,CW,4);
+  }
+
+  // 幽影（复用 a38/d35 drawGhost：半透明发光幽灵，飘浮；光晕缩小避免与主角视觉重叠）
+  function drawGhost(cx, cy, seed, t){
+    const pulse = 1 + Math.sin(seed + t/120)*0.10;
+    const r = 20 * pulse;
+    const bob = Math.sin(seed + t/400)*3;
+    const gy = cy + bob;
+    // 冲刺拖尾（朝左，不遮挡主角）
+    const trail = Math.max(4, enemyV/40);
+    for (let i=1;i<=3;i++){
+      ctx.globalAlpha = 0.18/i;
+      ctx.fillStyle = "#a07ce0";
+      ctx.beginPath(); ctx.arc(cx - i*trail, gy, r*(1-i*0.12), 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 0.14;
+    ctx.fillStyle = "#a07ce0";
+    ctx.beginPath(); ctx.arc(cx, gy, r*1.7, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.20;
+    ctx.fillStyle = "#b8a0f0";
+    ctx.beginPath(); ctx.arc(cx, gy, r*1.2, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = "#c4b8f0";
+    ctx.beginPath();
+    ctx.arc(cx, gy-r*0.25, r, Math.PI, 0);
+    const wl = gy + r*0.75;
+    ctx.lineTo(cx+r, wl);
+    ctx.quadraticCurveTo(cx+r*0.7, wl-r*0.5, cx+r*0.35, wl);
+    ctx.quadraticCurveTo(cx, wl-r*0.5, cx-r*0.35, wl);
+    ctx.quadraticCurveTo(cx-r*0.7, wl-r*0.5, cx-r, wl);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(30,18,60,.9)";
+    ctx.beginPath(); ctx.arc(cx-r*0.32, gy-r*0.2, r*0.16, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+r*0.32, gy-r*0.2, r*0.16, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(30,18,60,.85)";
+    ctx.beginPath(); ctx.ellipse(cx, gy+r*0.3, r*0.15, r*0.2, 0, 0, 7); ctx.fill();
+  }
+
+  function drawEnemy(){
+    drawGhost(enemyX, GROUND_Y - GHOST_LIFT, 0.8, performance.now());
+  }
+
+  // 玩家（圆角方块小人；脚底贴地 GROUND_Y，站立高、翻滚压低，不悬空不穿地）
+  function drawPlayer(){
+    const pose = playerPose();
+    const S = pose.r * 2;             // 身体高度（站立 44，翻滚 20）
+    const centerY = GROUND_Y - pose.r; // 身体中心 = 地面 - 半高（脚底正好贴地）
+    ctx.save();
+    ctx.translate(PLAYER_X, centerY);
+    // 翻滚时绕身体中心旋转（前翻滚感）
+    if (rolling) ctx.rotate(pose.t * Math.PI * 2);
+    const grd = ctx.createLinearGradient(0,-S/2,0,S/2); grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+    ctx.fillStyle = grd; rr(-S/2,-S/2,S,S,8); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.25)"; rr(-S/2+3,-S/2+4,S-6,S/3-4,5); ctx.fill();
+    // 眼睛 + 嘴（面向左侧，正对来袭的幽魂）
+    ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(-S/2+8,-S/2+13,4.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(-S/2+20,-S/2+13,4.5,0,7); ctx.fill();
+    ctx.fillStyle="#123039";
+    ctx.beginPath(); ctx.arc(-S/2+6,-S/2+13,2.2,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(-S/2+18,-S/2+13,2.2,0,7); ctx.fill();
+    ctx.strokeStyle="#123039"; ctx.lineWidth=1.6; ctx.beginPath(); ctx.arc(-S/2+14,-S/2+20,4,.1,Math.PI-.1); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawDangerRing(){
+    if (phase !== "rush") return;
+    if (PLAYER_X - enemyX < 150){
+      const a = 0.4 + 0.4*Math.sin(performance.now()/50);
+      ctx.strokeStyle=`rgba(255,80,80,${a})`; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(PLAYER_X, GROUND_Y-HERO_STAND_LIFT, HERO_STAND_R+GHOST_R+8, 0, 7); ctx.stroke();
+    }
+  }
+
+  function render(){
+    const now = performance.now();
+    drawBg();
+    drawEnemy();
+    drawPlayer();
+    drawDangerRing();
+    if (phase === "collide"){
+      // 撞击停顿：幽影撞上玩家，红光冲击
+      const a = Math.min(1, (now-collideAt)/COLLIDE_MS);
+      ctx.fillStyle="rgba(255,60,60,"+(0.3+0.3*a)+")"; ctx.fillRect(0,0,CW,CH);
+      ctx.strokeStyle="rgba(255,180,80,.8)"; ctx.lineWidth=5;
+      ctx.beginPath(); ctx.arc(PLAYER_X, GROUND_Y-HERO_STAND_LIFT, 30+a*20, 0, 7); ctx.stroke();
+    }
+    if (phase === "pass"){
+      // 冲过：幽影从玩家身边冲过去（无特效，自然冲过）
+    }
+    if (phase === "dodge"){
+      const a = Math.max(0, 1-(now-dodgeAt)/500);
+      ctx.strokeStyle="rgba(52,211,153,"+a+")"; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(PLAYER_X, GROUND_Y-HERO_ROLL_LIFT, 40+a*16, 0, 7); ctx.stroke();
+    }
+    if (phase === "hit"){
+      const a = Math.max(0, 1-(now-hitAt)/900);
+      ctx.fillStyle="rgba(255,60,60,"+(a*0.3)+")"; ctx.fillRect(0,0,CW,CH);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 44px Arial"; ctx.textAlign="center";
+      ctx.fillText("HIT 被击中", CW/2, 120);
+    }
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  // ============ 输入 ============
+  window.addEventListener("keydown",(e)=>{
+    const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
+    if (kc === 32 || k==="j" || c==="KeyJ" || kc===74) e.preventDefault();
+    if (k==="j" || c==="KeyJ" || kc===74){
+      doRoll();
+      return;
+    }
+    if (e.code === "Space" && !e.repeat){
+      if (!introEl.classList.contains("hidden")) { startGame(); return; }
+      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    }
+  });
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

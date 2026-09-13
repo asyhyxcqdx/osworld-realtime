@@ -49,6 +49,30 @@ def encode_image(image_content):
     return base64.b64encode(image_content).decode('utf-8')
 
 
+def _extract_anthropic_text(response_data):
+    """Return all text blocks from an Anthropic Messages API response."""
+    content = response_data.get("content", [])
+    if not isinstance(content, list):
+        raise ValueError("Anthropic response 'content' must be a list")
+
+    text_parts = [
+        block["text"]
+        for block in content
+        if isinstance(block, dict)
+        and block.get("type") == "text"
+        and isinstance(block.get("text"), str)
+    ]
+    if not text_parts:
+        block_types = [
+            block.get("type", "unknown") if isinstance(block, dict) else type(block).__name__
+            for block in content
+        ]
+        raise ValueError(
+            f"Anthropic response contains no text block; block types: {block_types}"
+        )
+    return "\n".join(text_parts)
+
+
 def encoded_img_to_pil_img(data_str):
     base64_str = data_str.replace("data:image/png;base64,", "")
     image_data = base64.b64decode(base64_str)
@@ -236,7 +260,9 @@ class PromptAgent:
             # observation_type can be in ["screenshot", "a11y_tree", "screenshot_a11y_tree", "som"]
             max_trajectory_length=3,
             a11y_tree_max_tokens=10000,
-            client_password="password"
+            client_password="password",
+            api_format="auto",
+            api_base_url=None
     ):
         self.platform = platform
         self.model = model
@@ -248,6 +274,10 @@ class PromptAgent:
         self.max_trajectory_length = max_trajectory_length
         self.a11y_tree_max_tokens = a11y_tree_max_tokens
         self.client_password = client_password
+        if api_format not in {"auto", "openai_chat", "anthropic_messages"}:
+            raise ValueError(f"Unsupported API format: {api_format}")
+        self.api_format = api_format
+        self.api_base_url = api_base_url
 
         self.thoughts = []
         self.actions = []
@@ -284,7 +314,7 @@ class PromptAgent:
         else:
             raise ValueError("Invalid experiment type: " + observation_type)
         
-        self.system_message = self.system_message.format(CLIENT_PASSWORD=self.client_password)
+        self.system_message = self.system_message.replace("{CLIENT_PASSWORD}", self.client_password)
 
     def predict(self, instruction: str, obs: Dict) -> List:
         """
@@ -570,7 +600,7 @@ class PromptAgent:
     )
     def call_llm(self, payload):
 
-        if payload['model'].startswith("azure-gpt-4o"):
+        if self.api_format == "auto" and payload['model'].startswith("azure-gpt-4o"):
 
             # .env config example :
             # AZURE_OPENAI_API_BASE=YOUR_API_BASE
@@ -617,14 +647,31 @@ class PromptAgent:
                 return ""
             else:
                 return response.json()['choices'][0]['message']['content']
-        elif self.model.startswith("gpt"):
-            # Support custom OpenAI base URL via environment variable
-            base_url = os.environ.get('OPENAI_BASE_URL', 'https://api.openai.com')
+        elif self.api_format == "openai_chat" or (
+                self.api_format == "auto" and self.model.startswith("gpt")):
+            # The API wire format is configured independently from the model
+            # name so one OpenAI-compatible gateway can serve many models.
+            base_url = (
+                self.api_base_url
+                or os.environ.get('PACKY_API_BASE_URL')
+                or os.environ.get('OPENAI_BASE_URL')
+                or 'https://api.openai.com'
+            ).rstrip('/')
             # Smart handling: avoid duplicate /v1 if base_url already ends with /v1
             api_url = f"{base_url}/chat/completions" if base_url.endswith('/v1') else f"{base_url}/v1/chat/completions"
+            api_key = (
+                os.environ.get('PACKY_API_KEY')
+                or os.environ.get('OPENAI_API_KEY')
+                or os.environ.get('ANTHROPIC_AUTH_TOKEN')
+            )
+            if not api_key:
+                raise RuntimeError(
+                    "OpenAI-compatible API requires PACKY_API_KEY, "
+                    "OPENAI_API_KEY, or ANTHROPIC_AUTH_TOKEN"
+                )
             headers = {
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {os.environ['OPENAI_API_KEY']}"
+                "Authorization": f"Bearer {api_key}"
             }
             logger.info("Generating content with GPT model: %s", self.model)
             response = requests.post(
@@ -653,7 +700,8 @@ class PromptAgent:
             else:
                 return response.json()['choices'][0]['message']['content']
 
-        elif self.model.startswith("claude"):
+        elif self.api_format == "anthropic_messages" or (
+                self.api_format == "auto" and self.model.startswith("claude")):
             messages = payload["messages"]
             max_tokens = payload["max_tokens"]
             top_p = payload["top_p"]
@@ -689,8 +737,30 @@ class PromptAgent:
 
             logger.debug("CLAUDE MESSAGE: %s", repr(claude_messages))
 
+            api_key = (
+                os.environ.get("PACKY_API_KEY")
+                or os.environ.get("ANTHROPIC_API_KEY")
+                or os.environ.get("ANTHROPIC_AUTH_TOKEN")
+            )
+            if not api_key:
+                raise RuntimeError(
+                    "Anthropic-compatible API requires PACKY_API_KEY, "
+                    "ANTHROPIC_API_KEY, or ANTHROPIC_AUTH_TOKEN"
+                )
+            base_url = (
+                self.api_base_url
+                or os.environ.get("PACKY_API_BASE_URL")
+                or os.environ.get("ANTHROPIC_BASE_URL")
+                or "https://api.anthropic.com"
+            ).rstrip("/")
+            api_url = (
+                f"{base_url}/messages"
+                if base_url.endswith("/v1")
+                else f"{base_url}/v1/messages"
+            )
+
             headers = {
-                "x-api-key": os.environ["ANTHROPIC_API_KEY"],
+                "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json"
             }
@@ -707,7 +777,7 @@ class PromptAgent:
                 payload["top_p"] = top_p
 
             response = requests.post(
-                "https://api.anthropic.com/v1/messages",
+                api_url,
                 headers=headers,
                 json=payload
             )
@@ -718,7 +788,7 @@ class PromptAgent:
                 time.sleep(5)
                 return ""
             else:
-                return response.json()['content'][0]['text']
+                return _extract_anthropic_text(response.json())
 
         elif self.model.startswith("mistral"):
             messages = payload["messages"]

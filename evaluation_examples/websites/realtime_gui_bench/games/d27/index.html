@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Stomp 随机踩怪</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:var(--bg);font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    color:#e8eaf6;user-select:none;overflow:hidden;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;}
+  .status{font-size:21px;font-weight:600;min-height:27px;letter-spacing:.4px;text-align:center;}
+  .status.win{color:var(--ok1);} .status.lose{color:var(--fail1);}
+  .status.action{font-size:30px;font-weight:800;color:var(--gold);text-shadow:0 0 14px rgba(246,196,83,.55);letter-spacing:.5px;}
+  canvas{border-radius:16px;box-shadow:0 16px 44px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);display:block;}
+  .hint{font-size:14px;color:#9aa3c7;letter-spacing:.5px;}
+  .keys{display:flex;gap:8px;align-items:center;font-size:13px;color:#9aa3c7;}
+  .key{display:inline-block;min-width:26px;height:26px;line-height:26px;text-align:center;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);border-radius:6px;color:#cdd3ea;font-weight:700;padding:0 6px;}
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 52px;text-align:center;max-width:640px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="keys"><span class="key">A</span><span class="key">D</span> 移动 · <span class="key">W</span> / <span class="key">Space</span> 跳</div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Stomped! 踩中了！</div>
+      <div class="celeb-sub">The mushroom is squashed 蘑菇怪被踩扁了</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Random Stomp 随机踩怪</div>
+      <div class="intro-rule">A <b>mushroom enemy</b> is <b>escaping off-screen</b>! It wanders on the ground with a <b>randomly shifting path</b> — <b>jump on its head to stomp it before it gets away (4s)</b> (don't touch its side, or you'll be hit!). Move with <b>A/D</b>, jump with <b>W / Space</b>.<br>一只<b>蘑菇怪</b>正<b>逃出屏幕</b>！它在地面<b>随机游走</b>——<b>在它逃走前（4 秒）跳到它头上踩扁它</b>（别碰到它的侧面，否则你会被撞死！）。<b>A/D</b> 移动，<b>W / 空格</b> 跳。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Touched the enemy! 碰到了敌人！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const W = 800, H = 500;
+  const GROUND_Y = 430;
+  const G = 1800, VJ = 620, VMOVE = 300;   // 复用 C1 二段跳的重力/跳跃/移动
+  const SIZE = 34;                          // 主角身体尺寸
+  const ENEMY_W = 56, ENEMY_H = 40;         // 蘑菇怪尺寸
+  const ROUND_MS = 4000;                    // 单次尝试限时（超时 miss）
+  const STOMP_MS = 600;                     // 踩中反弹动画时长
+  const DIE_MS = 650;                       // 侧碰死亡动画时长
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  const BENCH = { task:"random_stomp", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  let phase = "playing";   // playing | stomp(踩中) | die(侧碰死/超时) 
+  let x = W/2, y = GROUND_Y, vx = 0, vy = 0, prevY = GROUND_Y;
+  let onGround = true, facing = 1;
+  let enemy = { x: W/2, v: 60 };
+  let keys = { left:false, right:false };
+  let roundStart = 0;
+  let enemySquash = 0;
+  let stompAt = 0, dieAt = 0;
+  let settleLock = false;
+  let lastT = performance.now();
+
+  window.__dbg = function(){
+    return { phase, x:Math.round(x), y:Math.round(y), enemyX:Math.round(enemy.x), enemyV:Math.round(enemy.v),
+             onGround, attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+  // 测试接口：精确设置主角 x（供 test 对准敌人）
+  window.__setX = function(nx){ x = Math.max(SIZE/2, Math.min(W-SIZE/2, nx)); };
+
+  function resetEnemy(){
+    // 蘑菇初始生成位置避开主角（保证开局不会立即侧碰死，给玩家反应时间）
+    let ex, tries = 0;
+    do {
+      ex = 160 + Math.random()*(W-320);
+      tries++;
+    } while (Math.abs(ex - x) < 160 && tries < 20);
+    enemy.x = ex;
+    enemy.v = (Math.random()<0.5?-1:1)*(50+Math.random()*40);
+    enemySquash = 0;
+  }
+  function resetRound(){
+    x = W/2; y = GROUND_Y; vx = 0; vy = 0; prevY = GROUND_Y;
+    onGround = true; facing = 1;
+    resetEnemy();
+    phase = "playing";
+    settleLock = false;
+    roundStart = performance.now();
+    setStatus("Stomp the enemy! 踩怪！","action");
+  }
+
+  function stompHit(){
+    if (phase !== "playing" || settleLock) return;
+    settleLock = true;
+    phase = "stomp";
+    stompAt = performance.now();
+    vy = -VJ * 0.8;         // 踩中反弹：主角向上跳起
+    onGround = false;
+    setStatus("Stomped! 踩中了！","win");
+    // 结算延迟：先播「主角反弹跳起 + 怪被踩扁」动画，再 celebrate
+    setTimeout(()=>{
+      BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+      syncURL(); celebrate();
+    }, STOMP_MS);
+  }
+  function sideHit(){
+    if (phase !== "playing" || settleLock) return;
+    settleLock = true;
+    phase = "die";
+    dieAt = performance.now();
+    setStatus("Touched! 被撞了！","lose");
+    // 结算延迟：先播「主角被撞」动画，再安排下一轮/失败框
+    setTimeout(()=>{
+      BENCH.results.push(false);
+      BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+      } else {
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retrySub").textContent = "Touched the enemy! 碰到了敌人！";
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }
+    }, DIE_MS);
+  }
+  function timeoutMiss(){
+    if (phase !== "playing" || settleLock) return;
+    settleLock = true;
+    phase = "timeout";
+    dieAt = performance.now();
+    setStatus("Escaped! 逃走了！","lose");
+    // 结算延迟：先播「怪逃出屏幕」动画，再安排下一轮/失败框
+    setTimeout(()=>{
+      BENCH.results.push(false);
+      BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+      } else {
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retrySub").textContent = "Escaped! 怪逃走了！";
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }
+    }, DIE_MS);
+  }
+
+  function jump(){
+    if (phase !== "playing" || !onGround) return;
+    vy = -VJ; onGround = false;
+  }
+
+  function update(dt){
+    const dtS = dt/1000;
+    if (phase === "playing") {
+      const target = (keys.right?1:0) - (keys.left?1:0);
+      if (target !== 0) { vx = target * VMOVE; facing = target; }
+      else vx = 0;
+      if (!onGround) vy += G*dtS;
+      prevY = y;
+      x += vx*dtS;
+      y += vy*dtS;
+      if (x - SIZE/2 < 0) { x = SIZE/2; }
+      if (x + SIZE/2 > W) { x = W - SIZE/2; }
+      if (y >= GROUND_Y && vy >= 0) { y = GROUND_Y; vy = 0; onGround = true; }
+      // 敌人持续随机游走
+      enemy.v += (Math.random()-0.5)*3.2;
+      enemy.v = Math.max(-60, Math.min(60, enemy.v));
+      enemy.x += enemy.v*dtS;
+      if (enemy.x < 140) { enemy.x = 140; enemy.v = Math.abs(enemy.v); }
+      if (enemy.x > W-140) { enemy.x = W-140; enemy.v = -Math.abs(enemy.v); }
+      // 碰撞检测（纯 AABB）
+      const enemyTop = GROUND_Y - ENEMY_H;
+      const overlapX = Math.abs(x - enemy.x) < SIZE/2 + ENEMY_W/2;
+      if (overlapX && y >= enemyTop && y - SIZE <= GROUND_Y) {
+        if (prevY <= enemyTop && vy >= 0) {
+          stompHit();   // 踩头：从上方落下，脚底穿过怪顶
+        } else if (onGround) {
+          sideHit();    // 侧碰：主角在地面撞怪侧（跳起时 onGround=false，不误判）
+        }
+        return;
+      }
+      if (performance.now() - roundStart > ROUND_MS) {
+        timeoutMiss();
+      }
+    } else if (phase === "stomp") {
+      vy += G*dtS;
+      y += vy*dtS;
+      if (y >= GROUND_Y && vy >= 0) { y = GROUND_Y; vy = 0; }
+      const el = performance.now() - stompAt;
+      enemySquash = Math.min(1, el/220);
+    } else if (phase === "timeout") {
+      // 怪逃走：向最近边缘加速跑出屏幕
+      const dir = enemy.x < W/2 ? -1 : 1;
+      enemy.x += dir * 400 * dtS;
+    }
+  }
+
+  // ---- 渲染 ----
+  function roundRect(px,py,w,h,r){ ctx.beginPath(); ctx.moveTo(px+r,py); ctx.arcTo(px+w,py,px+w,py+h,r); ctx.arcTo(px+w,py+h,px,py+h,r); ctx.arcTo(px,py+h,px,py,r); ctx.arcTo(px,py,px+w,py,r); ctx.closePath(); }
+
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,GROUND_Y);
+    g.addColorStop(0,"#5bb8e8"); g.addColorStop(0.7,"#a8daf5"); g.addColorStop(1,"#e8f6fd");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,GROUND_Y);
+    ctx.fillStyle="rgba(255,255,255,.9)";
+    drawCloud(120,90,1.0); drawCloud(620,60,0.8); drawCloud(400,150,0.55);
+  }
+  function drawCloud(x,y,s){
+    ctx.beginPath();
+    ctx.arc(x,y,28*s,0,7); ctx.arc(x+32*s,y-14*s,24*s,0,7);
+    ctx.arc(x+60*s,y,26*s,0,7); ctx.arc(x+30*s,y+12*s,22*s,0,7);
+    ctx.fill();
+  }
+  function drawGround(){
+    ctx.fillStyle="#7ab85c"; ctx.fillRect(0,GROUND_Y,W,H-GROUND_Y);
+    ctx.fillStyle="#5a9a3e"; ctx.fillRect(0,GROUND_Y,W,8);
+    ctx.fillStyle="#8a6d4a"; ctx.fillRect(0,GROUND_Y+16,W,H-GROUND_Y-16);
+  }
+
+  function drawPlayer(){
+    const squash = onGround ? 1 : 1.06;
+    const py = y - SIZE*squash;
+    ctx.save();
+    ctx.translate(x, py + SIZE*squash);
+    ctx.scale(facing, 1);
+    ctx.scale(1, squash);
+    const grd = ctx.createLinearGradient(0,-SIZE,0,0); grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+    ctx.fillStyle=grd; roundRect(-SIZE/2,-SIZE,SIZE,SIZE,9); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.25)"; roundRect(-SIZE/2+3,-SIZE+4,SIZE-6,SIZE/2-5,6); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(SIZE/2-9,-SIZE+14,5.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-22,-SIZE+14,5.5,0,7); ctx.fill();
+    ctx.fillStyle="#123039"; ctx.beginPath(); ctx.arc(SIZE/2-7,-SIZE+14,2.6,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-20,-SIZE+14,2.6,0,7); ctx.fill();
+    ctx.strokeStyle="#123039"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(SIZE/2-16,-SIZE+24,5,.1,Math.PI-.1); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawEnemy(){
+    const ex = enemy.x;
+    const w = ENEMY_W, h = ENEMY_H * (1 - enemySquash*0.7);
+    const top = GROUND_Y - h;
+    ctx.save();
+    ctx.translate(ex, GROUND_Y);
+    ctx.scale(1 + enemySquash*0.6, 1 - enemySquash*0.7);
+    ctx.translate(-ex, -GROUND_Y);
+    if (enemySquash < 1) {
+      ctx.fillStyle = "#f5e8d0";
+      ctx.beginPath(); ctx.roundRect(ex-w/2, top+h*0.4, w, h*0.6, 4); ctx.fill();
+      ctx.fillStyle = "#e04a3a";
+      ctx.beginPath(); ctx.arc(ex, top+h*0.4, w/2, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(ex-w*0.25, top+h*0.2, 6, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex+w*0.22, top+h*0.24, 5, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex, top+h*0.1, 5, 0, 7); ctx.fill();
+      ctx.fillStyle = "#1a1a1a";
+      ctx.beginPath(); ctx.arc(ex-w*0.16, top+h*0.52, 3.2, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(ex+w*0.16, top+h*0.52, 3.2, 0, 7); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    drawSky(); drawGround();
+    drawEnemy();
+    drawPlayer();
+    if (phase === "die") {
+      const a = Math.max(0, 1-(performance.now()-dieAt)/DIE_MS);
+      ctx.fillStyle="rgba(255,60,60,"+(a*0.3)+")"; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 40px Arial"; ctx.textAlign="center";
+      ctx.fillText("TOUCHED 被撞", W/2, 140);
+    }
+    if (phase === "timeout") {
+      // 超时：怪逃出屏幕（橙红提示，非「被撞」）
+      const a = Math.max(0, 1-(performance.now()-dieAt)/DIE_MS);
+      ctx.fillStyle="rgba(255,140,60,"+(a*0.22)+")"; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 40px Arial"; ctx.textAlign="center";
+      ctx.fillText("ESCAPED 逃走了", W/2, 140);
+    }
+    if (phase === "stomp") {
+      const a = Math.max(0, 1-(performance.now()-stompAt)/STOMP_MS);
+      ctx.strokeStyle="rgba(246,196,83,"+(0.7*a)+")"; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(enemy.x, GROUND_Y-ENEMY_H, 30+a*26, 0, 7); ctx.stroke();
+    }
+  }
+  function frame(now){
+    const dt = now - lastT; lastT = now;
+    if (dt > 0 && dt < 100) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // ---- 输入 ----
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode||e.which||0;
+    if (kc === 32 || kc === 37 || kc === 38 || kc === 39 || kc === 40 || kc === 9) e.preventDefault();
+    if (e.code === "Space" && !e.repeat){
+      if (!introEl.classList.contains("hidden")) { startGame(); return; }
+      if (!retryEl.classList.contains("hidden") && (phase === "die" || phase === "timeout")) { nextRound(); return; }
+    }
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    if (k==="a"||c==="KeyA"||kc===65||k==="arrowleft"||c==="ArrowLeft"||kc===37) keys.left = true;
+    if (k==="d"||c==="KeyD"||kc===68||k==="arrowright"||c==="ArrowRight"||kc===39) keys.right = true;
+    if (k==="w"||c==="KeyW"||kc===87||c==="Space"||kc===32||k===" "||c==="ArrowUp"||kc===38) jump();
+  });
+  window.addEventListener("keyup",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    if (k==="a"||c==="KeyA"||kc===65||k==="arrowleft"||c==="ArrowLeft"||kc===37) keys.left = false;
+    if (k==="d"||c==="KeyD"||kc===68||k==="arrowright"||c==="ArrowRight"||kc===39) keys.right = false;
+  });
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

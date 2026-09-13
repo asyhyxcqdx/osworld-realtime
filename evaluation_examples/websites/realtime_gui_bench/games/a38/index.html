@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost Zone Escape 幽魂区域逃生</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.hiddenst { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:12px; color:#7d86ab; }
+  .key { display:inline-block; min-width:24px; height:24px; line-height:24px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Press E to use the light skill 按 E 使用照明技能</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="keys">
+    <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span> 移动 · <span class="key">E</span> 照明 <span id="lightCount">x2</span>
+  </div>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Escaped! 逃出生天</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Ghost Zone Escape 幽魂区域逃生</div>
+      <div class="intro-rule">A dark zone hides a <b>safe path</b> from left to right, surrounded by <b>ghosts</b>. Press <b>E</b> to flash-light the layout (up to <b>2 times</b>; it then fades, ghosts turn invisible). Walk with <b>WASD</b> along the safe path to the right exit. Stepping into a ghost cell kills you.<br>一片幽暗区域藏着一条从左到右的<b>安全通路</b>，四周布满<b>幽魂</b>。按 <b>E</b> 照亮看清布局（<b>最多 2 次</b>；每次随后熄灭、幽魂隐形）。用 <b>WASD</b> 沿安全通路走到右侧出口。踩进幽魂格会被杀死。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // ===== 核心设计（a 类 · 视频补丁 · WASD 实时移动穿越）=====
+  // 幽暗区域藏着一条从左侧到右侧的「安全通路」，通路外散布幽魂（危险）。
+  // 按 E 使用照明技能（最多 2 次）：蓄力随机延迟 0.3~2s → 光晕亮起显示「安全通路 + 幽魂分布」1.5s → 熄灭（幽魂隐形）。
+  // 玩家用 WASD 实时移动主角，凭记忆沿安全通路走到右侧出口=成功；踩进幽魂格=失败。
+  // IEW 有限（布局闪现后消失）；AVW=∞（移动穿越无时限）。补丁=视频（连续帧捕获闪现的布局）。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const CHARGE_MIN = 300, CHARGE_MAX = 2000;   // 照明蓄力随机延迟（防截图）
+  const REVEAL_MS = 1500;                       // 照亮显示时长
+  const MAX_LIGHTS = 2;                         // 照明技能可用次数（难度调整：2 次）
+  const HERO_SIZE = 30;                         // 主角小人尺寸
+
+  // 地图网格：COLS×ROWS，安全通路每列恰好 1 格，其余格是幽魂
+  const MAP_LEFT = 40, MAP_TOP = 100, MAP_COLS = 10, MAP_ROWS = 5;
+  const TILE_W = 72, TILE_H = 64;
+  const MAP_RIGHT = MAP_LEFT + MAP_COLS * TILE_W;   // 760
+
+  const BENCH = { task:"enemy_layout_recall", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  // 相位机：游戏内 phase=idle(未照明) | charge(蓄力) | reveal(照亮显示) | hidden(幽魂隐形·凭记忆走) | escape | killed | done | killed_done
+  let phase = "idle";
+  let pathSet = new Set();     // 安全通路格子集合（"c,r"）
+  let pathOrder = [];          // 从入口到出口的有序 path 格序列 [[c,r],...]
+  let heroCol = -1, heroRow = 0;   // 主角逻辑格子（-1 = 入口左侧外）；离散一格一格移动（A 类，非连续滑动）
+  let animFrom = {x:0, y:0}, animTo = {x:0, y:0};   // 跳格动画起终点
+  let animT = 1, animDur = 120;     // 跳格动画进度（animT>=animDur 表示动画完成）
+  let lightsLeft = MAX_LIGHTS;   // 剩余照明次数（可用 2 次）
+  let phaseStart = 0;
+  let chargeDelay = 0;         // 照明蓄力延迟（useLight 时确定，避免每帧重随机）
+  let killFromX = 0, killFromY = 0;   // 击杀动画幽魂起点
+  let killSeed = 0;                   // 击杀幽魂的飘浮相位（与被踩格 reveal 幽灵一致，避免相位跳变）
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, heroCol, heroRow, lightsLeft, pathOrder: pathOrder.slice(), attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  // 生成安全通路：4-连通贪吃蛇（随机游走逐步向右推进），保证相邻 path 格共享边
+  function genPath(){
+    pathSet = new Set();
+    pathOrder = [];
+    const key = (c,r)=>c+","+r;
+    let c = 0, r = Math.floor(Math.random()*MAP_ROWS);
+    pathSet.add(key(c,r)); pathOrder.push([c,r]);
+    let guard = 0;
+    while (c < MAP_COLS-1 && guard++ < 400){
+      // 候选移动：向右（必须）、上、下（避免原地打转）
+      const moves = [[c+1, r]];
+      if (r > 0) moves.push([c, r-1]);
+      if (r < MAP_ROWS-1) moves.push([c, r+1]);
+      // 若已有访问过的垂直格，优先向右（避免在同列来回）
+      let mv = moves[Math.floor(Math.random()*moves.length)];
+      if (mv[0] === c && pathSet.has(key(mv[0],mv[1]))) mv = [c+1, r];
+      c = mv[0]; r = mv[1];
+      c = Math.min(MAP_COLS-1, Math.max(0, c));
+      r = Math.max(0, Math.min(MAP_ROWS-1, r));
+      const k = key(c,r);
+      if (!pathSet.has(k)){
+        pathSet.add(k); pathOrder.push([c,r]);
+      } else {
+        // 走了回头路导致原地打转，强制向右
+        c = Math.min(MAP_COLS-1, c+1);
+        const k2 = key(c,r);
+        if (!pathSet.has(k2)){ pathSet.add(k2); pathOrder.push([c,r]); }
+      }
+    }
+  }
+  function isPath(col, row){ return pathSet.has(col+","+row); }
+
+  // 格子中心坐标
+  function tileCenterXY(col, row){
+    return { x: MAP_LEFT + col*TILE_W + TILE_W/2, y: MAP_TOP + row*TILE_H + TILE_H/2 };
+  }
+  // 主角当前渲染位置（跳格动画插值）
+  function heroPos(){
+    const t = Math.min(1, animT / animDur);
+    return { x: animFrom.x + (animTo.x - animFrom.x)*t, y: animFrom.y + (animTo.y - animFrom.y)*t };
+  }
+  // 离散移动：按一次方向键跳一格（非连续滑动，符合 A 类判据）
+  function moveHero(dir){
+    if (phase !== "idle" && phase !== "charge" && phase !== "reveal" && phase !== "hidden") return;   // 结算阶段不移动
+    if (animT < animDur) return;   // 跳格动画中，不响应下一次移动
+    let dc = 0, dr = 0;
+    if (dir === "left") dc = -1;
+    else if (dir === "right") dc = 1;
+    else if (dir === "up") dr = -1;
+    else if (dir === "down") dr = 1;
+    const nc = heroCol + dc, nr = heroRow + dr;
+    // 出口：向右走出最后一格（heroCol 到达 MAP_COLS）
+    if (nc >= MAP_COLS){ succeedEscape(); return; }
+    // 纵向/左向越界
+    if (nr < 0 || nr >= MAP_ROWS) return;
+    if (nc < -1) return;
+    // 踩幽魂判定：目标格是网格内且非通路
+    if (nc >= 0 && !isPath(nc, nr)){ failToGhost(nc, nr); return; }
+    // 移动：更新逻辑格子 + 触发跳格动画
+    animFrom = heroPos();
+    heroCol = nc; heroRow = nr;
+    animTo = tileCenterXY(nc, nr);
+    animT = 0;
+  }
+
+  function startRound(){
+    genPath();
+    lightsLeft = MAX_LIGHTS;
+    phase = "idle";
+    // 主角起点：入口格左侧外（heroCol=-1），行 = 入口行
+    const entry = pathOrder[0];
+    heroCol = -1;
+    heroRow = entry[1];
+    const startY = MAP_TOP + heroRow*TILE_H + TILE_H/2;
+    animFrom = { x: MAP_LEFT - 20, y: startY };
+    animTo = animFrom;
+    animT = animDur;   // 动画完成态
+    updateLightCount();
+    setStatus("Press E to use the light skill 按 E 使用照明技能","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  // 更新剩余照明次数提示
+  function updateLightCount(){
+    const el = document.getElementById("lightCount");
+    if (el) el.textContent = "x" + lightsLeft;
+  }
+
+  // 使用照明技能
+  function useLight(){
+    if (lightsLeft <= 0 || (phase !== "idle" && phase !== "hidden")) return;
+    lightsLeft -= 1;
+    updateLightCount();
+    phase = "charge"; phaseStart = performance.now();
+    chargeDelay = CHARGE_MIN + Math.random()*(CHARGE_MAX-CHARGE_MIN);
+    setStatus("Charging light… 照明蓄力…","ready");
+  }
+
+  function update(now){
+    // 跳格动画进度推进（固定帧步长，约 60fps）
+    if (animT < animDur) animT += 16;
+    // 相位推进（移动改为离散跳格，由 moveHero 触发，不在 update 里连续移动）
+    if (phase === "charge"){
+      if (now - phaseStart >= chargeDelay){
+        phase = "reveal"; phaseStart = now;
+        setStatus("Light on! Remember the path… 照亮！记住通路…","ready");
+      }
+    }
+    else if (phase === "reveal"){
+      if (now - phaseStart >= REVEAL_MS){
+        phase = "hidden"; phaseStart = now;
+        setStatus(
+          lightsLeft > 0
+            ? "Light faded — walk by memory (E to light again) 灯光熄灭——凭记忆走（按 E 可再照）"
+            : "Light faded — walk by memory 灯光熄灭——凭记忆走",
+          "action"
+        );
+      }
+    }
+    else if (phase === "killed"){
+      if (now - phaseStart >= 800){ phase = "killed_done"; killedDone(); }
+    }
+  }
+
+  function failToGhost(col, row){
+    phase = "killed"; phaseStart = performance.now();
+    // 起点与被踩格 reveal 阶段的幽灵基准一致（x 中心、y 中心 +6），避免击杀幽灵闪现位置偏差
+    killFromX = MAP_LEFT + col*TILE_W + TILE_W/2;
+    killFromY = MAP_TOP + row*TILE_H + TILE_H/2 + 6;
+    killSeed = col*5 + row*7;   // 与 reveal 该格幽灵同相位
+    setStatus("Caught by a ghost! 被幽魂抓住！","lose");
+  }
+  function succeedEscape(){
+    // 直接结算成功（无逃出动画，避免瞬移）
+    phase = "done";
+    escapeDone();
+  }
+  function escapeDone(){
+    BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Escaped! 逃出生天","win"); syncURL(); celebrate();
+  }
+  function killedDone(){
+    nextAttempt();
+  }
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  // ================= 渲染 =================
+  // 静态背景离屏缓存（只画一次，每帧 drawImage，避免每帧重建渐变导致卡顿）
+  let bgCache = null;
+  function buildBgCache(){
+    bgCache = document.createElement("canvas");
+    bgCache.width = CW; bgCache.height = CH;
+    const bc = bgCache.getContext("2d");
+    const g = bc.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#0a1224"); g.addColorStop(.55,"#122238"); g.addColorStop(1,"#0c1a24");
+    bc.fillStyle = g; bc.fillRect(0,0,CW,CH);
+    // 远山/树影
+    bc.fillStyle = "#0e1a2e";
+    bc.beginPath(); bc.moveTo(0,90); bc.lineTo(90,40); bc.lineTo(170,90); bc.lineTo(250,45);
+    bc.lineTo(360,90); bc.lineTo(470,50); bc.lineTo(580,90); bc.lineTo(700,48); bc.lineTo(800,88);
+    bc.lineTo(800,120); bc.lineTo(0,120); bc.closePath(); bc.fill();
+    // 地面（地图外）
+    bc.fillStyle = "#0a141c"; bc.fillRect(0,420,CW,80);
+    // 萤火粒子
+    bc.fillStyle = "rgba(140,220,255,.2)";
+    [[40,70],[680,80],[500,60],[120,40]].forEach(p=>{ bc.beginPath(); bc.arc(p[0],p[1],1.6,0,7); bc.fill(); });
+  }
+  function drawBg(){
+    if (!bgCache) buildBgCache();
+    ctx.drawImage(bgCache, 0, 0);
+  }
+
+  // 地图 tile：不照明时（非 reveal）所有格统一幽暗、完全不可区分；reveal 才显示通路（亮绿）+ 幽魂
+  function drawTiles(){
+    for (let r=0;r<MAP_ROWS;r++){
+      for (let c=0;c<MAP_COLS;c++){
+        const x = MAP_LEFT + c*TILE_W, y = MAP_TOP + r*TILE_H;
+        if (phase === "reveal"){
+          // 照亮阶段：显示通路 / 幽魂
+          if (isPath(c, r)){
+            ctx.fillStyle = "rgba(140,230,180,.85)";
+            ctx.beginPath(); ctx.roundRect(x+3, y+3, TILE_W-6, TILE_H-6, 8); ctx.fill();
+            ctx.strokeStyle = "rgba(200,255,220,.9)"; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.roundRect(x+3, y+3, TILE_W-6, TILE_H-6, 8); ctx.stroke();
+          } else {
+            ctx.fillStyle = "rgba(30,24,54,.6)";
+            ctx.beginPath(); ctx.roundRect(x+3, y+3, TILE_W-6, TILE_H-6, 8); ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,.06)"; ctx.lineWidth = 1;
+            ctx.stroke();
+            drawGhost(x + TILE_W/2, y + TILE_H/2 + 6, (c*5 + r*7), performance.now());
+          }
+        } else {
+          // 未照亮（idle/charge/hidden）：所有格统一幽暗，通路标记/幽魂完全不可见
+          ctx.fillStyle = "rgba(18,26,44,.55)";
+          ctx.beginPath(); ctx.roundRect(x+3, y+3, TILE_W-6, TILE_H-6, 8); ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,.04)"; ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+    // 右侧出口标记（始终可见——出口位置是常识，不泄露通路信息）
+    ctx.fillStyle = "rgba(52,211,153,.35)";
+    ctx.beginPath(); ctx.roundRect(MAP_RIGHT+2, MAP_TOP, 30, MAP_ROWS*TILE_H, 10); ctx.fill();
+    ctx.fillStyle = "#0a3a28"; ctx.font = "bold 10px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    // 竖排 EXIT（每字母一行，避免横向出框）
+    const exX = MAP_RIGHT + 17, exTop = MAP_TOP + MAP_ROWS*TILE_H/2 - 24;
+    const letters = "EXIT".split("");
+    letters.forEach((ch, i)=>{ ctx.fillText(ch, exX, exTop + i*12); });
+  }
+
+  // 幽魂（半透明发光，参考 d4 鬼火；纯色填充 + 光晕，避免每帧创建多个渐变导致卡顿）
+  function drawGhost(cx, cy, seed, t){
+    const pulse = 1 + Math.sin(seed + t/120)*0.12;
+    const r = 16 * pulse;
+    const bob = Math.sin(seed + t/400)*3;
+    const gy = cy + bob - 8;
+    // 外光晕（两层纯色圆，替代 radial gradient）
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = "#a07ce0";
+    ctx.beginPath(); ctx.arc(cx, gy, r*2.2, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.30;
+    ctx.fillStyle = "#b8a0f0";
+    ctx.beginPath(); ctx.arc(cx, gy, r*1.4, 0, 7); ctx.fill();
+    // 幽灵主体（纯色渐变替代：用上下两段纯色）
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = "#c4b8f0";
+    ctx.beginPath();
+    ctx.arc(cx, gy-r*0.25, r, Math.PI, 0);
+    const wl = gy + r*0.75;
+    ctx.lineTo(cx+r, wl);
+    ctx.quadraticCurveTo(cx+r*0.7, wl-r*0.5, cx+r*0.35, wl);
+    ctx.quadraticCurveTo(cx, wl-r*0.5, cx-r*0.35, wl);
+    ctx.quadraticCurveTo(cx-r*0.7, wl-r*0.5, cx-r, wl);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(30,18,60,.9)";
+    ctx.beginPath(); ctx.arc(cx-r*0.32, gy-r*0.2, r*0.18, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+r*0.32, gy-r*0.2, r*0.18, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(30,18,60,.85)";
+    ctx.beginPath(); ctx.ellipse(cx, gy+r*0.3, r*0.16, r*0.22, 0, 0, 7); ctx.fill();
+  }
+
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  // 主角（二段跳小人）
+  function drawHero(){
+    const S = HERO_SIZE;
+    const hp = heroPos();
+    ctx.save();
+    ctx.translate(hp.x, hp.y);
+    const grd = ctx.createLinearGradient(0,-S,0,0); grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+    ctx.fillStyle = grd; rr(-S/2,-S,S,S,7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.25)"; rr(-S/2+3,-S+4,S-6,S/2-5,5); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(S/2-8,-S+13,5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(S/2-20,-S+13,5,0,7); ctx.fill();
+    ctx.fillStyle="#123039"; ctx.beginPath(); ctx.arc(S/2-6,-S+13,2.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(S/2-18,-S+13,2.5,0,7); ctx.fill();
+    ctx.strokeStyle="#123039"; ctx.lineWidth=1.8; ctx.beginPath(); ctx.arc(S/2-14,-S+22,4.5,.1,Math.PI-.1); ctx.stroke();
+    ctx.restore();
+  }
+
+  // 照明光晕（charge/reveal 阶段从主角扩散；纯色多层圆替代渐变，降开销）
+  function drawLight(){
+    const hp = heroPos();
+    if (phase === "charge"){
+      const t = Math.min(1, (performance.now()-phaseStart)/400);
+      const rad = 20 + t*300;
+      ctx.globalAlpha = 0.35*t;
+      ctx.fillStyle = "#fff0b0";
+      ctx.beginPath(); ctx.arc(hp.x, hp.y, rad, 0, 7); ctx.fill();
+      ctx.globalAlpha = 0.5*t;
+      ctx.fillStyle = "#ffe9a0";
+      ctx.beginPath(); ctx.arc(hp.x, hp.y, rad*0.6, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (phase === "reveal"){
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = "#fff4c8";
+      ctx.beginPath(); ctx.arc(hp.x, hp.y, 360, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function render(){
+    const now = performance.now();
+    drawBg();
+    drawTiles();
+    drawLight();
+    if (phase !== "killed" && phase !== "killed_done") drawHero();
+    // 击杀动画：幽魂从幽魂格平滑扑向主角（连续插值，无瞬移）
+    if (phase === "killed"){
+      const t = Math.min(1, (now - phaseStart)/800);
+      const hp = heroPos();
+      const gx = killFromX + (hp.x - killFromX)*t;
+      const gy = killFromY + (hp.y - killFromY)*t;
+      ctx.fillStyle = "rgba(255,60,60,"+(0.25*t)+")"; ctx.fillRect(0,0,CW,CH);
+      drawGhost(gx, gy, killSeed, now);
+      // 主角倒地（缩小）
+      ctx.save();
+      ctx.translate(hp.x, hp.y); ctx.scale(1, 0.4*(1-t+0.3));
+      ctx.globalAlpha = 1-t*0.5;
+      const S = HERO_SIZE;
+      const grd = ctx.createLinearGradient(0,-S,0,0); grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+      ctx.fillStyle = grd; rr(-S/2,-S,S,S,7); ctx.fill();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  // ================= 输入 =================
+  function bindKeys(){
+    addEventListener("keydown", (e)=>{
+      const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
+      // 地图移动键：离散跳格（按一次跳一格，非连续滑动）
+      if (k==="w"||k==="arrowup"||c==="KeyW"||c==="ArrowUp"||kc===87||kc===38){ e.preventDefault(); moveHero("up"); }
+      else if (k==="s"||k==="arrowdown"||c==="KeyS"||c==="ArrowDown"||kc===83||kc===40){ e.preventDefault(); moveHero("down"); }
+      else if (k==="a"||k==="arrowleft"||c==="KeyA"||c==="ArrowLeft"||kc===65||kc===37){ e.preventDefault(); moveHero("left"); }
+      else if (k==="d"||k==="arrowright"||c==="KeyD"||c==="ArrowRight"||kc===68||kc===39){ e.preventDefault(); moveHero("right"); }
+      // 照明技能 E
+      else if (k==="e"||c==="KeyE"||kc===69){ e.preventDefault(); useLight(); }
+    });
+  }
+
+  function startControls(){
+    bindKeys();
+  }
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); startControls(); });
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（页面加载即绑定，独立于 WASD 的 bindKeys——修复「intro 显示时空格无效」bug）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); startControls(); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

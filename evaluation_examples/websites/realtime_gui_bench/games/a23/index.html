@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mojo Billiards 魔法台球换位</title>
+<style>
+  :root { --bg1:#122018; --ok:#34d399; --bad:#ff5c7a; --warn:#f6c453; --gold:#f6c453; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #1d3527 0%, var(--bg1) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; color:#eef5ef; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.reveal { color:var(--gold); } .status.yours { color:#9fb5a8; }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .reveal-btn {
+    padding:13px 34px; border-radius:30px; border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(150deg,#2c7a5a 0%,#1c5a42 100%); color:#fff;
+    font-size:16px; font-weight:700; letter-spacing:.6px; cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,0,0,.35); transition:transform .15s, opacity .2s;
+  }
+  .reveal-btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .reveal-btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#8fa399; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(18,32,24,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(8,18,13,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  .intro {
+    position:fixed; inset:0; background:rgba(8,18,13,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:540px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.6; }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,#2c7a5a 0%,#1c5a42 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3);
+    transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the red ball swap places, then tap where it ends up · 盯住红球换位，点它最后停的位置</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <button class="reveal-btn" id="revealBtn">Start 开始 (Space)</button>
+  <div class="hint" id="hint">Attempt 0 / 3 · 第 0 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">You tracked the red ball correctly · 你正确找到了红球</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts · 尝试次数用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Mojo Billiards · 魔法台球换位</div>
+      <div class="intro-rule">
+        六颗彩色台球停在绿色台球桌上，其中一颗是红球。 Six colored billiard balls sit on the green felt, one of them is red.<br>
+        它们会两两滑动换位，你要一直盯着红球。 They slide to swap places, keep your eyes on the red ball.<br>
+        换位结束后一道魔法扫过，所有球的颜色都褪成灰色。 Afterwards a spell drains the color from every ball.<br>
+        点出红球最后停的位置。 Tap where the red ball ends up.
+      </div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  // 叙事：魔法台球桌。6 颗彩色台球停在绿色呢绒台球桌上，其中一颗是红球。
+  // 球两两滑动换位（连续动画），换位结束后一道法术扫过、所有球褪成灰色（颜色身份=信息消失）。
+  // 信息消失的自然原因 = 魔法吸走颜色（球体=载体常驻，只有「哪颗是红球」的颜色标记消失）。
+  // IEW 有限（红球身份只在换位动画期间可见）+ AVW=∞（作答点击槽位无时限）。
+  // 判定 = 纯碰撞点击槽位；表现与判定同源（统一 targetBall / balls[targetBall].x）。
+  const CW = 800, CH = 460;
+  const MAX_ATTEMPTS = 3;
+  const SLOTS = [100, 220, 340, 460, 580, 700];
+  const BALL_Y = 248, BALL_R = 24;
+  const COLORS = ["#ff5c7a", "#22c55e", "#3b82f6", "#eab308", "#a855f7", "#f97316"];
+  const GRAY = "#8b9790";   // 褪色后的灰球
+  const SHOW_MS = 900, SWAP_MS = 520, HIDE_MS = 420, SWAPS_N = 4;
+
+  const BENCH = { task:"ball_swap", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";        // idle | show | swap | fade | answer | done
+  let balls = [];            // {id, color, x, fromX, toX}
+  let targetBall = 0;        // 红球 id（恒为 0）
+  let swaps = [], swapIdx = 0, swapStart = 0, phaseStart = 0;
+  let fade = 0;              // 褪色进度 0(彩色)~1(全灰)
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, targetBall, targetX: balls[targetBall] ? balls[targetBall].x : null, swaps: swaps.map(s=>s.slice()), attempts: BENCH.attempts, passed: BENCH.passed }; };
+
+  function genSwaps(){
+    const s = [];
+    for(let i=0;i<SWAPS_N;i++){
+      let a = Math.floor(Math.random()*6), b = Math.floor(Math.random()*6);
+      while (b === a) b = Math.floor(Math.random()*6);
+      s.push([a,b]);
+    }
+    return s;
+  }
+  function applySwap(s){
+    const [a,b] = s;
+    const ta = balls[a].toX, tb = balls[b].toX;
+    balls[a].toX = tb; balls[b].toX = ta;
+  }
+
+  function onStart(){
+    if (phase !== "idle") return;
+    balls = COLORS.map((color,id)=>({ id, color, x: SLOTS[id], fromX: SLOTS[id], toX: SLOTS[id] }));
+    targetBall = 0;
+    swaps = genSwaps();
+    swapIdx = 0;
+    fade = 0;
+    phase = "show"; phaseStart = performance.now();
+    revealBtn.disabled = true;
+    setStatus("Watch the red ball… 盯住红球","reveal");
+    syncURL();
+  }
+
+  function update(now){
+    if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "swap"; swapStart = now; applySwap(swaps[0]); setStatus("Track the swaps… 跟踪换位","reveal"); }
+    }
+    else if (phase === "swap"){
+      if (now - swapStart >= SWAP_MS){
+        balls.forEach(b=>{ b.fromX = b.toX; b.x = b.toX; });
+        swapIdx++;
+        if (swapIdx < swaps.length){ applySwap(swaps[swapIdx]); swapStart = now; }
+        else { phase = "fade"; phaseStart = now; }
+      } else {
+        const t = (now - swapStart) / SWAP_MS;
+        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+        const [a,b] = swaps[swapIdx];
+        const A = balls[a], B = balls[b];
+        A.x = A.fromX + (A.toX - A.fromX) * e;
+        B.x = B.fromX + (B.toX - B.fromX) * e;
+      }
+    }
+    else if (phase === "fade"){
+      const t = Math.min(1, (now - phaseStart) / HIDE_MS);
+      fade = t;
+      if (now - phaseStart >= HIDE_MS){ phase = "answer"; setStatus("Tap where the red ball is · 点红球最后停的位置","action"); }
+    }
+  }
+
+  function drawTable(){
+    const wood = ctx.createLinearGradient(0, 140, 0, 440);
+    wood.addColorStop(0,"#5a3b22"); wood.addColorStop(0.5,"#7c5230"); wood.addColorStop(1,"#3c2412");
+    ctx.fillStyle = wood;
+    ctx.beginPath(); ctx.roundRect(20, 130, CW-40, 310, 22); ctx.fill();
+    const felt = ctx.createRadialGradient(400, 240, 20, 400, 240, 460);
+    felt.addColorStop(0,"#2e8a5b"); felt.addColorStop(0.65,"#1f6c45"); felt.addColorStop(1,"#185234");
+    ctx.fillStyle = felt;
+    ctx.beginPath(); ctx.roundRect(40, 150, CW-80, 210, 16); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.03)"; ctx.lineWidth = 1;
+    for (let yy=160; yy<350; yy+=12){ ctx.beginPath(); ctx.moveTo(50,yy); ctx.lineTo(CW-50,yy); ctx.stroke(); }
+    const gl = ctx.createRadialGradient(400, 210, 10, 400, 210, 340);
+    gl.addColorStop(0,"rgba(160,255,200,.10)"); gl.addColorStop(1,"rgba(160,255,200,0)");
+    ctx.fillStyle = gl; ctx.beginPath(); ctx.rect(40,150,CW-80,210); ctx.fill();
+    for (const x of SLOTS){
+      ctx.strokeStyle = "rgba(255,255,255,.14)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, BALL_Y, BALL_R + 6, 0, 7); ctx.stroke();
+    }
+  }
+
+  function drawBall(b){
+    const gray = fade;
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,.28)";
+    ctx.beginPath(); ctx.ellipse(b.x, BALL_Y + BALL_R*0.82, BALL_R*0.9, BALL_R*0.32, 0, 0, 7); ctx.fill();
+    const c = lerpColor(b.color, GRAY, gray);
+    const bg = ctx.createRadialGradient(b.x - BALL_R*0.4, BALL_Y - BALL_R*0.5, 1, b.x, BALL_Y, BALL_R);
+    bg.addColorStop(0, lighten(c, 0.55)); bg.addColorStop(0.5, c); bg.addColorStop(1, darken(c, 0.35));
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.arc(b.x, BALL_Y, BALL_R, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255," + (0.75*(1-gray)+0.3*gray).toFixed(3) + ")";
+    ctx.beginPath(); ctx.ellipse(b.x - BALL_R*0.38, BALL_Y - BALL_R*0.42, 5, 3.6, -0.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function hexToRgb(h){ const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+  function rgbToHex(r,g,b){ return "#"+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
+  function lighten(h,f){ const [r,g,b]=hexToRgb(h); return rgbToHex(Math.round(r+(255-r)*f), Math.round(g+(255-g)*f), Math.round(b+(255-b)*f)); }
+  function darken(h,f){ const [r,g,b]=hexToRgb(h); return rgbToHex(Math.round(r*(1-f)), Math.round(g*(1-f)), Math.round(b*(1-f))); }
+  function lerpColor(h1,h2,t){ const [r1,g1,b1]=hexToRgb(h1), [r2,g2,b2]=hexToRgb(h2); return rgbToHex(Math.round(r1+(r2-r1)*t), Math.round(g1+(g2-g1)*t), Math.round(b1+(b2-b1)*t)); }
+
+  function drawSpellFlash(){
+    if (phase !== "fade" || fade <= 0) return;
+    const x = 20 + fade * (CW-40);
+    const sg = ctx.createLinearGradient(x-80, 0, x+80, 0);
+    sg.addColorStop(0,"rgba(210,240,230,0)"); sg.addColorStop(0.5,"rgba(210,240,230,.28)"); sg.addColorStop(1,"rgba(210,240,230,0)");
+    ctx.fillStyle = sg;
+    ctx.beginPath(); ctx.rect(20, 140, CW-40, 250); ctx.fill();
+  }
+
+  function render(){
+    drawTable();
+    balls.forEach(drawBall);
+    drawSpellFlash();
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let clicked = -1;
+    SLOTS.forEach((x,i)=>{ if (Math.abs(p.x - x) < BALL_R + 12 && p.y > BALL_Y - 40 && p.y < BALL_Y + 40) clicked = i; });
+    if (clicked === -1) return;
+    const targetSlot = balls[targetBall].x;
+    const ok = Math.abs(SLOTS[clicked] - targetSlot) < 1;
+    BENCH.results.push(ok);
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success! 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Wrong slot 点错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function startRound(){
+    balls = COLORS.map((color,id)=>({ id, color, x: SLOTS[id], fromX: SLOTS[id], toX: SLOTS[id] }));
+    targetBall = 0; swaps = []; phase = "idle"; fade = 0;
+    revealBtn.disabled = false;
+    setStatus("Watch the red ball swap places, then tap where it ends up · 盯住红球换位，点它最后停的位置","");
+    syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  revealBtn.addEventListener("click", onStart);
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    startRound();
+  });
+
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && retryEl.classList.contains("show")){ e.preventDefault(); retryEl.classList.remove("show"); startRound(); }
+    else if (phase === "idle"){ e.preventDefault(); onStart(); }
+  });
+
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

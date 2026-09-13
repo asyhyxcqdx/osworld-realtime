@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cave Collapse 矿洞求生</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:600px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Duck under the runaway cart 下蹲躲矿车</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Down</span> Crouch 下蹲</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Dodged! 躲过了！</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Buried! 被砸中了！</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Cave Collapse 矿洞求生</div>
+      <div class="intro-rule">A runaway ore cart hurtles along the raised track. <b>Crouch at the right moment</b> to duck under it.<br>矿洞深处，一辆失控的运料矿车沿着高架轨道飞驰而来——在<b>正确时机</b>下蹲蜷身，从轨道下方钻过去。<br><br>Down to crouch 按下键下蹲</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Duck under the cart 下蹲躲矿车</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  // 物理参数：矿洞有一条高架运料轨道（架空铁轨），一辆失控矿车沿轨道从左向右飞驰。
+  // 主角矿工按「下蹲」蜷身 180ms，蹲到身体顶低于轨道下沿 → 从矿车底部轨道下方钻过。
+  const PLAYER_X = 400, GROUND_Y = 360;
+  const STAND_H = 60, CROUCH_H = 28;   // 站立身体高 60（顶 300）、下蹲蜷身高 28（顶 332）
+  const BODY_W = 30;                    // 身体碰撞盒宽 [385,415]
+  const BEAM_X0 = -160, BEAM_VX = 230;  // 矿车从左外飞入
+  const CAR_TOP = 190;                  // 车厢顶 y
+  const RAIL_TOP = 300;                 // 轨道承重梁上沿（= 车厢底，车轮压这里）
+  const RAIL_BOT = 320;                 // 轨道承重梁下沿（= 矿车整体下沿，判定关键：站立顶 300<320 重叠、蹲下顶 332≥320 穿过）
+  const CAR_BACK = 140;                 // 矿车向后纵深（碰撞盒 x ∈ [beamX-CAR_BACK, beamX]）
+  const CROUCH_MS = 180;                // 下蹲持续 180ms 后自动站起
+
+  // 兼容旧字段名（__dbg / README 引用）
+  const BEAM_TOP = CAR_TOP, BEAM_BOT = RAIL_BOT;
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"cave_collapse", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "incoming";   // incoming | resolve（判定后果动画） | over
+  let beamX = BEAM_X0;
+  let crouching = false, crouchUntil = 0;
+  // 下蹲/站起身体高度 easing（从 from 插到 to）
+  let bodyH = STAND_H, bodyHFrom = STAND_H, bodyHTo = STAND_H, bodyHT0 = 0;
+  let judged = false;
+  // 判定后果动画：resolve 阶段记录结果 + 起算时间
+  let resolveT0 = 0, resolveResult = null;
+  // 粒子：被砸碎屑 / 尘土
+  let particles = [];
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, beamX:Math.round(beamX), crouching, beamTop:BEAM_TOP, beamBot:BEAM_BOT,
+             bodyTop:Math.round(GROUND_Y - bodyH),
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "incoming"; beamX = BEAM_X0; crouching = false; crouchUntil = 0; judged = false;
+    bodyH = STAND_H; bodyHFrom = STAND_H; bodyHTo = STAND_H;
+    resolveT0 = 0; resolveResult = null; particles = [];
+    setStatus("Duck under the runaway cart 下蹲躲矿车","");
+  }
+
+  function crouch(e){
+    if (e && e.repeat) return;
+    if (phase !== "incoming") return;
+    if (!crouching) {
+      crouching = true; crouchUntil = performance.now() + CROUCH_MS;
+      setStatus("Crouch! 蹲！","action");
+    }
+    // 站起/蹲下高度都用 easing 过渡（不瞬切）
+  }
+
+  // ---- 高度 easing：向目标高度插值（easeOut 减速），记录 from/to 保证连续 ----
+  function setTargetH(target, now){
+    if (Math.abs(bodyHTo - target) < 0.01 && Math.abs(bodyH - target) < 0.01) return;
+    bodyHFrom = bodyH;        // 记录当前瞬时值
+    bodyHTo = target;         // 目标值
+    bodyHT0 = now;
+  }
+  const CROUCH_T = 110;       // 蹲下/站起过渡时长（ms）
+
+  // ---- 判定：纯碰撞检测（逐帧矩形相交，非时间窗/状态特判）----
+  // 矿车「车头断面」碰撞矩形（一堵移动的窄墙，宽 FRONT_W）[beamX-FRONT_W/2, beamX+FRONT_W/2] × [CAR_TOP, RAIL_BOT]
+  // 矿工身体碰撞盒 [PLAYER_X-COLL_W/2, PLAYER_X+COLL_W/2] × [GROUND_Y-bodyH, GROUND_Y]（碰撞盒比画宽 BODY_W 窄，正面为窄墙）
+  // 每帧检测两矩形是否重叠：重叠 → 击中；车头断面完全飞过矿工且从未重叠 → 躲过。
+  // （车厢侧壁在轨道上方 [CAR_TOP,RAIL_TOP]，不碰地面矿工，故不参与碰撞；碰撞体只有车头那堵窄墙 + 车底横梁）
+  const FRONT_W = 10;   // 车头断面碰撞宽
+  const COLL_W = 12;    // 矿工正面碰撞宽
+  function judge(now){
+    if (phase !== "incoming") return;
+    const frontLeft = beamX - FRONT_W/2, frontRight = beamX + FRONT_W/2;
+    const playerLeft = PLAYER_X - COLL_W/2, playerRight = PLAYER_X + COLL_W/2;
+    const bodyTop = GROUND_Y - bodyH, bodyBottom = GROUND_Y;
+    const overlapX = frontLeft < playerRight && frontRight > playerLeft;
+    const overlapY = bodyTop < RAIL_BOT && bodyBottom > CAR_TOP;
+    if (overlapX && overlapY) {
+      judged = true;
+      phase = "resolve";
+      resolveT0 = now;
+      resolveResult = "hit";
+      spawnDebris();
+      return;
+    }
+    if (frontLeft > playerRight) {
+      judged = true;
+      phase = "resolve";
+      resolveT0 = now;
+      resolveResult = "dodge";
+      setStatus("Dodged! 躲过了！","win");
+    }
+  }
+
+  function spawnDebris(){
+    particles = [];
+    for (let i = 0; i < 26; i++) {
+      particles.push({ x:PLAYER_X, y:GROUND_Y-18,
+        vx:-60 + Math.random()*220, vy:-(120+Math.random()*260),
+        r:2+Math.random()*3, life:0, max:600+Math.random()*500, c:Math.random()<0.5?"#8a6f47":"#c9a86a" });
+    }
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Dodged! 躲过了！","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.attempts += 1; setHint();
+    BENCH.results.push(false);
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Buried 被砸中","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Buried 被砸中","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 900);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  // ---- 更新 ----
+  function update(dt, now){
+    if (phase === "incoming") {
+      beamX += BEAM_VX * dt;
+      if (crouching && now >= crouchUntil) crouching = false;   // 自动站起
+      // 高度 easing：目标由 crouching 决定
+      const targetH = crouching ? CROUCH_H : STAND_H;
+      if (bodyHTo !== targetH) setTargetH(targetH, now);
+      // 插值（easeOut：减速趋向目标的蹲下/站起）
+      if (bodyHTo !== bodyH) {
+        const t = Math.min(1, (now - bodyHT0) / CROUCH_T);
+        const e = 1 - Math.pow(1 - t, 2);   // easeOutQuad
+        bodyH = bodyHFrom + (bodyHTo - bodyHFrom) * e;
+        if (t >= 1) bodyH = bodyHTo;
+      }
+      judge(now);
+    } else if (phase === "resolve") {
+      // 后果动画：躲过=横梁继续呼啸飞过；击中=主角后仰倒地 + 碎屑飞溅
+      beamX += BEAM_VX * dt;
+      const el = now - resolveT0;
+      particles.forEach(p => { p.life += dt*1000; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 900*dt; });
+      particles = particles.filter(p => p.life < p.max);
+      if (el > (resolveResult === "hit" ? 700 : 620)) {
+        if (resolveResult === "hit") fail(); else win();
+      }
+    }
+    // over 阶段不更新
+  }
+
+  // ---- 渲染 ----
+  function drawBG(){
+    // 矿洞：暖色岩壁渐变 + 地面碎石
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#241a26"); g.addColorStop(0.55,"#3a2a2e"); g.addColorStop(1,"#2c201f");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+    // 穹顶岩层（远处石柱）
+    ctx.fillStyle="rgba(90,60,50,.25)";
+    for (let i=0;i<7;i++){ ctx.beginPath(); ctx.ellipse(60+i*120, 90+(i%3)*30, 46, 70, 0, 0, Math.PI*2); ctx.fill(); }
+    // 地面
+    const gg = ctx.createLinearGradient(0,GROUND_Y,0,460);
+    gg.addColorStop(0,"#4a3520"); gg.addColorStop(1,"#2a1f16");
+    ctx.fillStyle = gg; ctx.fillRect(0,GROUND_Y,800,460-GROUND_Y);
+    ctx.fillStyle="#5a4528"; ctx.fillRect(0,GROUND_Y,800,8);
+    // 地面碎石纹理
+    ctx.fillStyle="rgba(120,90,50,.5)";
+    for (let i=0;i<16;i++){ const x=(i*53+13)%800, y=GROUND_Y+14+(i*17)%80; ctx.fillRect(x,y,6+(i%3)*4,3); }
+  }
+
+  function drawRail(){
+    // 架空运料轨道：一条水平承重梁贯穿画面，两端龙门立柱支撑（轨道离地悬空，矿工可蹲下钻过）
+    const rTop = RAIL_TOP, rBot = RAIL_BOT, rH = rBot - rTop;
+    // 轨道承重梁主体（钢梁纵向渐变）
+    const g = ctx.createLinearGradient(0,rTop,0,rBot);
+    g.addColorStop(0,"#5d6476"); g.addColorStop(0.4,"#3c4252"); g.addColorStop(1,"#232733");
+    ctx.fillStyle = g; ctx.fillRect(0, rTop, 800, rH);
+    // 轨面上沿高光 + 下沿阴影（两条钢轨顶面）
+    ctx.fillStyle = "#8a93a8"; ctx.fillRect(0, rTop, 800, 3);
+    ctx.fillStyle = "#171a22"; ctx.fillRect(0, rBot-3, 800, 3);
+    // 轨面两条导轮钢轨（车轮嵌在两条轨道之间的凹槽）
+    ctx.fillStyle = "#262b36"; ctx.fillRect(0, rTop+4, 800, 2);
+    ctx.fillStyle = "rgba(255,255,255,.08)"; ctx.fillRect(0, rTop+6, 800, 6);
+    // 轨道枕木/铆钉纹理
+    ctx.fillStyle = "rgba(20,23,30,.6)";
+    for (let i=0;i<40;i++){ ctx.fillRect(i*20+4, rTop+3, 3, rH-6); }
+    // 两端龙门立柱（左右各一根，撑起架空轨道）
+    for (const px of [2, 792]) {
+      const pg = ctx.createLinearGradient(px, rBot, px, GROUND_Y);
+      pg.addColorStop(0,"#3c4252"); pg.addColorStop(1,"#20242e");
+      ctx.fillStyle = pg; ctx.fillRect(px, rBot, 10, GROUND_Y - rBot);
+      // 柱顶/柱底底座
+      ctx.fillStyle = "#4a5264"; ctx.fillRect(px-3, rBot-4, 16, 5);
+      ctx.fillStyle = "#4a5264"; ctx.fillRect(px-3, GROUND_Y-4, 16, 5);
+    }
+  }
+
+  function drawBeam(){
+    // 失控矿车：车厢（钢制车身）+ 车轮压在架空轨道上滑行 + 尾部拖痕
+    const bx = beamX;
+    // 尾部速度拖痕
+    const trail = ctx.createLinearGradient(bx,0,bx-CAR_BACK-90,0);
+    trail.addColorStop(0,"rgba(90,100,120,.20)"); trail.addColorStop(1,"rgba(90,100,120,0)");
+    ctx.fillStyle = trail; ctx.fillRect(bx-CAR_BACK-90, CAR_TOP, CAR_BACK+95, RAIL_BOT-CAR_TOP);
+    // 车厢主体：金属纵向渐变（顶部钢蓝 → 底部深灰）
+    const carH = RAIL_TOP - CAR_TOP;   // 车厢高度 110
+    const body = ctx.createLinearGradient(0,CAR_TOP,0,RAIL_TOP);
+    body.addColorStop(0,"#8a92a8"); body.addColorStop(0.2,"#636b80");
+    body.addColorStop(0.55,"#454c5e"); body.addColorStop(0.85,"#2f3544"); body.addColorStop(1,"#20242f");
+    ctx.fillStyle = body;
+    ctx.fillRect(bx-CAR_BACK, CAR_TOP, CAR_BACK+2, carH);
+    // 车顶钢板（浅色顶沿 + 暗色描边）
+    ctx.fillStyle = "#a6aec2"; ctx.fillRect(bx-CAR_BACK, CAR_TOP, CAR_BACK+2, 6);
+    ctx.fillStyle = "#191d26"; ctx.fillRect(bx-CAR_BACK, CAR_TOP+6, CAR_BACK+2, 2);
+    // 车厢侧壁铆钉（两排 + 高光）
+    for (let row=0; row<2; row++){
+      for (let i=0;i<5;i++){
+        const nx = bx-CAR_BACK+16+i*30;
+        const ny = CAR_TOP+22+row*40;
+        ctx.fillStyle = "#181b23"; ctx.beginPath(); ctx.arc(nx, ny, 3.4, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#9aa3b8"; ctx.beginPath(); ctx.arc(nx-1, ny-1, 1.1, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    // 车身高光（左上方光照）
+    ctx.fillStyle = "rgba(255,255,255,.10)";
+    ctx.fillRect(bx-CAR_BACK, CAR_TOP+8, CAR_BACK+2, 30);
+    // 车厢底部 → 车轮安装架（连接车厢与轨道）
+    ctx.fillStyle = "#1d212b"; ctx.fillRect(bx-CAR_BACK, RAIL_TOP-6, CAR_BACK+2, 6);
+    // 车轮（压在轨道上沿 RAIL_TOP，轮子嵌进轨道凹槽）
+    for (let i=0;i<3;i++){
+      const wx = bx-CAR_BACK+24+i*55;
+      ctx.fillStyle = "#13161e"; ctx.beginPath(); ctx.arc(wx, RAIL_TOP, 10, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = "#0c0e14"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = "#5d6476"; ctx.beginPath(); ctx.arc(wx, RAIL_TOP, 10, 0, Math.PI*2); ctx.lineWidth=1.5; ctx.strokeStyle="#9aa3b8"; ctx.stroke();
+      ctx.fillStyle = "#b9c2d6"; ctx.beginPath(); ctx.arc(wx, RAIL_TOP, 3, 0, Math.PI*2); ctx.fill();
+    }
+    // 前端断面（车厢切面，最亮）
+    ctx.fillStyle = "#c4ccdc"; ctx.fillRect(bx-3, CAR_TOP, 7, carH);
+    ctx.strokeStyle = "#101218"; ctx.lineWidth = 2; ctx.strokeRect(bx-3, CAR_TOP, 7, carH);
+    // 断面内车窗/开口示意
+    ctx.fillStyle = "#3c4354"; ctx.fillRect(bx-1, CAR_TOP+18, 3, 26);
+  }
+
+  function drawPlayer(){
+    // 简约卡通矿工：橙色头盔 + 头盔矿灯 + 身体 + 眼睛
+    const crouchT = Math.min(1, Math.max(0, (bodyH - CROUCH_H) / (STAND_H - CROUCH_H))); // 1=站立 0=蹲下
+    const h = bodyH;                 // 身体高度
+    const topY = GROUND_Y - h;      // 身体顶
+    // 头盔（半圆）
+    const helmetH = Math.max(10, h*0.36);
+    const helmetY = topY;
+    const hg = ctx.createLinearGradient(0,helmetY,0,helmetY+helmetH);
+    hg.addColorStop(0,"#ffb347"); hg.addColorStop(1,"#e0892b");
+    ctx.fillStyle = hg;
+    ctx.beginPath(); ctx.arc(PLAYER_X, helmetY+helmetH*0.25, helmetH*0.92, Math.PI, 0); ctx.fill();
+    // 头盔前沿
+    ctx.fillStyle = "#d1781f"; ctx.fillRect(PLAYER_X-helmetH*0.92, helmetY+helmetH*0.2, helmetH*1.84, 4);
+    // 矿灯
+    ctx.fillStyle = "#ffe9a8"; ctx.beginPath(); ctx.arc(PLAYER_X, helmetY+helmetH*0.18, 4, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(255,233,168,.25)";
+    ctx.beginPath(); ctx.moveTo(PLAYER_X, helmetY+helmetH*0.18);
+    ctx.lineTo(PLAYER_X-26, helmetY-10); ctx.lineTo(PLAYER_X-32, helmetY+2); ctx.closePath(); ctx.fill();
+    // 身体（橙连体工装）
+    const bodyTop = helmetY + helmetH*0.45;
+    const bg = ctx.createLinearGradient(0,bodyTop,0,GROUND_Y);
+    bg.addColorStop(0,"#e88d3a"); bg.addColorStop(1,"#c96a22");
+    ctx.fillStyle = bg;
+    const bw = 30 - crouchT*4;
+    ctx.fillRect(PLAYER_X-bw/2, bodyTop, bw, GROUND_Y-bodyTop);
+    // 工装反光条
+    ctx.fillStyle = "rgba(255,220,150,.5)"; ctx.fillRect(PLAYER_X-bw/2, bodyTop+8, bw, 3);
+    // 蹲下时双腿更折叠（身体压矮），眼睛看向矿车来向
+    // 眼睛
+    const eyeY = bodyTop + 6;
+    ctx.fillStyle = "#2a1a12";
+    if (crouchT > 0.4) {
+      ctx.beginPath(); ctx.arc(PLAYER_X-5, eyeY, 2.6, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(PLAYER_X+5, eyeY, 2.6, 0, Math.PI*2); ctx.fill();
+    } else {
+      // 蹲下时眯眼看
+      ctx.fillRect(PLAYER_X-9, eyeY-1, 7, 2); ctx.fillRect(PLAYER_X+2, eyeY-1, 7, 2);
+    }
+    // 惊慌的小嘴
+    ctx.fillStyle = "#7a3a1a";
+    ctx.beginPath(); ctx.arc(PLAYER_X, eyeY+12, 2.6, 0, Math.PI); ctx.fill();
+  }
+
+  function drawParticles(){
+    particles.forEach(p => {
+      ctx.fillStyle = p.c;
+      ctx.globalAlpha = Math.max(0, 1 - p.life/p.max);
+      ctx.fillRect(p.x - p.r/2, p.y - p.r/2, p.r, p.r);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function render(){
+    drawBG();
+    drawPlayer();
+    drawRail();
+    drawBeam();
+    drawParticles();
+  }
+
+  function frame(t){ if (!started) { requestAnimationFrame(frame); return; }
+    const dt = Math.min((t - (frame.last||t))/1000, 0.05); frame.last = t;
+    update(dt, t);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  addEventListener("keydown",(e)=>{
+    // 空格触发 Start / Next（phase 隔离：只在 intro / retry 页生效，进游戏后空格=游戏无关，不误触）
+    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
+      const introShown = !introEl.classList.contains("hidden");
+      const retryShown = !retryOverlay.classList.contains("hidden");
+      if (introShown) { e.preventDefault(); startGame(); return; }
+      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
+    }
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    if (["ArrowDown","KeyS"].includes(c)) e.preventDefault();
+    const down = k==="s" || k==="arrowdown" || c==="KeyS" || c==="ArrowDown" || kc===83 || kc===40;
+    if (down) crouch(e);
+  });
+  cv.addEventListener("mousedown", ()=>crouch());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

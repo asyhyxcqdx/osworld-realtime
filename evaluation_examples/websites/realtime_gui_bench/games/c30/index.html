@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apple Dodge 苹果弹射</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:600px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Jump over the apple 跳过苹果</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Space</span> Jump 跳</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Dodged! 躲过了！</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Hit! 被砸中了！</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Apple Dodge 苹果弹射</div>
+      <div class="intro-rule">A monkey in the orchard flings an apple your way.<br>Jump <b>at the right moment</b> to dodge it as it flies at you.<br>果园里，捣蛋的猴子把一个苹果弹射过来——在<b>正确时机</b>起跳，躲过飞来的苹果。<br><br>Space to jump 按空格跳</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Jump over the apple 跳过苹果</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  // 物理参数：果园——猴子弹射苹果水平飞来，路人跳起让身体升到苹果圆上方躲过。
+  // 判定 = 纯碰撞：每帧检测「苹果圆」与「主角身体矩形」是否重叠，重叠 → 被砸中；苹果完全飞过且从未重叠 → 躲过。
+  const PLAYER_X = 420, GROUND_Y = 390, BODY_H = 40, BODY_W = 32;   // 身体盒 [350,390]、宽 32
+  const APPLE_X0 = 60, APPLE_Y = 340, APPLE_R = 15, APPLE_VX = 380;
+  const VJY = 750, G = 2400;
+  const TOP_INIT = GROUND_Y - BODY_H;   // 350
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"apple_dodge", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "incoming";     // incoming | resolve（后果动画） | over
+  let appleX = APPLE_X0;
+  let yTop = TOP_INIT, vy = 0, onGround = true;
+  let resolveT0 = 0, resolveResult = null;
+  let dust = [];         // 落地扬尘
+  let shatter = [];      // 苹果碎裂
+  let appleFlyOut = false;  // 躲过：苹果从头顶飞过
+  let appleTrail = [];   // 苹果飞过拖尾光点
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, appleX:Math.round(appleX), yTop:Math.round(yTop), onGround,
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "incoming"; appleX = APPLE_X0; yTop = TOP_INIT; vy = 0; onGround = true;
+    resolveT0 = 0; resolveResult = null; dust = []; shatter = []; appleFlyOut = false; appleTrail = [];
+    setStatus("Jump over the apple 跳过苹果","");
+  }
+
+  function jump(e){
+    if (e && e.repeat) return;
+    if (phase === "incoming" && onGround) {
+      vy = -VJY; onGround = false;
+      setStatus("Jump! 跳！","action");
+    }
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Dodged! 躲过了！","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Hit 被砸中","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Hit 被砸中","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  // 圆 vs 轴对齐矩形相交检测
+  function circleRectHit(cx, cy, r, rx1, rx2, ry1, ry2){
+    const px = Math.max(rx1, Math.min(cx, rx2));
+    const py = Math.max(ry1, Math.min(cy, ry2));
+    return (cx-px)*(cx-px) + (cy-py)*(cy-py) < r*r;
+  }
+
+  function update(dt, now){
+    if (phase === "incoming") {
+      appleX += APPLE_VX * dt;
+      if (!onGround) {
+        vy += G * dt;
+        yTop += vy * dt;
+        if (yTop >= TOP_INIT) { yTop = TOP_INIT; vy = 0; onGround = true; }
+      }
+      // 纯碰撞：苹果圆 vs 主角身体矩形，逐帧检测
+      const bodyTop = yTop, bodyBottom = yTop + BODY_H;
+      if (circleRectHit(appleX, APPLE_Y, APPLE_R, PLAYER_X-BODY_W/2, PLAYER_X+BODY_W/2, bodyTop, bodyBottom)) {
+        // 被砸中：进入后果动画（苹果碎裂）
+        phase = "resolve";
+        resolveT0 = now;
+        resolveResult = "hit";
+        for (let i=0;i<24;i++) shatter.push({x:appleX, y:APPLE_Y, vx:Math.random()*260-130, vy:Math.random()*200-170, life:1, c:i%2?"#e53935":"#ff8c42"});
+        setStatus("Hit 被砸中","lose");
+        return;
+      }
+      // 苹果完全飞过主角（左缘越过身体右缘）且从未重叠 → 躲过
+      if (appleX - APPLE_R > PLAYER_X + BODY_W/2) {
+        phase = "resolve";
+        resolveT0 = now;
+        resolveResult = "dodge";
+        for (let i=0;i<20;i++) dust.push({x:PLAYER_X+Math.random()*40-20, y:GROUND_Y, vx:Math.random()*110-55, vy:-Math.random()*130-40, life:0.9+Math.random()*0.3});
+        setStatus("Dodged! 躲过了！","win");
+      }
+    } else if (phase === "resolve") {
+      // 后果动画：躲过=苹果从头顶飞过+落地扬尘；被砸=苹果碎裂飞溅
+      if (resolveResult === "dodge") {
+        appleX += APPLE_VX * dt;
+        appleTrail.push({x:appleX, y:APPLE_Y, life:1});
+      }
+      dust = dust.filter(p => { p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=700*dt; p.life-=dt*1.8; return p.life>0; });
+      shatter = shatter.filter(p => { p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=900*dt; p.life-=dt*1.4; return p.life>0; });
+      appleTrail = appleTrail.filter(p => { p.life-=dt*2.2; return p.life>0; });
+      const el = now - resolveT0;
+      if (el > (resolveResult === "dodge" ? 650 : 600)) {
+        if (resolveResult === "dodge") win(); else fail();
+      }
+    }
+    // over 不更新
+  }
+
+  // ---- 渲染 ----
+  function drawBG(){
+    // 果园：天空 + 远景果园 + 草地 + 果树 + 猴子
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#8ecbf5"); g.addColorStop(0.6,"#b7dcf7"); g.addColorStop(1,"#e2f0e8");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+    // 云朵
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    ctx.beginPath(); ctx.ellipse(160, 70, 50, 17, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(210, 82, 36, 13, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(620, 55, 42, 14, 0, 0, Math.PI*2); ctx.fill();
+    // 远景果园（树丛剪影）
+    ctx.fillStyle = "rgba(90,140,90,.45)";
+    for (let i=0;i<10;i++){ ctx.beginPath(); ctx.arc(40+i*80, 300, 34+(i%3)*8, 0, Math.PI*2); ctx.fill(); }
+    // 草地
+    const gg = ctx.createLinearGradient(0,GROUND_Y,0,460);
+    gg.addColorStop(0,"#6db85f"); gg.addColorStop(1,"#4a9a44");
+    ctx.fillStyle = gg; ctx.fillRect(0,GROUND_Y,800,460-GROUND_Y);
+    ctx.fillStyle = "#5aab52"; ctx.fillRect(0,GROUND_Y,800,7);
+    // 草叶纹理
+    ctx.fillStyle = "rgba(40,120,40,.35)";
+    for (let i=0;i<22;i++){ ctx.fillRect((i*36+5)%800, GROUND_Y+12+(i%3)*20, 14, 3); }
+    // 果树（猴子站在上面，弹射苹果的来源）
+    const treeX = 40;
+    ctx.fillStyle = "#6b4e2a"; ctx.fillRect(treeX-8, 140, 16, 250);   // 树干
+    ctx.fillStyle = "#4e8a3e";
+    ctx.beginPath(); ctx.arc(treeX, 130, 60, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(treeX-45, 160, 40, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(treeX+45, 160, 40, 0, Math.PI*2); ctx.fill();
+    // 猴子（简笔：身体+头+尾巴，站在树杈）
+    ctx.fillStyle = "#8a5a30";
+    ctx.beginPath(); ctx.ellipse(treeX+30, 150, 16, 22, 0, 0, Math.PI*2); ctx.fill();   // 身体
+    ctx.beginPath(); ctx.arc(treeX+30, 126, 13, 0, Math.PI*2); ctx.fill();             // 头
+    ctx.fillStyle = "#f0c9a0"; ctx.beginPath(); ctx.arc(treeX+30, 122, 9, 0, Math.PI*2); ctx.fill();   // 脸
+    ctx.fillStyle = "#2a1a12"; ctx.beginPath(); ctx.arc(treeX+33, 121, 2, 0, Math.PI*2); ctx.fill();   // 眼
+    ctx.strokeStyle = "#6b4e2a"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(treeX+30, 160); ctx.quadraticCurveTo(treeX+56, 200, treeX+50, 230); ctx.stroke();
+  }
+
+  function drawPlayer(){
+    // 卡通路人：草帽 + 衣服 + 眼睛（跳跃时身体随 yTop 移动）
+    const bx = PLAYER_X;
+    const bodyTop = yTop, bodyBottom = yTop + BODY_H;
+    const centerY = (bodyTop + bodyBottom)/2;
+    // 双腿（跳起时收腿）
+    ctx.fillStyle = "#3a4a6e"; ctx.fillRect(bx-14, bodyBottom-16, 11, 16);
+    ctx.fillStyle = "#3a4a6e"; ctx.fillRect(bx+3, bodyBottom-16, 11, 16);
+    // 身体（T恤）
+    const bg = ctx.createLinearGradient(0,bodyTop,0,bodyTop+BODY_H);
+    bg.addColorStop(0,"#e8a84a"); bg.addColorStop(1,"#c9802e");
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.ellipse(bx, bodyTop+BODY_H*0.55, 16, BODY_H*0.5, 0, 0, Math.PI*2); ctx.fill();
+    // 衣服条纹
+    ctx.fillStyle = "#f2f2f2"; ctx.fillRect(bx-14, bodyTop+BODY_H*0.6, 28, 3);
+    // 头（肤色）
+    ctx.fillStyle = "#f0c9a0"; ctx.beginPath(); ctx.arc(bx, bodyTop-4, 12, 0, Math.PI*2); ctx.fill();
+    // 草帽
+    ctx.fillStyle = "#e0b356"; ctx.beginPath(); ctx.arc(bx, bodyTop-8, 17, Math.PI, 0); ctx.fill();
+    ctx.fillStyle = "#c99838"; ctx.fillRect(bx-17, bodyTop-9, 34, 3);
+    // 眼睛（看向左侧来果方向）
+    ctx.fillStyle = "#2a1a12";
+    ctx.beginPath(); ctx.arc(bx-4, bodyTop-2, 2.2, 0, Math.PI*2); ctx.fill();
+  }
+
+  function drawApple(){
+    // 苹果（红渐变 + 果梗 + 光泽）
+    if (resolveResult !== "hit") {
+      const tr = ctx.createLinearGradient(appleX,0,appleX-80,0);
+      tr.addColorStop(0,"rgba(255,90,80,.45)"); tr.addColorStop(1,"rgba(255,90,80,0)");
+      ctx.fillStyle = tr; ctx.fillRect(appleX-80, APPLE_Y-6, 80, 12);
+    }
+    const ag = ctx.createRadialGradient(appleX-4, APPLE_Y-5, 3, appleX, APPLE_Y, APPLE_R);
+    ag.addColorStop(0,"#ff8a70"); ag.addColorStop(0.6,"#e53935"); ag.addColorStop(1,"#b71c1c");
+    ctx.fillStyle = ag;
+    ctx.beginPath(); ctx.arc(appleX, APPLE_Y, APPLE_R, 0, Math.PI*2); ctx.fill();
+    // 高光
+    ctx.fillStyle = "rgba(255,255,255,.55)";
+    ctx.beginPath(); ctx.ellipse(appleX-5, APPLE_Y-6, 4, 2.5, -0.5, 0, Math.PI*2); ctx.fill();
+    // 果梗
+    ctx.strokeStyle = "#6b4e2a"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(appleX, APPLE_Y-APPLE_R); ctx.lineTo(appleX+2, APPLE_Y-APPLE_R-7); ctx.stroke();
+    // 叶子
+    ctx.fillStyle = "#4e9a3e";
+    ctx.beginPath(); ctx.ellipse(appleX+6, APPLE_Y-APPLE_R-4, 5, 2.5, 0.6, 0, Math.PI*2); ctx.fill();
+  }
+
+  function render(){
+    drawBG();
+    drawPlayer();
+    drawApple();
+    // 落地扬尘
+    dust.forEach(p => { ctx.fillStyle=`rgba(210,190,150,${Math.max(0,p.life)})`; ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, 7); ctx.fill(); });
+    // 苹果碎裂
+    shatter.forEach(p => { ctx.fillStyle=p.c; ctx.globalAlpha=Math.max(0,p.life); ctx.fillRect(p.x-4, p.y-4, 8, 8); ctx.globalAlpha=1; });
+    // 苹果飞过拖尾
+    appleTrail.forEach(p => {
+      ctx.fillStyle=`rgba(255,220,120,${p.life*0.6})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 6*p.life, 0, 7); ctx.fill();
+    });
+  }
+
+  function frame(t){ if (!started) { requestAnimationFrame(frame); return; }
+    const dt = Math.min((t - (frame.last||t))/1000, 0.05); frame.last = t;
+    update(dt, t);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  addEventListener("keydown",(e)=>{
+    // 空格触发 Start / Next（phase 隔离）
+    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
+      const introShown = !introEl.classList.contains("hidden");
+      const retryShown = !retryOverlay.classList.contains("hidden");
+      if (introShown) { e.preventDefault(); startGame(); return; }
+      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
+    }
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    const up = k===" " || k==="w" || k==="arrowup" || c==="Space" || c==="KeyW" || c==="ArrowUp" || kc===32 || kc===87 || kc===38;
+    if (up) jump(e);
+  });
+  cv.addEventListener("mousedown", ()=>jump());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

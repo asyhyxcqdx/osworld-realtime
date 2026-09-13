@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Lane Rhythm 多轨道节奏</title>
+<style>
+:root{
+  --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+  --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+  --accent1:#4c5baa; --accent2:#3a4684;
+  --accent3:#4c7dff; --accent4:#3355d8;
+  --ok1:#34d399; --ok2:#0ea371;
+  --fail1:#f87171; --fail2:#dc2626;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; }
+body{
+  background:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+    radial-gradient(900px 650px at 50% -8%, #2a3a5a 0%, #161d2e 58%, #0d1119 100%);
+  background-size:44px 44px, 44px 44px, 100% 100%;
+  font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:#e8eaf6; user-select:none; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+}
+.status{ font-size:23px; font-weight:700; min-height:32px; letter-spacing:.4px; text-align:center; }
+.status.idle{ color:#8b93b8; } .status.armed{ color:var(--gold); }
+.status.win{ color:var(--ok1); } .status.lose{ color:var(--fail1); }
+.status.action{ font-size:28px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+
+/* 目标信息卡 */
+.spec{ display:flex; align-items:center; gap:14px; }
+.spec-card{ background:linear-gradient(160deg,#1c2743,#131a2b); border:1px solid rgba(255,255,255,.12);
+  border-radius:16px; padding:10px 20px; text-align:center; box-shadow:0 10px 26px rgba(0,0,0,.35); }
+.spec-lbl{ font-size:12px; color:#7d86ab; letter-spacing:2px; text-transform:uppercase; }
+.spec-val{ font-size:28px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--gold); margin-top:2px; }
+.spec-val b{ font-size:17px; font-weight:700; color:#e8eaf6; }
+
+/* 音游面板 */
+.panel{ position:relative; width:760px; height:420px; border-radius:20px; overflow:hidden;
+  background:linear-gradient(160deg,#1a2333 0%,#0f131c 100%); border:2px solid rgba(255,255,255,.10);
+  box-shadow:inset 0 0 70px rgba(0,0,0,.4); }
+/* 判定线（底部）——音符到达此线即最佳按键时机 */
+.judgeline{ position:absolute; left:20px; right:20px; bottom:92px; height:3px; z-index:6;
+  background:linear-gradient(90deg,transparent, var(--accent3), transparent);
+  box-shadow:0 0 14px rgba(76,125,255,.8); }
+.judgeline-lbl{ position:absolute; right:24px; bottom:100px; font-size:11px; color:#7d86ab; letter-spacing:1px; z-index:6; }
+
+/* 4 条轨道 */
+.lanes{ position:absolute; inset:0; display:flex; }
+.lane{ position:relative; flex:1; border-right:1px solid rgba(255,255,255,.06); }
+.lane:last-child{ border-right:none; }
+.lane .keytag{ position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+  width:44px; height:44px; border-radius:10px; border:2px solid rgba(255,255,255,.22);
+  background:linear-gradient(160deg,#2a3350,#1c2743); display:flex; align-items:center; justify-content:center;
+  font-size:22px; font-weight:800; color:#e8eaf6; z-index:7; }
+.lane .keytag.lit{ border-color:var(--gold); color:var(--gold); box-shadow:0 0 16px rgba(246,196,83,.5); }
+.lane .keytag.hit{ border-color:var(--ok2); color:var(--ok1); box-shadow:0 0 14px rgba(52,211,153,.6); }
+.lane .keytag.bad{ border-color:var(--fail2); color:var(--fail1); box-shadow:0 0 14px rgba(248,113,113,.6); }
+
+/* 下落音符（SVG 音符形状） */
+.note{ position:absolute; left:50%; transform:translateX(-50%); width:46px; height:46px; z-index:5; }
+.note svg{ width:46px; height:46px; display:block; }
+/* 到达时刻标签（第一个音符 Start 后 X 秒到判定线，单张截图即知何时按） */
+.note-time{ position:absolute; left:50%; top:42px; transform:translateX(-50%);
+  font-size:13px; font-weight:800; color:var(--gold); white-space:nowrap;
+  background:rgba(10,12,24,.78); border:1px solid rgba(246,196,83,.45);
+  padding:1px 6px; border-radius:8px; letter-spacing:.3px;
+  transition:opacity .6s ease; }
+/* 时机标注：开始（音符下落）后淡出隐藏，避免干扰人类；开局预览阶段完整可见 */
+body.started .note-time,
+body.started .interval-card{ opacity:0; }
+.interval-card{ transition:opacity .6s ease; }
+/* 命中特效：扩散圈 + 闪光 + 缩小消失 */
+.note.hit{ animation:notePop .45s ease-out forwards; }
+@keyframes notePop{
+  0%{ transform:translateX(-50%) scale(1); opacity:1; filter:drop-shadow(0 0 6px rgba(52,211,153,.9)); }
+  40%{ transform:translateX(-50%) scale(1.35); opacity:1; filter:drop-shadow(0 0 16px rgba(52,211,153,1)); }
+  100%{ transform:translateX(-50%) scale(0); opacity:0; filter:drop-shadow(0 0 0 rgba(52,211,153,0)); }
+}
+/* 命中后的扩散圈（用 ::after 模拟粒子爆炸圈） */
+.note.hit::after{
+  content:""; position:absolute; left:50%; top:50%; width:20px; height:20px;
+  margin:-10px 0 0 -10px; border-radius:50%;
+  border:3px solid rgba(52,211,153,.9);
+  animation:ringWave .5s ease-out forwards;
+}
+@keyframes ringWave{
+  0%{ transform:scale(.5); opacity:1; }
+  100%{ transform:scale(3.2); opacity:0; }
+}
+
+/* 进度点（已命中音符） */
+.progress{ display:flex; gap:8px; align-items:center; }
+.pdot{ width:16px; height:16px; border-radius:4px; background:#2a3350; border:2px solid #3a4684; transition:all .2s; }
+.pdot.done{ background:var(--ok1); border-color:var(--ok2); box-shadow:0 0 10px rgba(52,211,153,.7); }
+.pdot.bad{ background:var(--fail1); border-color:var(--fail2); box-shadow:0 0 10px rgba(248,113,113,.7); }
+
+.feedback{ font-size:16px; font-weight:700; min-height:22px; color:#8b93b8; text-align:center; }
+.feedback.good{ color:var(--ok1); } .feedback.warn{ color:var(--gold); } .feedback.bad{ color:var(--fail1); }
+
+.row{ display:flex; align-items:center; gap:30px; }
+.btn{ padding:18px 42px; font-size:22px; font-weight:800; letter-spacing:1px; border:none; border-radius:16px;
+  cursor:pointer; color:#fff; background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+  box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25); transition:transform .12s; }
+.btn:active{ transform:translateY(2px) scale(.98); }
+.btn:disabled{ opacity:.35; cursor:default; }
+.hint{ font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+
+.toast{ position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+  background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+  padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+  opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.overlay{ position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+.overlay.show{ opacity:1; pointer-events:auto; }
+.celeb-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+  transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.overlay.show .celeb-box{ transform:scale(1); }
+.celeb-check{ width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+.celeb-check.ok{ background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+.celeb-check.fail{ background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+.celeb-title{ font-size:30px; font-weight:800; color:var(--title); }
+.celeb-sub{ font-size:15px; color:var(--sub); margin-top:6px; }
+#confetti{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+
+.intro{ position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+.intro.hidden{ display:none; }
+.intro-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:680px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.intro-title{ font-size:28px; font-weight:800; color:var(--title); }
+.intro-rule{ font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+.intro-rule b{ color:var(--title); }
+.intro-start{ margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+.intro-start:hover{ transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Press Start 按开始</div>
+
+  <div class="spec">
+    <div class="spec-card interval-card">
+      <div class="spec-lbl">Note interval 音符间隔</div>
+      <div class="spec-val"><span id="freqVal">0.8s</span> <b>every</b></div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-lbl">Note lanes 音符轨道</div>
+      <div class="spec-val"><span id="orderVal">Random 随机</span></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel">
+    <div class="judgeline" id="judgeline"></div>
+    <div class="judgeline-lbl">HIT LINE 判定线</div>
+    <div class="lanes" id="lanes">
+      <div class="lane" id="lane0"><div class="keytag" id="key0">D</div></div>
+      <div class="lane" id="lane1"><div class="keytag" id="key1">F</div></div>
+      <div class="lane" id="lane2"><div class="keytag" id="key2">J</div></div>
+      <div class="lane" id="lane3"><div class="keytag" id="key3">K</div></div>
+    </div>
+  </div>
+
+  <div class="progress" id="progress"></div>
+  <div class="feedback" id="feedback">Keep the rhythm 跟上节奏</div>
+
+  <div class="row">
+    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <div class="hint" id="hint">Attempt 0 / 3 第0/3次</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">Rhythm complete 节奏完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Multi-Lane Rhythm 多轨道节奏</div>
+      <div class="intro-rule">In this rhythm game, <b>4 notes</b> are scattered <b>randomly across 4 lanes</b> (keys <b>D F J K</b> from left to right). Before they fall, the notes stay still and each note shows the time it reaches the hit line — the <b>first note reaches the line 1.5s after Start</b>, then one every <b>0.8 second</b>. Press the matching lane key when a note hits the line (±150ms). Wrong key or bad timing breaks the rhythm.<br>在这款音游里，<b>4 个音符随机分散在 4 条轨道</b>上（从左到右对应 <b>D F J K</b>）。下落前音符会<b>静止显示</b>，且每个音符标出它到达判定线的时刻——<b>第一个音符在 Start 后 1.5 秒到达判定线</b>，之后每隔 <b>0.8 秒</b>一个。当音符到达判定线时按对应轨道键（±150 毫秒）。按错键或时机不对都会断节奏。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const INTERVAL_MS = 800;    // 音符间隔 800ms（0.8s 一拍，节奏从容）
+  const LANE_KEYS = ["D","F","J","K"];   // 4 轨道按键（左→右）
+  const TARGET_N = 4;         // 音符总数
+  const TOLERANCE_MS = 150;   // 判定窗口 ±150ms（放宽，人类易命中）
+  const LEAD_IN_MS = 1500;    // 第 1 音符从 Start 到落线的时长（放长，观察更充分）
+  const FALL_SPEED = 0.075;   // px/ms（间隔改 800ms 后需更慢，保证 4 音符开局全可见且不叠）
+  const NOTE_SIZE = 46;
+
+  const BENCH = { task:"tap_frequency", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn");
+  const freqVal=document.getElementById("freqVal"), orderVal=document.getElementById("orderVal");
+  const judgeLine=document.getElementById("judgeline");
+  const progress=document.getElementById("progress");
+  const feedback=document.getElementById("feedback");
+  const toast=document.getElementById("toast");
+  const overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+
+  let phase="idle", raf=null, armNow=0;
+  let noteEls=[], noteTimes=[], noteLanes=[];   // 每音符：元素 / 落线时刻 / 所在轨道 index
+  let hitCount=0;
+
+  freqVal.textContent="0.8s";   // 音符间隔 0.8 秒
+  orderVal.textContent="Random 随机";
+
+  function judgeLineY(){
+    const pr=judgeLine.getBoundingClientRect(); const pp=document.getElementById("panel").getBoundingClientRect();
+    return (pr.top-pp.top)+pr.height/2;
+  }
+
+  function buildProgress(){
+    progress.innerHTML="";
+    for(let i=0;i<TARGET_N;i++){ const d=document.createElement("div"); d.className="pdot"; d.id="pd"+i; progress.appendChild(d); }
+  }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+" 第"+BENCH.attempts+"/"+MAX_ATTEMPTS+"次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+  function setFeedback(t,c){ feedback.textContent=t; feedback.className="feedback "+(c||""); }
+  function markDot(i,good){ const d=document.getElementById("pd"+i); if(d){ d.classList.add(good?"done":"bad"); } }
+  function keyEl(l){ return document.getElementById("key"+l); }
+
+  // 音符 SVG（八分音符：符头 + 符干 + 符尾）
+  function noteSVG(color){
+    return `<svg viewBox="0 0 46 46" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="15" cy="31" rx="9" ry="7" transform="rotate(-18 15 31)" fill="${color}"/>
+      <rect x="22" y="5" width="3.2" height="27" rx="1.2" fill="${color}"/>
+      <path d="M25.2 5 C32 8 31 16 27 21" stroke="${color}" stroke-width="3" stroke-linecap="round" fill="none"/>
+    </svg>`;
+  }
+
+  // 渲染 4 个音符：随机分布到 4 轨道（可重复/可空轨），初始静止在判定线上方（preview 可见）
+  // 落线时机固定：第 i 个音符合 500ms*i 落下（i 为时间序），随机的是轨道不是时机
+  function spawnNotes(){
+    noteEls=[]; noteTimes=[]; noteLanes=[];
+    // 清空所有轨道旧音符
+    for(let l=0;l<TARGET_N;l++){ document.getElementById("lane"+l).querySelectorAll(".note").forEach(n=>n.remove()); }
+    for(let i=0;i<TARGET_N;i++){
+      const laneIdx = Math.floor(Math.random()*TARGET_N);   // 随机轨道（可重复）
+      const lane=document.getElementById("lane"+laneIdx);
+      const n=document.createElement("div");
+      n.className="note";
+      // 到达秒数标签：第 i 个音符在 Start 后 (LEAD_IN + i*INTERVAL)/1000 秒到判定线
+      const arriveSec = ((LEAD_IN_MS + i*INTERVAL_MS)/1000).toFixed(1);
+      n.innerHTML=noteSVG("#f6c453") + `<div class="note-time">${arriveSec}s</div>`;
+      // 初始（静止）位置：第 i 个音符在判定线上方 (LEAD_IN+i*INTERVAL)*FALL_SPEED 处
+      const top0 = judgeLineY() - NOTE_SIZE/2 - (LEAD_IN_MS + i*INTERVAL_MS) * FALL_SPEED;
+      n.style.top = top0 + "px";
+      lane.appendChild(n);
+      noteEls.push(n);
+      noteLanes.push(laneIdx);
+      noteTimes.push(0);   // arm 时再填绝对时刻
+    }
+  }
+
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false;
+    hitCount=0;
+    document.body.classList.remove("started");   // 恢复显示时机标注
+    for(let l=0;l<TARGET_N;l++){ keyEl(l).className="keytag"; }
+    buildProgress(); setFeedback("Observe where each note is 看好音符位置","");
+    spawnNotes();   // preview：音符静止显示在各轨道，玩家看清要按哪些键
+    setStatus("Press Start 按开始","idle"); syncURL();
+  }
+
+  function arm(){
+    phase="armed"; startBtn.disabled=true;
+    document.body.classList.add("started");     // 开始下落：淡出时机标注
+    armNow=performance.now();
+    hitCount=0;
+    buildProgress();
+    // 填充落线绝对时刻（音符已在 preview 渲染静止，这里只定时机）
+    for(let i=0;i<TARGET_N;i++){ noteTimes[i] = armNow + LEAD_IN_MS + i*INTERVAL_MS; }
+    // 高亮第一个待按轨道键（第 0 个落线音符所在轨道）
+    keyEl(noteLanes[0]).classList.add("lit");
+    setStatus("Hit each note as it hits the line! 音符到线按键！","action");
+    setFeedback("Get ready 准备", "warn");
+    syncURL();
+    (function tick(now){
+      if(phase!=="armed") return;
+      const el=now-armNow;
+      for(let i=0;i<TARGET_N;i++){
+        const top = judgeLineY() - NOTE_SIZE/2 - (LEAD_IN_MS + i*INTERVAL_MS - el) * FALL_SPEED;
+        noteEls[i].style.top = top + "px";
+      }
+      if(el > LEAD_IN_MS + (TARGET_N-1)*INTERVAL_MS + TOLERANCE_MS + 600){ miss(); return; }
+      raf=requestAnimationFrame(tick);
+    })(armNow);
+  }
+
+  function noteTime(i){ return armNow + LEAD_IN_MS + i*INTERVAL_MS; }
+
+  function onKey(e){
+    if(phase!=="armed") return;
+    if(e.repeat) return;
+    const k = (e.code||"").replace("Key","").toUpperCase() || (e.key||"").toUpperCase();
+    const laneIdx = LANE_KEYS.indexOf(k);
+    if(laneIdx<0) return;   // 非 D/F/J/K 键忽略
+    const now=performance.now();
+    const i=hitCount;
+    if(i>=TARGET_N) return;
+    const expectLane = noteLanes[i];
+    const err = now - noteTime(i);
+    if(laneIdx===expectLane && Math.abs(err)<=TOLERANCE_MS){
+      // 命中：音符特效（扩散圈+闪光+消失）+ 该键标 hit
+      noteEls[i].classList.add("hit");
+      keyEl(laneIdx).classList.remove("lit");
+      keyEl(laneIdx).classList.add("hit");
+      markDot(i,true);
+      hitCount++;
+      setFeedback(hitCount+" / "+TARGET_N+" — "+LANE_KEYS[laneIdx]+" 好","good");
+      if(hitCount>=TARGET_N){ finishRound(true); return; }
+      keyEl(noteLanes[hitCount]).classList.add("lit");
+    } else if(laneIdx!==expectLane){
+      // 按错键
+      keyEl(laneIdx).classList.add("bad");
+      setFeedback("Wrong key 按错键（应 "+LANE_KEYS[expectLane]+"）","bad");
+      finishRound(false, "Wrong key");
+    } else {
+      // 键对但时机错：音符保持原样（不做特效，继续下落穿过），判定失败
+      markDot(i,false);
+      const msg = err>0?("Too late 太慢 +"+Math.round(err)+"ms"):("Too early 太快 "+Math.round(err)+"ms");
+      setFeedback(msg,"bad");
+      finishRound(false, msg);
+    }
+  }
+
+  function finishRound(win, reason){
+    if(phase!=="armed") return;
+    phase="done"; cancelAnimationFrame(raf); startBtn.disabled=true;
+    for(let l=0;l<TARGET_N;l++) keyEl(l).classList.remove("lit");
+    if(win){
+      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      setStatus("Success 成功","win"); syncURL(); celebrate();
+    } else {
+      failOne(reason||"Off beat 节拍不准");
+    }
+  }
+
+  function miss(){ cancelAnimationFrame(raf); if(phase!=="armed") return; phase="done"; startBtn.disabled=true; failOne("Missed 未命中"); }
+  function failOne(reason){
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    setStatus("Missed 未命中","lose");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    const cv=document.getElementById("confetti"); cv.width=innerWidth; cv.height=innerHeight;
+    const ctx=cv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,cv.width,cv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<cv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,cv.width,cv.height);
+    })(t0);
+  }
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+
+  // 空格触发 Start/Next（补充，鼠标点击仍有效）
+  function onIntroStart(){
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
+  }
+  function onNext(){
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+  }
+  function onSpaceKey(e){
+    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
+    if(e.repeat) return;
+    const introEl=document.getElementById("intro");
+    const retryEl=document.getElementById("retryOverlay");
+    // 规则页显示时：空格触发 Start（关规则页进 idle）
+    if(!introEl.classList.contains("hidden") && phase!=="armed"){
+      e.preventDefault();
+      onIntroStart();
+      return;
+    }
+    // retry 页显示时：空格触发 Next
+    if(retryEl.classList.contains("show") && phase!=="armed"){
+      e.preventDefault();
+      onNext();
+      return;
+    }
+    // 空闲状态（startBtn 可点）：空格触发 startBtn 开始本局
+    if(phase==="idle" && !startBtn.disabled){
+      e.preventDefault();
+      startBtn.click();
+      return;
+    }
+    // 游戏进行中（armed）/ 成功后：空格不触发任何按钮（避免误触）
+  }
+
+  window.addEventListener("keydown", onKey);
+  window.addEventListener("keydown", onSpaceKey);
+  document.getElementById("introStart").addEventListener("click", onIntroStart);
+  document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  window.__dbg = function(){
+    return { phase, hitCount, targetN:TARGET_N, targetIntervalMs:INTERVAL_MS,
+      laneKeys:LANE_KEYS, toleranceMs:TOLERANCE_MS, leadInMs:LEAD_IN_MS,
+      noteLanes:noteLanes.slice(), noteSeq:noteLanes.map(l=>LANE_KEYS[l]),
+      expectKey:hitCount<TARGET_N?LANE_KEYS[noteLanes[hitCount]]:null,
+      noteTimes:noteTimes.map(t=>Math.round(t-armNow)),
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Combo Sequence 连招序列</title>
+<style>
+:root{
+  --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+  --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+  --accent1:#4c5baa; --accent2:#3a4684;
+  --accent3:#4c7dff; --accent4:#3355d8;
+  --ok1:#34d399; --ok2:#0ea371;
+  --fail1:#f87171; --fail2:#dc2626;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; }
+body{
+  background:radial-gradient(900px 650px at 50% -8%, #2b2233 0%, #17111f 58%, #0c0812 100%);
+  font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:#e8eaf6; user-select:none; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+}
+.status{ font-size:24px; font-weight:800; min-height:32px; letter-spacing:.4px; text-align:center; }
+.status.idle{ color:#8b93b8; } .status.armed{ color:var(--gold); }
+.status.win{ color:var(--ok1); } .status.lose{ color:var(--fail1); }
+.status.action{ font-size:29px; font-weight:800; color:var(--gold); text-shadow:0 0 16px rgba(246,196,83,.6); letter-spacing:.5px; }
+
+/* 倒计时 */
+.clock{ display:flex; flex-direction:column; align-items:center; gap:2px; }
+.clock-num{ font-size:52px; font-weight:800; font-variant-numeric:tabular-nums; color:#e8eaf6; min-width:160px; text-align:center; }
+.clock-num.zero{ color:var(--gold); }
+.clock-lbl{ font-size:12px; color:#9a8bb8; letter-spacing:3px; text-transform:uppercase; }
+
+/* 连招序列显示（IEW=∞ 静态可见） */
+.seq{ display:flex; align-items:center; gap:10px; }
+.seq-lbl{ font-size:13px; color:#9a8bb8; letter-spacing:2px; text-transform:uppercase; margin-right:4px; }
+.seq-key{ width:52px; height:52px; border-radius:10px; border:2px solid rgba(255,255,255,.18);
+  background:linear-gradient(160deg,#2a1f33,#1a1420); display:flex; align-items:center; justify-content:center;
+  font-size:26px; font-weight:800; color:#e8eaf6; transition:all .15s; }
+.seq-key.cur{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(246,196,83,.3); transform:translateY(-2px); }
+.seq-key.done{ border-color:var(--ok2); background:linear-gradient(160deg,#0e3628,#0a241b); color:var(--ok1); }
+.seq-key.bad{ border-color:var(--fail2); background:linear-gradient(160deg,#361a1a,#240f0f); color:var(--fail1); }
+
+/* 擂台舞台 */
+.stage{ position:relative; width:760px; height:360px; border-radius:20px; overflow:hidden;
+  border:2px solid rgba(255,255,255,.10); box-shadow:inset 0 0 70px rgba(0,0,0,.5); }
+#arena{ position:absolute; inset:0; width:100%; height:100%; }
+
+.row{ display:flex; align-items:center; gap:24px; }
+.btn{ padding:16px 38px; font-size:21px; font-weight:800; letter-spacing:1px; border:none; border-radius:14px;
+  cursor:pointer; color:#fff; background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+  box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25); transition:transform .12s; }
+.btn:active{ transform:translateY(2px) scale(.98); }
+.btn:disabled{ opacity:.35; cursor:default; }
+.hint{ font-size:14px; color:#9a8bb8; letter-spacing:.5px; }
+
+.toast{ position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+  background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+  padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+  opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.overlay{ position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+.overlay.show{ opacity:1; pointer-events:auto; }
+.celeb-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+  transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.overlay.show .celeb-box{ transform:scale(1); }
+.celeb-check{ width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+.celeb-check.ok{ background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+.celeb-check.fail{ background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+.celeb-title{ font-size:30px; font-weight:800; color:var(--title); }
+.celeb-sub{ font-size:15px; color:var(--sub); margin-top:6px; }
+#confetti{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+
+.intro{ position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+.intro.hidden{ display:none; }
+.intro-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:680px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.intro-title{ font-size:28px; font-weight:800; color:var(--title); }
+.intro-rule{ font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+.intro-rule b{ color:var(--title); }
+.intro-start{ margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+.intro-start:hover{ transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Press Start 按开始</div>
+
+  <div class="clock">
+    <div class="clock-num" id="clockNum">3.00</div>
+    <div class="clock-lbl">seconds 秒</div>
+  </div>
+
+  <div class="seq">
+    <span class="seq-lbl">Combo 连招:</span>
+    <div class="seq-key" id="sk0">→</div>
+    <div class="seq-key" id="sk1">↓</div>
+    <div class="seq-key" id="sk2">→</div>
+    <div class="seq-key" id="sk3">↑</div>
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="arena"></canvas>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="startBtn">Start 开始</button>
+    <div class="hint" id="hint">Attempt 1 / 3 第1/3次</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">KO! 胜利</div>
+      <div class="celeb-sub">Combo complete 连招完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Combo Sequence 连招序列</div>
+      <div class="intro-rule">In this fighting game, input the 4-direction combo <b>→ ↓ → ↑</b> (arrow keys in order) <b>when the countdown reaches 0.00</b> (within ±0.75s). Your fighter performs one move per correct key — press all 4 in order to land the finishing combo. A wrong key or bad timing breaks the combo.<br>在这款格斗游戏里，当倒计时走到 <b>0.00</b> 时（±0.75 秒内）按顺序输入 4 方向连招 <b>→ ↓ → ↑</b>（方向键按序）。你的格斗家每按对一个键就打出一招——4 个键全按对即可打出终结连击。按错键或时机不对都会断连。</div>
+      <button class="intro-start" id="introStart">Start 开始</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const DURATION_MS = 3000;     // 倒计时 3.00s → 0.00
+  const WINDOW_HALF = 750;      // 归零 ±750ms 输入窗口（容纳 4 步序列）
+  const MISS_MS = 800;          // 归零后 800ms 未完成 → miss
+
+  // 连招序列：4 步方向键（每步对应主角一个动作）
+  const SEQ = [
+    { code:"ArrowRight", arrow:"→", name:"Step 垫步" },
+    { code:"ArrowDown",  arrow:"↓", name:"Crouch 蹲伏" },
+    { code:"ArrowRight", arrow:"→", name:"Lunge 前冲拳" },
+    { code:"ArrowUp",    arrow:"↑", name:"Uppercut 上勾拳" },
+  ];
+
+  const BENCH = { task:"combokey", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn"), clockNum=document.getElementById("clockNum");
+  const arena=document.getElementById("arena");
+  const toast=document.getElementById("toast"), overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+
+  let phase="idle", raf=null, armNow=0, remainingMs=DURATION_MS;
+  let stepIdx=0;             // 当前应输入的步骤（0..3）
+  let animStart=0;           // 当前动作动画起点
+  let stepDone=[false,false,false,false];
+  let shakeT=0;
+
+  function seqEl(i){ return document.getElementById("sk"+i); }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+  function setClock(r){ remainingMs=r; const s=Math.max(0,r/1000).toFixed(2); clockNum.textContent=s; clockNum.classList.toggle("zero", Math.abs(r)<=WINDOW_HALF); }
+
+  function resetSeqUI(){
+    for(let i=0;i<SEQ.length;i++){ const el=seqEl(i); el.className="seq-key"; }
+  }
+
+  // ---- 擂台背景 + 角色绘制（同 b32 风格） ----
+  function drawStage(ctx){
+    const W=arena.width, H=arena.height;
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#1b1526"); g.addColorStop(0.6,"#241a33"); g.addColorStop(1,"#160f1e");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="rgba(0,0,0,.45)";
+    for(let x=0;x<W;x+=26){ const hh=14+Math.abs(Math.sin(x*0.7))*26; ctx.fillRect(x,22-hh,18,hh); }
+    ctx.save(); ctx.globalAlpha=.08;
+    const lg=ctx.createLinearGradient(0,16,0,H*.6);
+    lg.addColorStop(0,"rgba(255,240,190,1)"); lg.addColorStop(1,"rgba(255,240,190,0)");
+    ctx.fillStyle=lg;
+    ctx.beginPath(); ctx.moveTo(W*.5-70,14); ctx.lineTo(W*.5+70,14); ctx.lineTo(W*.5+240,H*.62); ctx.lineTo(W*.5-240,H*.62); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    const floorY=H-60;
+    ctx.fillStyle="#2c2136"; ctx.fillRect(0,floorY,W,60);
+    ctx.fillStyle="#3a2c46"; ctx.fillRect(0,floorY,W,4);
+    ctx.strokeStyle="rgba(255,255,255,.06)"; ctx.lineWidth=1;
+    for(let x=0;x<W;x+=40){ ctx.beginPath(); ctx.moveTo(x,floorY); ctx.lineTo(x,H); ctx.stroke(); }
+    ctx.strokeStyle="rgba(255,255,255,.14)"; ctx.lineWidth=3;
+    for(let k=0;k<3;k++){ const y=58+k*34; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  }
+
+  function drawFighter(ctx, side, cx, cy, poseIdx, animP, attack){
+    const isHero = side==='l';
+    const skin = isHero ? "#e8b98a" : "#d99a72";
+    const suit = isHero ? "#4c7dff" : "#e04b5a";
+    const suitDark = isHero ? "#3355d8" : "#b23440";
+    const belt = isHero ? "#f6c453" : "#e8e8e8";
+    const dir = isHero ? 1 : -1;
+
+    let bodyDx=0, bodyDy=0, armDx=0, armDy=0, flegDx=0, flegDy=0, legDir=dir;
+    let punch=null;
+    if(animP>=0 && animP<1 && attack){
+      const t=animP, ease=Math.sin(t*Math.PI);
+      punch = { dx: attack.punch.dx*ease, dy: attack.punch.dy*ease };
+      bodyDx = dir*attack.lunge*ease;
+      bodyDy = (attack.crouch?18*ease: -4*ease);
+      armDx = dir*attack.punch.dx*ease;
+      armDy = attack.punch.dy*ease;
+      flegDx = dir*attack.legLift*ease*0.8;
+      flegDy = -attack.legLift*ease*0.9;
+    }
+
+    ctx.save();
+    ctx.translate(cx+bodyDx, cy+bodyDy);
+    ctx.fillStyle="rgba(0,0,0,.35)";
+    ctx.beginPath(); ctx.ellipse(0,40,30,8,0,0,Math.PI*2); ctx.fill();
+    // 腿
+    ctx.strokeStyle=suitDark; ctx.lineWidth=9; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(0,8); ctx.lineTo(-dir*14, 38); ctx.stroke();
+    ctx.strokeStyle=suit; ctx.lineWidth=10;
+    ctx.beginPath(); ctx.moveTo(0,8); ctx.lineTo(dir*10+flegDx, 38+flegDy); ctx.stroke();
+    ctx.fillStyle=isHero?"#223":"#422";
+    ctx.beginPath(); ctx.arc(-dir*14,38,6,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(dir*10+flegDx, 38+flegDy, 6, 0, Math.PI*2); ctx.fill();
+    // 躯干（蹲伏时压缩）
+    const torsoTop = attack&&animP>=0&&animP<1&&attack.crouch ? -8 : -22;
+    ctx.fillStyle=suit;
+    ctx.beginPath(); ctx.roundRect(-14,torsoTop,28,30+(torsoTop===-8?6:0),6); ctx.fill();
+    ctx.fillStyle=belt; ctx.fillRect(-14,4,28,5);
+    // 后臂
+    ctx.strokeStyle=suitDark; ctx.lineWidth=8;
+    ctx.beginPath(); ctx.moveTo(-dir*8,-14); ctx.lineTo(-dir*14,6); ctx.stroke();
+    // 前臂（出拳）
+    ctx.strokeStyle=suit; ctx.lineWidth=9;
+    const punchBaseY = torsoTop+8;
+    ctx.beginPath(); ctx.moveTo(dir*8,punchBaseY); ctx.lineTo(dir*8+armDx, punchBaseY+armDy); ctx.stroke();
+    ctx.fillStyle=skin;
+    ctx.beginPath(); ctx.arc(dir*8+armDx, punchBaseY+armDy, 6, 0, Math.PI*2); ctx.fill();
+    // 头
+    const headY = attack&&animP>=0&&animP<1&&attack.crouch ? -26 : -38;
+    ctx.fillStyle=skin;
+    ctx.beginPath(); ctx.arc(0,headY,16,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=isHero?"#f87171":"#f6c453";
+    ctx.fillRect(-16,headY-8,32,6);
+    ctx.fillStyle="#222";
+    ctx.beginPath(); ctx.arc(dir*6,headY-2,2.2,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle="#222"; ctx.lineWidth=1.6;
+    ctx.beginPath(); ctx.arc(dir*4,headY+6,3,0.2,Math.PI-0.2); ctx.stroke();
+    ctx.restore();
+    return { x:cx+bodyDx+dir*8+armDx, y:cy+bodyDy+punchBaseY+armDy };
+  }
+
+  // 每步对应的攻击参数
+  const ATTACKS = [
+    { punch:{dx:34,dy:0},  lunge:16, crouch:false, legLift:0 },   // 垫步前倾
+    { punch:{dx:10,dy:-6}, lunge:6,  crouch:true,  legLift:0 },   // 蹲伏蓄力
+    { punch:{dx:52,dy:0},  lunge:28, crouch:false, legLift:0 },   // 前冲直拳
+    { punch:{dx:22,dy:-34},lunge:14, crouch:false, legLift:0 },   // 上勾拳终结
+  ];
+
+  function animProgress(){
+    if(animStart===0) return -1;
+    const p=(performance.now()-animStart)/340;
+    return p>=1?1:p;
+  }
+
+  function render(now){
+    const ctx=arena.getContext("2d");
+    let sx=0,sy=0;
+    if(shakeT>0){ const m=Math.min(1,shakeT/120); sx=(Math.random()-0.5)*8*m; sy=(Math.random()-0.5)*6*m; }
+    ctx.save(); ctx.clearRect(0,0,arena.width,arena.height); ctx.translate(sx,sy);
+    drawStage(ctx);
+    const heroCx=160, cy=arena.height-120;
+    const foeCx=arena.width-160;
+    const hp=animProgress();
+    const atk = (stepDone.some(Boolean) && hp>=0 && hp<1) ? ATTACKS[lastAttackIdx] : null;
+    // 主角当前姿势：用最近一步的攻击
+    const curAtk = (hp>=0 && hp<1) ? ATTACKS[lastAttackIdx] : null;
+    const fist = drawFighter(ctx,'l',heroCx,cy,stepIdx,hp,curAtk);
+    // 对手后仰
+    let recoil=0;
+    if(hp>=0 && hp<1){ recoil=Math.sin(hp*Math.PI); }
+    drawFighter(ctx,'r',foeCx-recoil*20,cy,0,-1,null);
+    // 刀光/火花
+    if(hp>=0 && hp<1 && curAtk){
+      const t=hp;
+      ctx.save();
+      ctx.globalAlpha=Math.max(0,1-t)*0.9;
+      ctx.strokeStyle="#fff"; ctx.lineWidth=5; ctx.lineCap="round";
+      ctx.beginPath(); ctx.arc(fist.x, fist.y, 26+20*t, -0.6, 0.9); ctx.stroke();
+      ctx.fillStyle="#ffe08a";
+      for(let i=0;i<6;i++){ const ang=Math.random()*Math.PI*2, rr=6+Math.random()*18;
+        ctx.beginPath(); ctx.arc(fist.x+Math.cos(ang)*rr, fist.y+Math.sin(ang)*rr, 2+Math.random()*2, 0, Math.PI*2); ctx.fill(); }
+      ctx.restore();
+      ctx.save(); ctx.fillStyle="#f6c453"; ctx.font="800 34px sans-serif"; ctx.textAlign="center";
+      ctx.globalAlpha=1-hp; ctx.fillText((lastAttackIdx+1)+" HIT", heroCx+90, cy-80); ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  let lastAttackIdx=0;
+  function loop(now){
+    if(phase==="armed"){
+      const el=now-armNow;
+      setClock(DURATION_MS-el);
+      if(el>=DURATION_MS+MISS_MS){ miss(); return; }
+      render(now);
+      raf=requestAnimationFrame(loop);
+    }
+  }
+
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false; stepIdx=0; animStart=0; shakeT=0; lastAttackIdx=0;
+    stepDone=[false,false,false,false]; resetSeqUI();
+    setClock(DURATION_MS); setStatus("Press Start 按开始","idle"); syncURL();
+    sizeCanvas(); render(performance.now());
+  }
+
+  function arm(){
+    phase="armed"; startBtn.disabled=true; armNow=performance.now();
+    stepIdx=0; stepDone=[false,false,false,false]; resetSeqUI();
+    seqEl(0).classList.add("cur");
+    setStatus("Input combo at 0.00! 归零时出招！","action"); syncURL();
+    cancelAnimationFrame(raf); raf=requestAnimationFrame(loop);
+  }
+
+  function onKey(e){
+    if(phase!=="armed") return;
+    if(e.repeat) return;
+    const isArrow = ["ArrowRight","ArrowDown","ArrowUp","ArrowLeft"].includes(e.code)
+      || ["ArrowRight","ArrowDown","ArrowUp","ArrowLeft"].includes(e.key)
+      || [37,38,39,40].includes(e.keyCode);
+    if(!isArrow) return;   // 忽略非方向键
+    const code = e.code || (e.keyCode===39?"ArrowRight":e.keyCode===37?"ArrowLeft":e.keyCode===38?"ArrowUp":e.keyCode===40?"ArrowDown":e.key);
+    // 时机判定：须在归零窗口内开始输入
+    const now=performance.now();
+    const el=now-armNow;
+    const remain=DURATION_MS-el;
+    setClock(remain);
+    // 第一步须在归零窗口内（|remain|<=WINDOW_HALF）
+    if(stepIdx===0 && Math.abs(remain)>WINDOW_HALF){
+      // 太早按（还没到窗口）
+      failOne("Too early 出招太早"); return;
+    }
+    // 窗口已过且未完成 → 太晚（由 miss 兜底，这里若 remain < -WINDOW_HALF 也判慢）
+    if(remain < -WINDOW_HALF && stepIdx<SEQ.length){
+      failOne("Too late 出招太慢"); return;
+    }
+    const expect = SEQ[stepIdx].code;
+    if(code===expect){
+      // 命中该步：播放动作
+      seqEl(stepIdx).classList.remove("cur");
+      seqEl(stepIdx).classList.add("done");
+      stepDone[stepIdx]=true;
+      lastAttackIdx=stepIdx; animStart=performance.now(); shakeT=140;
+      stepIdx++;
+      if(stepIdx>=SEQ.length){
+        finishRound(true);
+      } else {
+        seqEl(stepIdx).classList.add("cur");
+      }
+    } else {
+      // 按错方向
+      seqEl(stepIdx).classList.add("bad");
+      failOne("Wrong key 按键错误");
+    }
+  }
+
+  function finishRound(win, reason){
+    if(phase!=="armed") return;
+    phase="done"; cancelAnimationFrame(raf); startBtn.disabled=true;
+    if(win){ render(performance.now()); BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      setStatus("KO! 胜利","win"); syncURL(); celebrate(); }
+    else { failOne(reason||"Combo broken 连招中断"); }
+  }
+
+  function miss(){ cancelAnimationFrame(raf); if(phase!=="armed") return; phase="done"; startBtn.disabled=true; failOne("Missed 未出招"); }
+  function failOne(reason){
+    cancelAnimationFrame(raf);
+    if(phase==="armed"){ phase="done"; startBtn.disabled=true; }
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    setStatus("Missed 未命中","lose");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    const cv=document.getElementById("confetti"); cv.width=innerWidth; cv.height=innerHeight;
+    const ctx=cv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,cv.width,cv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<cv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,cv.width,cv.height);
+    })(t0);
+  }
+
+  function sizeCanvas(){ const s=document.getElementById("stage"); arena.width=s.clientWidth; arena.height=s.clientHeight; }
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+  window.addEventListener("keydown", onKey);
+  document.getElementById("introStart").addEventListener("click",()=>{
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
+  });
+  document.getElementById("nextBtn").addEventListener("click",()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+  });
+
+  window.__dbg = function(){
+    return { phase, remainingMs, stepIdx, totalSteps:SEQ.length,
+      seq:SEQ.map(s=>s.arrow), expectCode:stepIdx<SEQ.length?SEQ[stepIdx].code:null,
+      windowHalfMs:WINDOW_HALF, durationMs:DURATION_MS,
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  sizeCanvas();
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

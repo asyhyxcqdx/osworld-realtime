@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dual Hold 双押长按</title>
+<style>
+:root{
+  --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+  --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+  --accent1:#4c5baa; --accent2:#3a4684;
+  --accent3:#4c7dff; --accent4:#3355d8;
+  --ok1:#34d399; --ok2:#0ea371;
+  --fail1:#f87171; --fail2:#dc2626;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; }
+body{
+  background:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+    radial-gradient(900px 650px at 50% -8%, #2a3a5a 0%, #161d2e 58%, #0d1119 100%);
+  background-size:44px 44px, 44px 44px, 100% 100%;
+  font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:#e8eaf6; user-select:none; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+}
+.status{ font-size:24px; font-weight:800; min-height:32px; letter-spacing:.4px; text-align:center; }
+.status.idle{ color:#8b93b8; } .status.armed{ color:var(--gold); }
+.status.win{ color:var(--ok1); } .status.lose{ color:var(--fail1); }
+.status.action{ font-size:28px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+
+/* 时长标注卡 */
+.spec{ display:flex; align-items:center; gap:14px; }
+.spec-card{ background:linear-gradient(160deg,#1c2743,#131a2b); border:1px solid rgba(255,255,255,.12);
+  border-radius:16px; padding:12px 24px; text-align:center; box-shadow:0 10px 26px rgba(0,0,0,.35); }
+.spec-lbl{ font-size:12px; color:#7d86ab; letter-spacing:2px; text-transform:uppercase; }
+.spec-val{ font-size:32px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--gold); margin-top:2px; }
+.spec-val b{ font-size:19px; font-weight:700; color:#e8eaf6; }
+
+/* 双键舞台 */
+.stage{ position:relative; width:760px; height:360px; border-radius:12px; overflow:hidden;
+  background:linear-gradient(160deg,#1a2333 0%,#0f131c 100%); border:2px solid rgba(255,255,255,.10);
+  box-shadow:inset 0 0 70px rgba(0,0,0,.4); }
+/* 判定线（宽带下缘到线开始按、上缘离线松手） */
+.hitline{ position:absolute; left:20px; right:20px; top:250px; height:4px; z-index:3;
+  background:linear-gradient(90deg,transparent,var(--accent3),transparent);
+  box-shadow:0 0 16px rgba(76,125,255,.9); }
+/* 长按键宽带（音游 hold note，柔和粉系 + 分层柔光，非霓虹） */
+.note-bar{ position:absolute; width:72px; height:300px; z-index:2; top:0;
+  border-radius:12px;
+  /* 体部：柔和粉渐变 + 细密涟漪纹理（半透明玻璃） */
+  background:
+    repeating-linear-gradient(180deg, transparent 0px, transparent 6px, rgba(255,255,255,.05) 6px, rgba(255,255,255,.05) 7px),
+    linear-gradient(180deg,
+      rgba(255,179,198,.82) 0%,
+      rgba(255,153,180,.60) 45%,
+      rgba(255,133,161,.35) 78%,
+      rgba(255,133,161,.08) 96%,
+      transparent 100%);
+  border-left:1px solid rgba(255,210,225,.4);
+  border-right:1px solid rgba(255,210,225,.4);
+  box-shadow:
+    inset 3px 0 5px rgba(255,255,255,.14),
+    inset -3px 0 5px rgba(255,255,255,.10),
+    0 0 6px 2px rgba(255,179,198,.30),
+    0 0 16px 2px rgba(255,133,161,.14);
+}
+/* 头部渐隐（用顶部渐变淡化实现，不加大球） */
+.note-bar::before{ content:""; position:absolute; left:0; right:0; top:-20px; height:80px;
+  background:linear-gradient(180deg, transparent, rgba(255,179,198,.30)); pointer-events:none; }
+.note-bar.held{
+  background:
+    repeating-linear-gradient(180deg, transparent 0px, transparent 6px, rgba(255,255,255,.05) 6px, rgba(255,255,255,.05) 7px),
+    linear-gradient(180deg,
+      rgba(140,240,195,.82) 0%,
+      rgba(80,220,160,.60) 45%,
+      rgba(52,211,153,.35) 78%,
+      rgba(52,211,153,.08) 96%,
+      transparent 100%);
+  border-left:1px solid rgba(190,255,225,.4);
+  border-right:1px solid rgba(190,255,225,.4);
+  box-shadow:
+    inset 3px 0 5px rgba(255,255,255,.14),
+    inset -3px 0 5px rgba(255,255,255,.10),
+    0 0 6px 2px rgba(140,240,195,.30),
+    0 0 16px 2px rgba(52,211,153,.16);
+}
+.note-D{ left:227px; } .note-K{ left:467px; }
+/* 单个音符键 */
+.key{ position:absolute; top:280px; width:150px; height:70px; border-radius:16px; border:none; z-index:4;
+  background:radial-gradient(circle at 38% 26%, #ff8a5c, #ff5c7a 60%, #d43a55);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  font-size:34px; font-weight:800; color:#fff;
+  box-shadow:0 10px 24px rgba(255,92,122,.45), inset 0 2px 0 rgba(255,255,255,.3);
+  transition:transform .06s ease, box-shadow .06s ease; }
+.key-D{ left:188px; } .key-K{ left:428px; }
+.key .key-code{ font-size:13px; font-weight:700; opacity:.85; letter-spacing:1px; }
+.key.pressed{ transform:translateY(3px) scale(.98); box-shadow:0 0 0 5px rgba(255,255,255,.35), 0 0 26px rgba(255,92,122,.8); }
+.key.hold-good{ background:radial-gradient(circle at 38% 26%, #6ee7b7, #34d399 60%, #0ea371);
+  box-shadow:0 10px 24px rgba(52,211,153,.6), inset 0 2px 0 rgba(255,255,255,.3); }
+
+/* 长按进度条 */
+.bar-wrap{ width:440px; height:22px; border-radius:12px; background:#2a3350; position:relative; overflow:hidden;
+  border:1px solid rgba(255,255,255,.12); }
+.bar{ height:100%; width:0%; border-radius:12px;
+  background:linear-gradient(90deg,var(--accent3),var(--ok1)); transition:width .05s linear; }
+.bar-lbl{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; color:#fff; text-shadow:0 0 4px rgba(0,0,0,.5); z-index:2; }
+
+.feedback{ font-size:16px; font-weight:700; min-height:22px; color:#8b93b8; text-align:center; }
+.feedback.good{ color:var(--ok1); } .feedback.warn{ color:var(--gold); } .feedback.bad{ color:var(--fail1); }
+
+.row{ display:flex; align-items:center; gap:30px; }
+.btn{ padding:16px 38px; font-size:21px; font-weight:800; letter-spacing:1px; border:none; border-radius:14px;
+  cursor:pointer; color:#fff; background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+  box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25); transition:transform .12s; }
+.btn:active{ transform:translateY(2px) scale(.98); }
+.btn:disabled{ opacity:.35; cursor:default; }
+.hint{ font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+
+.toast{ position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+  background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+  padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+  opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.overlay{ position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+.overlay.show{ opacity:1; pointer-events:auto; }
+.celeb-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+  transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.overlay.show .celeb-box{ transform:scale(1); }
+.celeb-check{ width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+.celeb-check.ok{ background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+.celeb-check.fail{ background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+.celeb-title{ font-size:30px; font-weight:800; color:var(--title); }
+.celeb-sub{ font-size:15px; color:var(--sub); margin-top:6px; }
+#confetti{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+
+.intro{ position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+.intro.hidden{ display:none; }
+.intro-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:660px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.intro-title{ font-size:28px; font-weight:800; color:var(--title); }
+.intro-rule{ font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+.intro-rule b{ color:var(--title); }
+.intro-start{ margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+.intro-start:hover{ transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Press Start 按开始</div>
+
+  <div class="spec">
+    <div class="spec-card">
+      <div class="spec-lbl">Hold keys 按住双键</div>
+      <div class="spec-val">D <b>+</b> K</div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-lbl">Hold duration 按住时长</div>
+      <div class="spec-val"><span id="durVal">2</span> <b>seconds 秒</b></div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-lbl">Press timing 下缘到线</div>
+      <div class="spec-val"><span id="pressVal">1.5</span> <b>s after start 秒后</b></div>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="hitline"></div>
+    <div class="note-bar note-D" id="noteD"></div>
+    <div class="note-bar note-K" id="noteK"></div>
+    <div class="key key-D" id="keyD"><span class="key-code">key</span>D</div>
+    <div class="key key-K" id="keyK"><span class="key-code">key</span>K</div>
+  </div>
+
+  <div class="bar-wrap">
+    <div class="bar" id="bar"></div>
+    <div class="bar-lbl" id="barLbl">0%</div>
+  </div>
+
+  <div class="feedback" id="feedback">Press and hold both keys together 同时按住双键</div>
+
+  <div class="row">
+    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <div class="hint" id="hint">Attempt 1 / 3 第1/3次</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Perfect! 完美</div>
+      <div class="celeb-sub">Long notes caught 长按音符接住</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Dual Hold 双押长按</div>
+      <div class="intro-rule">You're playing a rhythm game. Two <b>long hold notes</b> (long bars) fall <b>continuously</b> toward the hit line. When the note's <b>bottom edge reaches the line</b>, press and hold <b>both D and K together</b> (within 250ms). Keep holding while the bar keeps falling — release only when the note's <b>top edge leaves the line</b> (about <b>2 seconds</b> later). The progress bar shows your hold. Press too early/late, release too early/late, or not in sync, and the notes break.<br>你在玩音游。两个<b>长按音符（长条）持续下落</b>。当音符的<b>下缘到达判定线</b>时，<b>同时按住 D 和 K</b>（间隔 250ms 内）；带宽继续下落，你要持续按住——直到音符的<b>上缘离开判定线</b>（约 <b>2 秒</b>后）才松手。进度条显示按住进度。按太早/太晚、松太早/太晚、或两键不同步，音符就断了。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const HOLD_MS = 2000;        // 按住时长 2s
+  const LEAD_IN_MS = 1500;     // 宽带下缘在 Start 后 1.5s 到达判定线
+  const FALL_SPEED = 0.15;     // 下落速度 px/ms（宽带长 300px 对应 2s）
+  const NOTE_LEN = 300;        // 带宽长 px（= HOLD_MS × FALL_SPEED）
+  const HITLINE_Y = 252;       // 判定线 y（相对 stage）
+  const SYNC_WINDOW_MS = 250;  // 两键按下同步窗口
+  const TIMING_MS = 250;       // 下缘到线/上缘离线的时机窗口 ±250ms
+  const KEYS = ["KeyD","KeyK"];
+
+  const BENCH = { task:"dual_hold", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn");
+  const keyD=document.getElementById("keyD"), keyK=document.getElementById("keyK");
+  const noteD=document.getElementById("noteD"), noteK=document.getElementById("noteK");
+  const bar=document.getElementById("bar"), barLbl=document.getElementById("barLbl");
+  const feedback=document.getElementById("feedback");
+  const toast=document.getElementById("toast");
+  const overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+  const durVal=document.getElementById("durVal");
+  const pressVal=document.getElementById("pressVal");
+
+  let phase="idle", raf=null, armNow=0;
+  let keyState = { KeyD:false, KeyK:false };   // 两键按下状态
+  let firstKeyT = 0;                            // 第一键按下时刻
+  let holding = false;                          // 是否已进入按住（双键都按下）
+  let holdReachedMax=false;                     // 是否已判定满时长（防重复）
+
+  durVal.textContent = HOLD_MS/1000;
+  pressVal.textContent = (LEAD_IN_MS/1000).toFixed(1);
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+  function setFeedback(t,c){ feedback.textContent=t; feedback.className="feedback "+(c||""); }
+  function setBar(p){ p=Math.max(0,Math.min(1,p)); bar.style.width=(p*100)+"%"; barLbl.textContent=Math.round(p*100)+"%"; }
+  function keyEl(code){ return code==="KeyD"?keyD:keyK; }
+  function noteEl(code){ return code==="KeyD"?noteD:noteK; }
+
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false;
+    keyState={KeyD:false,KeyK:false}; firstKeyT=0; holding=false; holdReachedMax=false;
+    keyD.className="key key-D"; keyK.className="key key-K";
+    noteD.className="note-bar note-D"; noteK.className="note-bar note-K";
+    noteD.style.top="-300px"; noteK.style.top="-300px";   // 宽带初始在判定线上方（下缘未到线）
+    setBar(0);
+    setFeedback("Catch the long hold notes 接住长按音符","");
+    setStatus("Press Start 按开始","idle"); syncURL();
+  }
+
+  // 宽带 top（相对 stage）：下缘到判定线时 top = HITLINE_Y - NOTE_LEN；elapsed 增大 top 增大（从上往下滑落）
+  function noteTopAt(elapsed){ return (HITLINE_Y - NOTE_LEN) + FALL_SPEED * (elapsed - LEAD_IN_MS); }
+  // 下缘到线时刻 / 上缘到线时刻（相对 armNow 的 ms）
+  function pressTargetMs(){ return LEAD_IN_MS; }
+  function releaseTargetMs(){ return LEAD_IN_MS + HOLD_MS; }
+
+  function arm(){
+    phase="armed"; startBtn.disabled=true; armNow=performance.now();
+    keyState={KeyD:false,KeyK:false}; firstKeyT=0; holding=false; holdReachedMax=false;
+    keyD.className="key key-D"; keyK.className="key key-K";
+    noteD.className="note-bar note-D"; noteK.className="note-bar note-K";
+    setBar(0);
+    setStatus("Hold D + K when note reaches line 音符到线按住！","action");
+    setFeedback("Get ready 准备", "warn");
+    syncURL();
+    (function tick(now){
+      if(phase!=="armed") return;
+      const el=now-armNow;
+      // 宽带持续下落（不停）
+      const top=noteTopAt(el);
+      noteD.style.top=top+"px"; noteK.style.top=top+"px";
+      // 按住期间：进度条 = (el - pressTarget) / HOLD_MS，且上缘离线即完成
+      if(holding){
+        const p=(el-pressTargetMs())/HOLD_MS;
+        setBar(p);
+        // 上缘离线（el >= releaseTarget）仍按住 → 应松手，若不松继续按住等玩家松（在 onKeyUp 判定时机）
+      }
+      // 超时：上缘离线后仍未松手 → miss
+      if(el > releaseTargetMs() + TIMING_MS + 800){ if(holding){ finishRound(false, "Held too long 按太久"); return; } }
+      if(el > releaseTargetMs() + 2500){ miss(); return; }
+      raf=requestAnimationFrame(tick);
+    })(armNow);
+  }
+
+  function onKeyDown(e){
+    if(phase!=="armed") return;
+    if(e.repeat) return;
+    if(e.code!=="KeyD" && e.code!=="KeyK") return;
+    e.preventDefault();
+    const now=performance.now();
+    const el=now-armNow;
+    if(!keyState[e.code]){
+      keyState[e.code]=true;
+      keyEl(e.code).classList.add("pressed");
+      keyEl(e.code).classList.add("hold-good");
+      noteEl(e.code).classList.add("held");
+      if(firstKeyT===0){
+        firstKeyT=now;
+      } else {
+        // 第二键按下：检查同步 + 时机（下缘到线附近）
+        const syncOk = (now - firstKeyT) <= SYNC_WINDOW_MS;
+        const timingOk = Math.abs(el - pressTargetMs()) <= TIMING_MS;
+        if(!syncOk){ finishRound(false, "Not simultaneous 不同步"); return; }
+        if(!timingOk){ finishRound(false, Math.abs(el-pressTargetMs())<=TIMING_MS? "" : (el<pressTargetMs()?"Too early 按太早":"Too late 按太晚")); return; }
+        holding=true;
+        setFeedback("Holding… 按住中…", "good");
+      }
+    }
+  }
+  function onKeyUp(e){
+    if(phase!=="armed") return;
+    if(e.code!=="KeyD" && e.code!=="KeyK") return;
+    keyState[e.code]=false;
+    keyEl(e.code).classList.remove("pressed");
+    keyEl(e.code).classList.remove("hold-good");
+    noteEl(e.code).classList.remove("held");
+    const now=performance.now();
+    const el=now-armNow;
+    if(holding){
+      // 两键都松开才判定「松手」；任一键早松（还没到松手时刻）→ 失败
+      const bothUp = !keyState.KeyD && !keyState.KeyK;
+      if(bothUp){
+        const timingOk = Math.abs(el - releaseTargetMs()) <= TIMING_MS;
+        if(timingOk){
+          finishRound(true);
+        } else {
+          finishRound(false, el<releaseTargetMs()?"Released too early 松太早":"Released too late 松太晚");
+        }
+      } else {
+        // 只松开一个键：若还早于松手时刻 → 早松失败；已到松手时刻附近则等另一个也松
+        if(el < releaseTargetMs() - TIMING_MS){
+          finishRound(false, "Released too early 松太早");
+        }
+      }
+    } else if(firstKeyT>0){
+      // 还没双键都按下就松（只按了一键）
+      finishRound(false, "Released too early 松太早");
+    }
+  }
+
+  function finishRound(win, reason){
+    if(phase!=="armed") return;
+    phase="done"; cancelAnimationFrame(raf); startBtn.disabled=true;
+    if(win){
+      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      setStatus("Success 成功","win"); syncURL(); celebrate();
+    } else {
+      failOne(reason||"Failed 失败");
+    }
+  }
+  function miss(){ cancelAnimationFrame(raf); if(phase!=="armed") return; phase="done"; startBtn.disabled=true; failOne("Missed 未按下"); }
+  function failOne(reason){
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    setStatus("Missed 未命中","lose");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    const cv=document.getElementById("confetti"); cv.width=innerWidth; cv.height=innerHeight;
+    const ctx=cv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,cv.width,cv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<cv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,cv.width,cv.height);
+    })(t0);
+  }
+
+  function onIntroStart(){
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
+  }
+  function onNext(){
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+  }
+  function onSpaceKey(e){
+    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
+    if(e.repeat) return;
+    const introEl=document.getElementById("intro");
+    const retryEl=document.getElementById("retryOverlay");
+    if(!introEl.classList.contains("hidden")){ e.preventDefault(); onIntroStart(); return; }
+    if(retryEl.classList.contains("show")){ e.preventDefault(); onNext(); return; }
+    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }
+  }
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("keydown", onSpaceKey);
+  document.getElementById("introStart").addEventListener("click", onIntroStart);
+  document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  window.__dbg = function(){
+    const el=phase==="armed"?performance.now()-armNow:0;
+    return { phase, holdMs:HOLD_MS, leadInMs:LEAD_IN_MS, syncWindowMs:SYNC_WINDOW_MS, timingMs:TIMING_MS,
+      pressTargetMs:pressTargetMs(), releaseTargetMs:releaseTargetMs(),
+      elapsedMs:Math.round(el), noteTop:phase==="armed"?Math.round(noteTopAt(el)):null,
+      keyD:keyState.KeyD, keyK:keyState.KeyK, holding,
+      holdProgress:holding?Math.min(1,(el-pressTargetMs())/HOLD_MS):0,
+      keys:KEYS,
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

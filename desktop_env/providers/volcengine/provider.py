@@ -98,7 +98,10 @@ class VolcengineProvider(Provider):
             else:
                 logger.warning("No public IP address available for VNC access")
 
-            return private_ip
+            # The runner is commonly outside the Volcengine VPC, so prefer the
+            # EIP created with the instance. Fall back to the private address
+            # for deployments that intentionally omit a public IP.
+            return public_ip or private_ip
 
         except ApiException as e:
             logger.error(f"Failed to retrieve IP address for the instance {path_to_vm}: {str(e)}")

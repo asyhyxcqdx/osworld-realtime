@@ -2,6 +2,7 @@ import logging
 import os
 import platform
 import time
+import ipaddress
 import docker
 import psutil
 import requests
@@ -15,16 +16,33 @@ logger.setLevel(logging.INFO)
 
 WAIT_TIME = 3
 RETRY_INTERVAL = 1
-LOCK_TIMEOUT = 10
+LOCK_TIMEOUT = float(os.getenv("OSWORLD_DOCKER_LOCK_TIMEOUT_S", "900"))
+PORT_BIND_HOST_ENV = "OSWORLD_DOCKER_PORT_BIND_HOST"
 
 
 class PortAllocationError(Exception):
     pass
 
 
+def _host_port_binding(port: int):
+    """Return Docker's host-port mapping, optionally restricted to loopback."""
+
+    bind_host = os.getenv(PORT_BIND_HOST_ENV)
+    if not bind_host:
+        return port
+    try:
+        address = ipaddress.ip_address(bind_host)
+    except ValueError as exc:
+        raise ValueError(f"{PORT_BIND_HOST_ENV} must be a loopback IP address") from exc
+    if not address.is_loopback:
+        raise ValueError(f"{PORT_BIND_HOST_ENV} must be a loopback IP address")
+    return str(address), port
+
+
 class DockerProvider(Provider):
     def __init__(self, region: str):
-        self.client = docker.from_env()
+        api_timeout = float(os.getenv("OSWORLD_DOCKER_API_TIMEOUT_S", "300"))
+        self.client = docker.from_env(timeout=api_timeout)
         self.server_port = None
         self.vnc_port = None
         self.chromium_port = None
@@ -118,10 +136,10 @@ class DockerProvider(Provider):
                         }
                     },
                     ports={
-                        8006: self.vnc_port,
-                        5000: self.server_port,
-                        9222: self.chromium_port,
-                        8080: self.vlc_port
+                        8006: _host_port_binding(self.vnc_port),
+                        5000: _host_port_binding(self.server_port),
+                        9222: _host_port_binding(self.chromium_port),
+                        8080: _host_port_binding(self.vlc_port)
                     },
                     detach=True
                 )

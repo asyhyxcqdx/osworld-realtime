@@ -62,7 +62,12 @@ def config() -> argparse.Namespace:
     parser.add_argument("--model_type", type=str, default="qwen25vl", choices=["qwen25vl", "qwen2vl"])
     parser.add_argument("--infer_mode", type=str, default="qwen25vl_normal", choices=["qwen25vl_normal", "qwen2vl_user"])
     parser.add_argument("--prompt_style", type=str, default="qwen25vl_normal")
-    parser.add_argument("--input_swap", action="store_true", help="Use copy and paste to type content")
+    parser.add_argument(
+        "--input_swap",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use copy and paste to type content (the upstream UI-TARS default)",
+    )
     parser.add_argument("--language", type=str, default="Chinese")
     parser.add_argument("--max_pixels", type=float, default=16384*28*28)
     parser.add_argument("--min_pixels", type=float, default=100*28*28)
@@ -86,6 +91,18 @@ def config() -> argparse.Namespace:
     # logging related
     parser.add_argument("--result_dir", type=str, default="./results")
     parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to run in parallel")  
+    parser.add_argument(
+        "--shard_count",
+        type=int,
+        default=1,
+        help="Split the task list into this many deterministic shards",
+    )
+    parser.add_argument(
+        "--shard_index",
+        type=int,
+        default=0,
+        help="Zero-based shard index assigned to this runner",
+    )
     parser.add_argument("--log_level", type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], 
                        default='INFO', help="Set the logging level")
     # aws config
@@ -93,10 +110,15 @@ def config() -> argparse.Namespace:
         "--region", type=str, default="us-east-1", help="AWS region for the VM"
     )
     parser.add_argument(
-        "--provider_name", type=str, default="aws", choices=["aws", "virtualbox", "vmware", "docker", "azure", "pyromind"], help="Provider name"
+        "--provider_name", type=str, default="aws", choices=["aws", "virtualbox", "vmware", "docker", "azure", "pyromind", "volcengine"], help="Provider name"
     )
     parser.add_argument(
         "--client_password", type=str, default="", help="Client password"
+    )
+    parser.add_argument(
+        "--enable_proxy",
+        action="store_true",
+        help="Configure tasks marked as requiring a proxy",
     )
     parser.add_argument(
         "--screen_width", type=int, default=1920, help="Screen width"
@@ -152,46 +174,65 @@ def distribute_tasks(test_all_meta: dict) -> List[tuple]:
     return all_tasks
 
 
-def process_signal_handler(signum, frame, env_idx):
-    """Signal handler for child processes to gracefully shut down their environments."""
-    logger.info(f"Process {env_idx + 1} received signal {signum}. Shutting down...")
-    
-    # Get the active_environments from the caller's frame
-    local_vars = frame.f_locals
-    active_environments = local_vars.get('active_environments', [])
-    
-    # Close environment in the current process context
-    for env in active_environments:
-        if env is not None:
-            try:
-                logger.info(f"Process {env_idx + 1} closing environment...")
-                env.close()
-                logger.info(f"Process {env_idx + 1} environment closed successfully")
-            except Exception as e:
-                logger.error(f"Process {env_idx + 1} error closing environment: {e}")
-    
-    logger.info(f"Process {env_idx + 1} shutdown complete. Exiting.")
-    sys.exit(0)
+def shard_tasks(test_all_meta: dict, shard_count: int, shard_index: int) -> dict:
+    if shard_count < 1:
+        raise ValueError("shard_count must be at least 1")
+    if not 0 <= shard_index < shard_count:
+        raise ValueError("shard_index must be between 0 and shard_count - 1")
+    if shard_count == 1:
+        return test_all_meta
+
+    sharded_meta = {domain: [] for domain in test_all_meta}
+    task_index = 0
+    for domain, examples in test_all_meta.items():
+        for example_id in examples:
+            if task_index % shard_count == shard_index:
+                sharded_meta[domain].append(example_id)
+            task_index += 1
+    return sharded_meta
+
+
+def process_signal_handler(signum, frame):
+    """Exit a worker through run_env_tasks' finally block."""
+    logger.info(
+        f"{current_process().name} received signal {signum}. "
+        "Cleaning up its environment..."
+    )
+    # Do not let a second signal interrupt env.close() in the finally block.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    raise SystemExit(128 + signum)
+
 
 def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: list):
+    # Forked workers inherit the main process handler and its sibling Process
+    # objects. Replace it before creating an environment so a worker only
+    # cleans up resources that it owns.
+    signal.signal(signal.SIGINT, process_signal_handler)
+    signal.signal(signal.SIGTERM, process_signal_handler)
+
     active_environments = []
     env = None
     try:
-        from desktop_env.providers.aws.manager import IMAGE_ID_MAP
         REGION = args.region
         screen_size = (args.screen_width, args.screen_height)
-        ami_id = IMAGE_ID_MAP[REGION].get(screen_size, IMAGE_ID_MAP[REGION][(1920, 1080)])
+        snapshot_name = "init_state"
+        if args.provider_name == "aws":
+            from desktop_env.providers.aws.manager import IMAGE_ID_MAP
+            snapshot_name = IMAGE_ID_MAP[REGION].get(
+                screen_size, IMAGE_ID_MAP[REGION][(1920, 1080)]
+            )
         env = DesktopEnv(
             path_to_vm=args.path_to_vm,
             action_space=args.action_space,
             provider_name=args.provider_name,
             region=REGION,
-            snapshot_name=ami_id,
+            snapshot_name=snapshot_name,
             screen_size=screen_size,
             headless=args.headless,
             os_type="Ubuntu",
             require_a11y_tree=args.observation_type in ["a11y_tree", "screenshot_a11y_tree", "som"],
-            enable_proxy=True,
+            enable_proxy=args.enable_proxy,
             client_password=args.client_password
         )
         active_environments.append(env)
@@ -200,7 +241,7 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
             runtime_conf: dict = {
                 "infer_mode": "qwen25vl_normal",
                 "prompt_style": "qwen25vl_normal",
-                "input_swap": True,
+                "input_swap": args.input_swap,
                 "language": "Chinese",
                 "history_n": 5,
                 "max_pixels": 16384*28*28,
@@ -216,7 +257,7 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
             runtime_conf: dict = {
                 "infer_mode": "qwen2vl_user",
                 "prompt_style": "qwen2vl_user",
-                "input_swap": True,
+                "input_swap": args.input_swap,
                 "language": "Chinese",
                 "history_n": 5,
                 "max_pixels": 2116800,
@@ -301,6 +342,9 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
         import traceback
         logger.error(traceback.format_exc())
     finally:
+        # Cleanup is owned by this worker; the main process enforces its timeout.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         logger.info(f"{current_process().name} cleaning up environment...")
         try:
             if env:
@@ -314,6 +358,11 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
 def signal_handler(signum, frame):
     """Handle termination signals (SIGINT, SIGTERM) to gracefully shutdown environments."""
     global is_terminating, active_environments, processes
+
+    # A signal can arrive in the small window before a forked worker installs
+    # its own handler. Never let that worker inspect inherited sibling objects.
+    if current_process().name != "MainProcess":
+        process_signal_handler(signum, frame)
     
     # Avoid duplicate handling
     if is_terminating:
@@ -340,8 +389,17 @@ def signal_handler(signum, frame):
             except Exception as e:
                 logger.error(f"Error sending termination signal to process: {e}")
     
-    # Allow a short time for processes to handle their own cleanup
-    time.sleep(1)
+    # Docker's stop request can legitimately take tens of seconds. Give every
+    # worker one shared grace period to finish its own finally block.
+    shutdown_deadline = time.monotonic() + 75
+    for p in processes:
+        remaining = shutdown_deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        try:
+            p.join(timeout=remaining)
+        except Exception as e:
+            logger.error(f"Error waiting for process {p.name}: {e}")
     
     # Forcefully terminate any processes that didn't exit
     for p in processes:
@@ -431,12 +489,17 @@ def get_unfinished(
         return total_file_json
 
     finished = {}
+    eligible_examples = {
+        domain: set(examples) for domain, examples in total_file_json.items()
+    }
     for domain in os.listdir(target_dir):
         finished[domain] = []
         domain_path = os.path.join(target_dir, domain)
         if os.path.isdir(domain_path):
             for example_id in os.listdir(domain_path):
                 if example_id == "onboard":
+                    continue
+                if example_id not in eligible_examples.get(domain, set()):
                     continue
                 example_path = os.path.join(domain_path, example_id)
                 if os.path.isdir(example_path):
@@ -505,13 +568,19 @@ if __name__ == "__main__":
     try:
         args = config()
         
-        # save args to json in result_dir/action_space/observation_type/model/args.json
+        args_filename = "args.json"
+        if args.shard_count > 1:
+            args_filename = (
+                f"args-shard-{args.shard_index}-of-{args.shard_count}.json"
+            )
+
+        # Save each shard's arguments separately when multiple runners share results.
         path_to_args = os.path.join(
             args.result_dir,
             args.action_space,
             args.observation_type,
             args.model,
-            "args.json",
+            args_filename,
         )
         os.makedirs(os.path.dirname(path_to_args), exist_ok=True)
         with open(path_to_args, "w", encoding="utf-8") as f:
@@ -522,6 +591,12 @@ if __name__ == "__main__":
 
         if args.domain != "all":
             test_all_meta = {args.domain: test_all_meta[args.domain]}
+
+        test_all_meta = shard_tasks(
+            test_all_meta,
+            args.shard_count,
+            args.shard_index,
+        )
 
         test_file_list = get_unfinished(
             args.action_space,

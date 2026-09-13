@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subitize Count 瞬时计数</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:default;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .answerArea { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+  .answerArea.hidden { display:none; }
+  .num-btn {
+    width:64px; height:64px; border-radius:14px; border:1px solid rgba(255,255,255,.16);
+    background:linear-gradient(160deg,#232946 0%,#1c2743 100%); color:#e8eaf6;
+    font-size:26px; font-weight:800; cursor:pointer; transition:transform .12s, box-shadow .12s;
+    box-shadow:0 8px 20px rgba(0,0,0,.35);
+  }
+  .num-btn:hover { transform:translateY(-3px); box-shadow:0 12px 26px rgba(76,125,255,.4); }
+  .num-btn.correct { background:linear-gradient(160deg,var(--ok1),var(--ok2)); color:#fff; }
+  .num-btn.wrong { background:linear-gradient(160deg,var(--fail1),var(--fail2)); color:#fff; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Wait for the flock 等待鸟群</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="answerArea hidden" id="answerArea">
+    <button class="num-btn" data-n="3">3</button>
+    <button class="num-btn" data-n="4">4</button>
+    <button class="num-btn" data-n="5">5</button>
+    <button class="num-btn" data-n="6">6</button>
+    <button class="num-btn" data-n="7">7</button>
+    <button class="num-btn" data-n="8">8</button>
+    <button class="num-btn" data-n="9">9</button>
+    <button class="num-btn" data-n="10">10</button>
+  </div>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">You counted the flock correctly 你数对了鸟群</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Subitize Count 瞬时计数</div>
+      <div class="intro-rule">At dusk, a flock of <b>migrating birds</b> flies across the sky and vanishes into the night. <b>Count them at a glance</b> while they cross, then <b>tap the correct number</b>.<br>黄昏时分，一群<b>迁徙的候鸟</b>飞过天空，隐入夜色。趁鸟群飞过时<b>一眼数出有几只</b>，然后<b>点正确的数字</b>。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·数量感知 subitizing）：黄昏夜空，一群候鸟剪影（3~7 只）飞过天空后飞走（隐入夜色）。
+  // 鸟群（信息）只在飞过的 1.2s 内可见，飞走后消失（信息消失的自然原因 = 鸟飞走了，非机械闪现）。
+  // 玩家一眼数出数量并从候选数字选择（IEW 有限：鸟群只飞过一瞬；AVW=∞：作答无时限）。补丁=视频。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const COUNT_MIN = 3, COUNT_MAX = 7;
+  const READY_MIN = 300, READY_MAX = 2000;   // 防截图随机延迟（等鸟群）
+  const FLY_MS = 1200;         // 鸟群飞过时长（IEW）
+  const SETTLE_MS = 450;       // 结算反馈动画（按钮变绿/红）
+
+  const BENCH = { task:"subitize_count", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const answerArea = document.getElementById("answerArea");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | fly | answer | winning | losing | done
+  let count = 0;               // 鸟数量 3~7
+  let birds = [];              // 鸟的队形相对偏移 [{dx,dy}]
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, count, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  // 生成鸟群队形（领头鸟在前，其余在后方两侧展开，V 字松散队形，不重叠）
+  function genFlock(){
+    const pts = [];
+    for (let i=0;i<count;i++){
+      if (i === 0){ pts.push({ dx:0, dy:0 }); }
+      else {
+        const side = (i % 2 === 0) ? -1 : 1;   // 交替上下
+        const row = Math.ceil(i / 2);
+        pts.push({ dx: -row*74, dy: side*row*42 });
+      }
+    }
+    return pts;
+  }
+
+  function startRound(){
+    count = COUNT_MIN + Math.floor(Math.random()*(COUNT_MAX-COUNT_MIN+1));   // 3~7
+    birds = genFlock();
+    phase = "idle";
+    revealBtn.disabled = false;
+    answerArea.classList.add("hidden");
+    answerArea.querySelectorAll(".num-btn").forEach(b=> b.classList.remove("correct","wrong"));
+    setStatus("Wait for the flock 等待鸟群","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "fly"; phaseStart = now; setStatus("Count the birds… 数鸟…","ready"); }
+    }
+    else if (phase === "fly"){
+      if (now - phaseStart >= FLY_MS){
+        phase = "answer";
+        answerArea.classList.remove("hidden");
+        setStatus("How many birds? 有多少只鸟？","action");
+      }
+    }
+    else if (phase === "winning"){
+      if (now - phaseStart >= SETTLE_MS){
+        phase = "done";
+        answerArea.classList.add("hidden");
+        BENCH.passed = true; BENCH.status = "passed";
+        setStatus("Success 成功","win"); syncURL(); celebrate();
+      }
+    }
+    else if (phase === "losing"){
+      if (now - phaseStart >= SETTLE_MS){
+        phase = "done";
+        answerArea.classList.add("hidden");
+        nextAttempt();
+      }
+    }
+  }
+
+  // ============ 美术绘制 ============
+  // 黄昏夜空 + 星星 + 月亮 + 远处山丘剪影 + 云
+  function drawSky(now){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0, "#232c4d");
+    g.addColorStop(0.42, "#5c4668");
+    g.addColorStop(0.7, "#c06a5a");
+    g.addColorStop(1, "#e8a45c");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 星星（顶部，确定性散布，微闪）
+    for (let i=0;i<36;i++){
+      const sx = (i*97 + 41) % CW;
+      const sy = (i*61 + 13) % 200;
+      const tw = 0.35 + 0.3 * Math.abs(Math.sin(now/1200 + i*1.3));
+      ctx.fillStyle = "rgba(240,244,255," + tw + ")";
+      ctx.beginPath(); ctx.arc(sx, sy, 1.4, 0, Math.PI*2); ctx.fill();
+    }
+    // 月亮（右上，淡黄带光晕）
+    const mg = ctx.createRadialGradient(680, 74, 4, 680, 74, 60);
+    mg.addColorStop(0, "rgba(250,240,205,.9)");
+    mg.addColorStop(0.4, "rgba(250,240,205,.35)");
+    mg.addColorStop(1, "rgba(250,240,205,0)");
+    ctx.fillStyle = mg;
+    ctx.fillRect(610, 4, 150, 150);
+    ctx.fillStyle = "#f3e7c0";
+    ctx.beginPath(); ctx.arc(680, 74, 20, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "rgba(190,180,150,.3)";
+    ctx.beginPath(); ctx.arc(674, 68, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(688, 82, 3, 0, Math.PI*2); ctx.fill();
+    // 远处山丘剪影（地平线，两层深浅）
+    ctx.fillStyle = "#2a2440";
+    ctx.beginPath();
+    ctx.moveTo(0, 396);
+    ctx.quadraticCurveTo(140, 360, 300, 392);
+    ctx.quadraticCurveTo(470, 344, 640, 390);
+    ctx.quadraticCurveTo(740, 372, 800, 388);
+    ctx.lineTo(800, CH); ctx.lineTo(0, CH);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#1c1930";
+    ctx.beginPath();
+    ctx.moveTo(0, 432);
+    ctx.quadraticCurveTo(200, 400, 420, 428);
+    ctx.quadraticCurveTo(620, 406, 800, 430);
+    ctx.lineTo(800, CH); ctx.lineTo(0, CH);
+    ctx.closePath(); ctx.fill();
+    // 云（缓慢漂移，暖色薄云）
+    ctx.fillStyle = "rgba(200,150,160,.28)";
+    [[90,120,70],[330,90,90],[600,140,75]].forEach((c,i)=>{
+      const cx = c[0] + Math.sin(now/6000 + i*2)*20;
+      ctx.beginPath();
+      ctx.ellipse(cx, c[1], c[2], 20, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx - c[2]*0.4, c[1]+8, c[2]*0.55, 14, 0, 0, Math.PI*2); ctx.fill();
+    });
+  }
+
+  // 候鸟剪影（V 字双弧，翅膀扇动）
+  function drawBird(x, y, s, flap){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = "#1d2230";
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = "round";
+    const w = 16 * s;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-w*0.5, -flap, -w, -flap*0.15);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(w*0.5, -flap, w, -flap*0.15);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 鸟群（fly 阶段从右向左飞过，带轻微上下起伏）
+  function drawFlock(now){
+    if (phase !== "fly" && phase !== "ready") return;
+    if (phase === "ready") return;   // ready 阶段鸟还未出现
+    const t = (now - phaseStart) / FLY_MS;
+    const groupX = CW + 90 - t * (CW + 200);         // 从右（CW+90）飞到左（-110）
+    const groupY = 180 + Math.sin(t * Math.PI * 1.25) * 60;   // 轻微起伏的飞行路径
+    birds.forEach((b, i)=>{
+      const x = groupX + b.dx;
+      const y = groupY + b.dy;
+      const flap = 6 + 7 * Math.sin(now/85 + i*0.9);
+      // 只在画面内画
+      if (x > -40 && x < CW + 40){
+        drawBird(x, y, 1.0, flap);
+      }
+    });
+  }
+
+  function render(now){
+    drawSky(now);
+    drawFlock(now);
+  }
+  function frame(now){ update(now); render(now); requestAnimationFrame(frame); }
+
+  function answer(n){
+    if (phase !== "answer") return;
+    const ok = (n === count);
+    BENCH.results.push(ok ? "hit" : "miss");
+    phase = ok ? "winning" : "losing";
+    phaseStart = performance.now();
+    const btn = answerArea.querySelector(`.num-btn[data-n="${n}"]`);
+    if (btn) btn.classList.add(ok ? "correct" : "wrong");
+    if (ok){
+      setStatus("Correct! 答对了！","win");
+    } else {
+      setStatus("Wrong count! 数错了！","lose");
+    }
+  }
+  answerArea.querySelectorAll(".num-btn").forEach((b)=>{
+    b.addEventListener("click", ()=> answer(parseInt(b.dataset.n, 10)));
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时），进游戏后空格不误触（作答用鼠标点数字）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

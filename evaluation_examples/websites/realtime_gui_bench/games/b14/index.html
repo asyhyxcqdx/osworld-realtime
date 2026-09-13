@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>节拍器·第三拍 Beat 3</title>
+<style>
+  :root {
+    --sky1:#2a4a7f; --sky2:#6db3e6; --sky3:#c9e4f5;
+    --ok:#34d399; --bad:#ff5c7a; --gold:#ffd166;
+    --accent1:#4c5baa; --accent2:#3a4684;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: linear-gradient(180deg, #2a3a5a 0%, #1a2333 55%, #12182a 100%);
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+
+  .status {
+    font-size:21px; font-weight:800; letter-spacing:.4px; min-height:30px; text-align:center;
+    background:rgba(20,27,45,.82); color:#fff; padding:7px 24px; border-radius:22px;
+    box-shadow:0 6px 18px rgba(0,0,0,.25); z-index:40;
+  }
+  .status.idle { color:#c7cde8; } .status.armed { color:var(--gold); }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:23px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); }
+
+  .stage { position:relative; width:760px; height:440px; border-radius:20px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,.45); }
+  #arena { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  /* 节拍数字（叠加在节拍器上方） */
+  .beat-num {
+    position:absolute; left:50%; top:74px; transform:translateX(-50%);
+    font-size:88px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:2px;
+    color:#e8eaf6; text-shadow:0 4px 18px rgba(0,0,0,.5); z-index:20; pointer-events:none;
+    display:flex; flex-direction:column; align-items:center; gap:2px; line-height:.9;
+  }
+  .beat-num .beat-lbl { font-size:15px; letter-spacing:4px; color:#9fb0d8; text-transform:uppercase; text-shadow:none; }
+  .beat-num.on { color:var(--gold); text-shadow:0 0 30px rgba(246,196,83,.6); }
+
+  /* 鼓面点击热区（透明，覆盖 canvas 鼓面） */
+  #targetBtn {
+    position:absolute; left:50%; top:270px; transform:translateX(-50%);
+    width:170px; height:170px; border-radius:50%; cursor:pointer; z-index:15;
+    background:transparent; border:none; outline:none;
+  }
+
+  .period-note {
+    font-size:14px; font-weight:600; color:#fff;
+    background:rgba(20,27,45,.72); padding:5px 20px; border-radius:18px; letter-spacing:.3px; box-shadow:0 4px 12px rgba(0,0,0,.2); z-index:40;
+  }
+  .period-note b { color:#ffd166; font-weight:800; }
+
+  .btn {
+    padding:15px 40px; font-size:21px; font-weight:800; letter-spacing:1px;
+    border:none; border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,#4c7dff 0%,#3355d8 100%);
+    box-shadow:0 12px 30px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .12s, box-shadow .12s, opacity .2s; z-index:40;
+  }
+  .btn:active { transform:translateY(2px) scale(.98); }
+  .btn:disabled { opacity:.35; cursor:default; }
+  .btn-sub { font-size:13px; font-weight:600; opacity:.85; display:block; letter-spacing:0; }
+
+  .hint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); font-size:13px; color:#1f2937; letter-spacing:.5px; background:rgba(255,255,255,.72); padding:4px 16px; border-radius:16px; z-index:40; }
+
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 52px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 16px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:14px; color:#6b7280; margin-top:6px; }
+  #confetti { position:fixed; inset:0; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 52px; text-align:center; max-width:660px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.65; }
+  .intro-rule b { color:#1f2937; }
+  .intro-start { margin-top:24px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,#4c5baa 0%,#3a4684 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">开始 / Press Start</div>
+
+  <div class="stage">
+    <canvas id="arena"></canvas>
+    <div class="beat-num" id="beatNum"><span>–</span><span class="beat-lbl">beat 拍</span></div>
+    <button id="targetBtn" aria-label="snare drum 军鼓"></button>
+  </div>
+
+  <div class="period-note">节拍器每拍 <b>1 秒</b> 响一声 &middot; metronome ticks <b>1 beat per second</b> — 数到第 3 拍击鼓 / strike the drum on the <b>3rd beat</b></div>
+
+  <button class="btn" id="startBtn">Start 开始<span class="btn-sub">(Space)</span></button>
+  <div class="hint" id="hint">Attempt 1 / 3 &middot; 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">成功！Success!</div>
+      <div class="celeb-sub">Drum struck on the 3rd beat &middot; 正好击在第 3 拍</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">失败 Failed</div>
+      <div class="celeb-sub">Out of attempts &middot; 尝试次数用尽</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 &middot; 尝试 2 / 3</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">节拍器·第三拍 Beat 3</div>
+      <div class="intro-rule">你在乐团排练，跟着节拍器数拍子。<br>You're rehearsing with the band and counting along with the metronome.<br><br>节拍器<b>每 1 秒响一声</b>（数字显示 1、2、3、4、5…）。<br>The metronome ticks <b>once per second</b> (showing 1, 2, 3, 4, 5…).<br><br>第 3 拍是<b>强拍</b>——点 Start 后数拍子，当数字显示 <b>3</b>（第 3 声响起）时点击<b>军鼓</b>击打，须在第 3 声<b>前后 125ms</b> 内。<br>The 3rd beat is the <b>accent</b> — after Start, count the beats and strike the <b>snare drum</b> the moment the number shows <b>3</b>, within <b>125ms before or after</b> the 3rd tick.</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const BEAT_INTERVAL_MS = 1000;    // 节拍器每 1 秒响一次
+  const HIGHLIGHT_MS = 250;         // 每次响鼓面高亮约 250ms
+  const HALF_WINDOW_MS = 125;       // ±125ms
+  const TARGET_BEAT = 3;            // 数到第 3 声点击
+  const MISS_BEAT = 5;              // 数到第 5 声还没点 → miss
+
+  const BENCH = { task:"beat3", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn");
+  const beatNum=document.getElementById("beatNum");
+  const targetBtn=document.getElementById("targetBtn");
+  const arena=document.getElementById("arena");
+  const stage=document.querySelector(".stage");
+  const toast=document.getElementById("toast"), overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+  const confettiCv=document.getElementById("confetti");
+
+  let phase="idle", raf=null, armNow=0, currentBeat=-1, remainingMs=0;
+  let lastT=0, drumHit=false, metronomeSwing=0;   // metronomeSwing 0..1 摆锤装饰动画相位
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1500); }
+
+  function setBeat(b){
+    currentBeat=b;
+    const span=beatNum.querySelector("span");
+    beatNum.querySelector("span").textContent = b >= 1 ? String(b) : (b === 0 ? "0" : "–");
+    beatNum.classList.toggle("on", b >= 1);
+  }
+
+  // ---- canvas 场景绘制（排练厅背景 + 机械节拍器 + 小军鼓）----
+  function sizeCanvas(){ arena.width=stage.clientWidth; arena.height=stage.clientHeight; }
+  function drawScene(now){
+    const ctx=arena.getContext("2d");
+    const W=arena.width, H=arena.height;
+    ctx.clearRect(0,0,W,H);
+
+    // 排练厅背景：墙面 + 踢脚线 + 木质地板
+    const wall=ctx.createLinearGradient(0,0,0,H*0.72);
+    wall.addColorStop(0,"#3a4a6a"); wall.addColorStop(1,"#2a3a5a");
+    ctx.fillStyle=wall; ctx.fillRect(0,0,W,H*0.72);
+    // 墙面装饰线（木板条）
+    ctx.fillStyle="rgba(255,255,255,.05)";
+    for(let y=0;y<H*0.72;y+=24){ ctx.fillRect(0,y,W,1); }
+    ctx.fillStyle="rgba(0,0,0,.18)"; ctx.fillRect(0,H*0.72-6,W,12);   // 踢脚线
+    // 地板
+    const floor=ctx.createLinearGradient(0,H*0.72,0,H);
+    floor.addColorStop(0,"#8a5a34"); floor.addColorStop(1,"#5e3c20");
+    ctx.fillStyle=floor; ctx.fillRect(0,H*0.72,W,H-H*0.72);
+    // 地板木纹
+    ctx.strokeStyle="rgba(0,0,0,.15)"; ctx.lineWidth=1;
+    for(let x=0;x<W;x+=44){ ctx.beginPath(); ctx.moveTo(x,H*0.72); ctx.lineTo(x-26,H); ctx.stroke(); }
+    for(let y=H*0.72;y<H;y+=14){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+    // 顶部聚光灯（柔和锥形光，低 alpha）
+    const spot=ctx.createRadialGradient(W*0.5,H*0.06,20, W*0.5,H*0.06,220);
+    spot.addColorStop(0,"rgba(255,240,200,.28)"); spot.addColorStop(1,"rgba(255,240,200,0)");
+    ctx.fillStyle=spot; ctx.fillRect(0,0,W,H*0.7);
+
+    // 集线在地板上的光斑（鼓下方）
+    const glow=ctx.createRadialGradient(W*0.5,H*0.82,10, W*0.5,H*0.82,140);
+    glow.addColorStop(0,"rgba(246,196,83,.14)"); glow.addColorStop(1,"rgba(246,196,83,0)");
+    ctx.fillStyle=glow; ctx.fillRect(W*0.5-140,H*0.82-140,280,280);
+
+    // ===== 小军鼓（canvas，鼓面中心 = targetBtn 热区中心）=====
+    const dx=W*0.5, dy=H*0.72;   // 鼓面中心
+    const drumR=78;
+    // 三脚支架（先画在鼓身后面，从鼓身底部到舞台底部）
+    ctx.strokeStyle="#3a414e"; ctx.lineWidth=8; ctx.lineCap="round";
+    const legTopY = dy + drumR*0.50;
+    for(let i=-1;i<=1;i++){
+      const footX = dx + i*drumR*0.95;
+      ctx.beginPath(); ctx.moveTo(dx, legTopY); ctx.lineTo(footX, H-10); ctx.stroke();
+      ctx.fillStyle="#3a414e"; ctx.beginPath(); ctx.arc(footX, H-10, 6, 0, Math.PI*2); ctx.fill();
+    }
+    // 鼓身（圆柱：侧壁 + 底部椭圆，明显高度）
+    const bodyH = drumR*0.55;
+    const bodyGrad=ctx.createLinearGradient(dx-drumR,dy,dx+drumR,dy);
+    bodyGrad.addColorStop(0,"#7d4a2a"); bodyGrad.addColorStop(0.5,"#a86a3a"); bodyGrad.addColorStop(1,"#5e3c20");
+    ctx.fillStyle=bodyGrad;
+    ctx.fillRect(dx-drumR, dy-drumR*0.05, drumR*2, bodyH);
+    ctx.fillStyle="#5e3c20";
+    ctx.beginPath(); ctx.ellipse(dx, dy+bodyH-drumR*0.05, drumR, drumR*0.38, 0, 0, Math.PI*2); ctx.fill();
+    // 鼓面（顶）
+    const skin=ctx.createRadialGradient(dx,dy-6,drumR*0.2, dx,dy-6,drumR);
+    skin.addColorStop(0,"#f4e8d2"); skin.addColorStop(0.7,"#e6d4b4"); skin.addColorStop(1,"#c9b690");
+    ctx.fillStyle=skin;
+    ctx.beginPath(); ctx.ellipse(dx,dy,drumR,drumR*0.42,0,0,Math.PI*2); ctx.fill();
+    // 鼓圈（金属）
+    ctx.strokeStyle="#c9a86a"; ctx.lineWidth=6;
+    ctx.beginPath(); ctx.ellipse(dx,dy,drumR+4,drumR*0.42+5,0,0,Math.PI*2); ctx.stroke();
+    // 鼓圈螺栓
+    ctx.fillStyle="#8a6d3a";
+    for(let i=0;i<8;i++){ const a=i/8*Math.PI*2; const bx=dx+Math.cos(a)*(drumR+4), by=dy+Math.sin(a)*(drumR*0.42+5); ctx.beginPath(); ctx.arc(bx,by,4,0,Math.PI*2); ctx.fill(); }
+    // 击打高亮（lit）：鼓面发金光
+    const el=phase==="armed"?now-armNow:999999;
+    const beat=Math.floor(el/BEAT_INTERVAL_MS);
+    const lit=phase==="armed" && beat>=1 && el>=beat*BEAT_INTERVAL_MS && el<beat*BEAT_INTERVAL_MS+HIGHLIGHT_MS;
+    if(lit){
+      const litGrad=ctx.createRadialGradient(dx,dy,drumR*0.2,dx,dy,drumR);
+      litGrad.addColorStop(0,"rgba(246,196,83,.5)"); litGrad.addColorStop(1,"rgba(246,196,83,0)");
+      ctx.fillStyle=litGrad; ctx.beginPath(); ctx.ellipse(dx,dy,drumR,drumR*0.42,0,0,Math.PI*2); ctx.fill();
+    }
+    if(drumHit){   // 击打成功：鼓面绿光 + 鼓槌压扁
+      const hitGrad=ctx.createRadialGradient(dx,dy,drumR*0.2,dx,dy,drumR);
+      hitGrad.addColorStop(0,"rgba(52,211,153,.45)"); hitGrad.addColorStop(1,"rgba(52,211,153,0)");
+      ctx.fillStyle=hitGrad; ctx.beginPath(); ctx.ellipse(dx,dy,drumR,drumR*0.42,0,0,Math.PI*2); ctx.fill();
+    }
+
+    // ===== 机械节拍器（左后方，摆锤装饰摆动）=====
+    const mx=W*0.5-200, my=H*0.30;
+    // 木壳（梯形：下宽上窄）
+    const shell=ctx.createLinearGradient(mx-40,my,mx+40,my);
+    shell.addColorStop(0,"#a86a3a"); shell.addColorStop(1,"#6b3a1e");
+    ctx.fillStyle=shell;
+    ctx.beginPath(); ctx.moveTo(mx-40,my+70); ctx.lineTo(mx-52,my+150); ctx.lineTo(mx+52,my+150); ctx.lineTo(mx+40,my+70); ctx.closePath(); ctx.fill();
+    // 摆锤杆（绕底部轴摆动，metronomeSwing 0..1 每满一拍来回一次）
+    const swingAng = Math.sin(metronomeSwing*Math.PI*2) * 0.32;   // 装饰摆动 ±0.32 rad
+    ctx.save(); ctx.translate(mx,my+150); ctx.rotate(swingAng);
+    ctx.strokeStyle="#d8c8a0"; ctx.lineWidth=4; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-95); ctx.stroke();
+    ctx.fillStyle="#d8c8a0"; ctx.beginPath(); ctx.arc(0,-60,9,0,Math.PI*2); ctx.fill();   // 摆锤配重
+    ctx.restore();
+    // 刻度标弧
+    ctx.strokeStyle="rgba(232,214,180,.6)"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(mx,my+150,86, -1.9, 1.9); ctx.stroke();
+    for(let k=0;k<=6;k++){ const a=-1.9+k/6*3.8; ctx.beginPath(); ctx.moveTo(mx+Math.sin(a)*86, my+150-Math.cos(a)*86); ctx.lineTo(mx+Math.sin(a)*78, my+150-Math.cos(a)*78); ctx.stroke(); }
+
+    // ===== 乐谱架（右侧装饰）=====
+    const sx=W*0.5+210, sy=H*0.46;
+    ctx.strokeStyle="#9aa3b2"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(sx-30,sy+70); ctx.lineTo(sx-18,sy); ctx.lineTo(sx+18,sy); ctx.lineTo(sx+30,sy+70); ctx.stroke();
+    ctx.fillStyle="#f4ead6"; ctx.fillRect(sx-26,sy-4,52,30);   // 谱纸
+    ctx.strokeStyle="rgba(0,0,0,.2)"; ctx.lineWidth=1;
+    for(let i=1;i<=4;i++){ ctx.beginPath(); ctx.moveTo(sx-20,sy+i*5); ctx.lineTo(sx+20,sy+i*5); ctx.stroke(); }
+  }
+
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false; drumHit=false; metronomeSwing=0;
+    setBeat(-1);
+    remainingMs = TARGET_BEAT * BEAT_INTERVAL_MS;
+    sizeCanvas(); drawScene(performance.now());
+    setStatus("开始 / Press Start","idle"); syncURL();
+  }
+  function arm(){
+    phase="armed"; startBtn.disabled=true; drumHit=false;
+    armNow=performance.now(); lastT=armNow;
+    setStatus("Count the beats, strike on the 3rd! 数拍子，第 3 拍击鼓！","action"); syncURL();
+    setBeat(0);
+    cancelAnimationFrame(raf); raf=requestAnimationFrame(frame);
+  }
+  // frame：只负责动画/装饰（节拍数字、鼓面高亮、摆锤装饰），判定用 performance.now 实时算
+  function frame(now){
+    lastT=now;
+    const el=now-armNow;
+    const beat=Math.floor(el/BEAT_INTERVAL_MS);
+    if(beat!==currentBeat) setBeat(beat);
+    remainingMs = TARGET_BEAT*BEAT_INTERVAL_MS - el;
+    metronomeSwing = (el % BEAT_INTERVAL_MS)/BEAT_INTERVAL_MS;   // 每拍来回一次（装饰）
+    drawScene(now);
+    if(el>=MISS_BEAT*BEAT_INTERVAL_MS+HIGHLIGHT_MS){ miss(); return; }
+    if(phase==="armed") raf=requestAnimationFrame(frame);
+  }
+  function onTarget(){
+    if(phase!=="armed") return;
+    cancelAnimationFrame(raf);
+    phase="done";
+    const el=performance.now()-armNow;
+    const beat=Math.floor(el/BEAT_INTERVAL_MS);
+    const inWin=beat===TARGET_BEAT && el>=TARGET_BEAT*BEAT_INTERVAL_MS && el<TARGET_BEAT*BEAT_INTERVAL_MS+HIGHLIGHT_MS;
+    drawScene(performance.now());
+    if(inWin){
+      drumHit=true; drawScene(performance.now());
+      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      setStatus("Success 成功","win"); syncURL();
+      setTimeout(()=>{ overlay.classList.add("show"); launchConfetti(); }, 350);
+    } else {
+      failOne(beat===TARGET_BEAT ? "Too early / too late 太早或太晚" : "Wrong beat 拍错");
+    }
+  }
+  function miss(){
+    cancelAnimationFrame(raf);
+    if(phase!=="armed") return;
+    phase="done";
+    drawScene(performance.now());
+    failOne("Missed 脱靶");
+  }
+  function failOne(reason){
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    setStatus("Missed 脱靶","lose");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){
+      BENCH.status="failed"; syncURL();
+      setTimeout(()=>failOverlay.classList.add("show"), 300);
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + " · 尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 空格触发 Start/Next（phase 隔离）
+  function onSpaceKey(){
+    const introEl=document.getElementById("intro");
+    const retryEl=document.getElementById("retryOverlay");
+    if(introEl && !introEl.classList.contains("hidden")){ document.getElementById("introStart").click(); return; }
+    if(retryEl.classList.contains("show")){ document.getElementById("nextBtn").click(); return; }
+    if(phase==="idle"){ startBtn.click(); return; }
+  }
+  document.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" "){ e.preventDefault(); onSpaceKey(); }
+  });
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+  targetBtn.addEventListener("click",()=>onTarget());
+  document.getElementById("introStart").addEventListener("click",()=>{
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" · 尝试 1 / "+MAX_ATTEMPTS);
+  });
+  document.getElementById("nextBtn").addEventListener("click",()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  });
+
+  window.__dbg = function(){
+    const el = phase==="armed" ? performance.now()-armNow : 0;
+    const beat = Math.floor(el/BEAT_INTERVAL_MS);
+    return {
+      phase, beatCount: currentBeat, remainingMs: TARGET_BEAT*BEAT_INTERVAL_MS - el,
+      targetBeat: TARGET_BEAT, missBeat: MISS_BEAT,
+      beatIntervalMs: BEAT_INTERVAL_MS, highlightMs: HIGHLIGHT_MS,
+      halfWindowMs: HALF_WINDOW_MS, windowMs: HIGHLIGHT_MS,
+      inWindow: beat===TARGET_BEAT && el>=TARGET_BEAT*BEAT_INTERVAL_MS && el<TARGET_BEAT*BEAT_INTERVAL_MS+HIGHLIGHT_MS,
+      attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status
+    };
+  };
+
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

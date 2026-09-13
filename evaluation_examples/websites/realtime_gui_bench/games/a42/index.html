@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Picross Snapshot 图案局部整体</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Reveal to peek at the picture 点揭示偷看图案</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Picross Snapshot 图案局部整体</div>
+      <div class="intro-rule">A pixel-art picture is hiding under a <b>cloth</b>. You get to <b>peek at its top half</b> for a moment, then the cloth <b>drops back over the whole thing</b>. Guess which full picture it is from the <b>6 candidates</b>.<br>一幅像素画藏在<b>蒙布</b>下。你只能<b>偷看它的上半部分</b>一眼，然后蒙布又<b>落下盖住整幅图</b>。从 <b>6 张候选整图</b>里猜出是哪张。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·图案补全）：一幅 8×8 像素画藏在蒙布下，点 Reveal 偷看「上半部分」一眼（随机延迟后），
+  // 随即蒙布落下盖全图；玩家凭局部（上半）特征从 6 张候选整图认出对应图案。
+  // IEW 有限（局部只在偷看窗口暴露，随即整图遮住）；AVW=∞（作答无时限）。补丁=视频。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const READY_MIN = 300, READY_MAX = 2000;
+  const SHOW_MS = 1500;
+  const GRID = 8;                 // 8×8 像素图
+  const CELL = 38;                // 大图格子尺寸
+  const GX = 220, GY = 60;        // 大图左上角
+  const PEEK_ROWS = 4;            // 翻开（偷看）上半 4 行 = 50%
+
+  // 6 个候选图案（8×8，'#'=填充；颜色统一为像素画单色，避免「颜色」泄露答案——玩家必须靠上半部分形状识别）
+  const SHAPES = [
+    { id:"circle",  color:"#e8eaf6", label:"Circle 圆", grid:[
+      "........", "..####..", ".######.", "########",
+      "########", ".######.", "..####..", "........" ] },
+    { id:"triangle",color:"#e8eaf6", label:"Triangle 三角", grid:[
+      "...##...", "..####..", "..#####.", ".######.",
+      "########", ".######.", "..####..", "...##..." ] },
+    { id:"square",  color:"#e8eaf6", label:"Square 方块", grid:[
+      "........", "........", "########", "########",
+      "########", "########", "........", "........" ] },
+    { id:"diamond", color:"#e8eaf6", label:"Diamond 菱形", grid:[
+      "...#....", "..###...", "..####..", ".######.",
+      "########", ".######.", "..####..", "...###.." ] },
+    { id:"arrow",   color:"#e8eaf6", label:"Arrow 箭头", grid:[
+      "...##...", "..####..", ".######.", "########",
+      "########", ".######.", "..####..", "...##..." ] },
+    { id:"cross",   color:"#e8eaf6", label:"Cross 十字", grid:[
+      "..####..", "..####..", "########", "########",
+      "########", "..####..", "..####..", "..####.." ] },
+  ];
+
+  const BENCH = { task:"picross_snapshot", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | show | answer | done
+  let target = 0;              // 目标图案索引 0..5
+  let clickedIdx = -1;
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, target, targetId: SHAPES[target].id, clickedIdx, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  function startRound(){
+    target = Math.floor(Math.random()*SHAPES.length);
+    clickedIdx = -1;
+    phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Reveal to peek at the picture 点揭示偷看图案","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "show"; phaseStart = now; setStatus("Watch the peek… 注意偷看…","ready"); }
+    }
+    else if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "answer"; setStatus("Which full picture is it? 对应哪张整图？","action"); }
+    }
+  }
+
+  // 画一个图案（grid 8×8）到指定区域，可选「只显示前 peekRows 行」
+  function drawShapeGrid(shape, x0, y0, cell, peekRows){
+    for (let r=0;r<GRID;r++){
+      for (let c=0;c<GRID;c++){
+        if (peekRows !== null && r >= peekRows) continue;   // 未翻开行不画
+        if (shape.grid[r][c] === "#"){
+          ctx.fillStyle = shape.color;
+          ctx.fillRect(x0 + c*cell, y0 + r*cell, cell, cell);
+        }
+      }
+    }
+  }
+
+  // 遮布（覆盖整图/未翻开区域）
+  function drawCloth(x0, y0, w, h){
+    ctx.fillStyle = "#5a5f6a";
+    ctx.fillRect(x0, y0, w, h);
+    // 布纹理
+    ctx.fillStyle = "rgba(255,255,255,.06)";
+    for (let y=y0;y<y0+h;y+=8){ ctx.fillRect(x0, y, w, 1); }
+    for (let x=x0;x<x0+w;x+=8){ ctx.fillRect(x, y0, 1, h); }
+  }
+
+  function drawBg(){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#1c2438"); g.addColorStop(1,"#121626");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 桌面木纹
+    ctx.fillStyle = "#4a3826";
+    ctx.fillRect(0, 430, CW, 70);
+  }
+
+  function render(){
+    drawBg();
+    const gridW = GRID * CELL;
+    if (phase === "show"){
+      // 偷看：显示图案上半部分（前 PEEK_ROWS 行），其余盖布
+      drawShapeGrid(SHAPES[target], GX, GY, CELL, PEEK_ROWS);
+      // 下半部分盖布
+      drawCloth(GX, GY + PEEK_ROWS*CELL, gridW, (GRID-PEEK_ROWS)*CELL);
+      // 大图边框
+      ctx.strokeStyle = "rgba(255,255,255,.3)"; ctx.lineWidth = 2;
+      ctx.strokeRect(GX, GY, gridW, gridW);
+    }
+    else if (phase === "answer"){
+      // 整图盖布（图案完全遮住）
+      drawCloth(GX, GY, gridW, gridW);
+      ctx.strokeStyle = "rgba(255,255,255,.2)"; ctx.lineWidth = 2;
+      ctx.strokeRect(GX, GY, gridW, gridW);
+      // 候选 6 个整图（横排）
+      const cw = 44, cx0 = 96, cy0 = 402;
+      for (let i=0;i<6;i++){
+        const cx = cx0 + i*104;
+        // 候选小图
+        drawShapeGrid(SHAPES[i], cx, cy0, 5.5, null);
+        // 候选边框
+        ctx.strokeStyle = (clickedIdx === i) ? "#f6c453" : "rgba(255,255,255,.3)";
+        ctx.lineWidth = (clickedIdx === i) ? 3 : 1.5;
+        ctx.strokeRect(cx-2, cy0-2, 46, 46);
+      }
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  // 候选点击判定
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    const cw = 44, cx0 = 96, cy0 = 402;
+    let sel = -1;
+    for (let i=0;i<6;i++){
+      const cx = cx0 + i*104;
+      if (p.x >= cx-2 && p.x <= cx+46 && p.y >= cy0-2 && p.y <= cy0+46){ sel = i; break; }
+    }
+    if (sel === -1) return;
+    clickedIdx = sel;
+    const ok = (sel === target);
+    BENCH.results.push(ok ? "hit" : "miss");
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Miss! 认错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

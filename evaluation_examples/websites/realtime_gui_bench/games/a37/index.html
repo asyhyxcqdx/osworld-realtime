@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arc Recall 抛物线落点</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:600px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Reveal to see the arc 点揭示查看轨迹</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Arc Recall 抛物线落点</div>
+      <div class="intro-rule">A catapult fires a ball along a <b>parabolic arc, which flashes then disappears</b>. Remember the arc, then <b>tap the slot where the ball lands</b>.<br>一架投石车沿一条<b>抛物线弧线</b>抛出球，弧线<b>闪现后消失</b>。记住弧线，然后<b>点球实际落点的那个槽位</b>。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·轨迹记忆）：投石车向左抛球，一条抛物线轨迹（起点固定、初速随机→不同落点）
+  // 闪现 1s 后消失，玩家凭记忆判断「球实际落在哪个槽位」（IEW 有限：轨迹只闪现；AVW=∞：作答无时限）。
+  // 与 A21 Bounce「动态弹跳跟踪」区分：本作是静态闪现轨迹 + 凭记忆推落点（轨迹记忆），A21 是连续弹跳动画跟踪。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const READY_MIN = 300, READY_MAX = 2000;
+  const SHOW_MS = 1000;
+
+  // 投石车位置（画面右侧），向左抛球
+  const CATAPULT = { x: 680, y: 380 };
+  // 弧线起点 = 投石车发射点
+  const ORIGIN = { x: 660, y: 360 };
+  // 6 个落点槽位（底部，等距）
+  const SLOT_XS = [130, 230, 330, 430, 530, 630];  // 槽位中心 x
+  const SLOT_Y = 420;
+  const SLOT_W = 84, SLOT_H = 56;
+
+  // 每条弧线由「射程」决定：targetSlot 0..5 对应不同初速。
+  // 弧线为抛物线：y = ORIGIN.y - (h 控制高度) * 4*(t)*(1-t) 之类，落点 x 由 targetSlot 决定。
+  // 用物理式：给定初速 vx, vy，重力 g；球从 (ORIGIN.x, ORIGIN.y) 向左（vx<0）抛，落点 y=SLOT_Y。
+  // 直接以「落点 x = SLOT_XS[targetSlot]」反推：抛物线 x(t)=ORIGIN.x+vx*t, y(t)=ORIGIN.y+vy*t+0.5*g*t^2。
+  // 取飞行到达落点 x 的时间 T，保证 y(0)=ORIGIN.y, y(T)=SLOT_Y，且中间为向上抛物线。
+  const G = 900;               // 重力
+  const BASE_VX = -260;        // 水平速度（向左）
+  const BASE_VY = -380;        // 竖直初速（向上）
+
+  const BENCH = { task:"arc_recall", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | show | answer | done
+  let target = 0;              // 目标槽位 0..5
+  let clickedIdx = -1;
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, target, clickedIdx, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  function startRound(){
+    target = Math.floor(Math.random()*SLOT_XS.length);
+    clickedIdx = -1;
+    phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Reveal to see the arc 点揭示查看轨迹","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "show"; phaseStart = now; setStatus("Watch the arc… 注意轨迹…","ready"); }
+    }
+    else if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "answer"; setStatus("Tap the landing slot 点落点槽位","action"); }
+    }
+  }
+
+  // 计算某槽位对应的抛物线（返回采样点数组）
+  function arcPoints(slotIdx){
+    const landX = SLOT_XS[slotIdx];
+    // 物理：x(t)=ORIGIN.x+vx*t, y(t)=ORIGIN.y+vy*t+0.5*g*t^2
+    // 让落点 x=landX：T_want = (landX - ORIGIN.x)/vx
+    // 为让落点 y=SLOT_Y，反推 vy：y(T)=ORIGIN.y+vy*T+0.5*g*T^2 = SLOT_Y → vy = (SLOT_Y-ORIGIN.y-0.5*g*T^2)/T
+    // 但不同槽位用不同 vx 才能让弧线覆盖不同落点，且保持弧线漂亮。这里 vx 固定，靠不同 vy 产生不同射程不直观。
+    // 改用：vx 按槽位变化（更远落点 = 更快的 vx），vy 固定。
+    const T = 1.15;               // 飞行时间固定
+    const vx = (landX - ORIGIN.x) / T;
+    const vy = (SLOT_Y - ORIGIN.y - 0.5*G*T*T) / T;
+    const pts = [];
+    const N = 60;
+    for (let i=0;i<=N;i++){
+      const t = (i/N)*T;
+      pts.push({ x: ORIGIN.x + vx*t, y: ORIGIN.y + vy*t + 0.5*G*t*t });
+    }
+    return pts;
+  }
+
+  function drawScene(){
+    // 天空渐变
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#2b3150"); g.addColorStop(1,"#161a2b");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 远山
+    ctx.fillStyle = "#223055";
+    ctx.beginPath(); ctx.moveTo(0,320); ctx.lineTo(120,230); ctx.lineTo(260,310); ctx.lineTo(400,220); ctx.lineTo(560,320); ctx.lineTo(720,250); ctx.lineTo(800,320); ctx.lineTo(800,420); ctx.lineTo(0,420); ctx.closePath(); ctx.fill();
+    // 地面
+    ctx.fillStyle = "#3a4a2f";
+    ctx.fillRect(0, 400, CW, 100);
+    ctx.fillStyle = "#2f3c26";
+    ctx.fillRect(0, 400, CW, 10);
+    // 落点槽位（6 个）
+    for (let i=0;i<SLOT_XS.length;i++){
+      const sx = SLOT_XS[i];
+      ctx.fillStyle = (clickedIdx===i && phase==="answer") ? "#4c7dff" : "#1c2743";
+      ctx.beginPath();
+      ctx.roundRect(sx-SLOT_W/2, SLOT_Y-SLOT_H/2, SLOT_W, SLOT_H, 8);
+      ctx.fill();
+      ctx.strokeStyle = "#4c7dff"; ctx.lineWidth = (clickedIdx===i && phase==="answer") ? 4 : 2;
+      ctx.stroke();
+      // 槽位编号
+      ctx.fillStyle = "#9aa5d0"; ctx.font = "bold 18px sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(i+1), sx, SLOT_Y+2);
+    }
+    // 投石车（右侧，简约几何）
+    drawCatapult();
+  }
+
+  function drawCatapult(){
+    const cx = CATAPULT.x, by = CATAPULT.y;
+    // 底座
+    ctx.fillStyle = "#5b4632";
+    ctx.fillRect(cx-60, by, 120, 14);
+    ctx.fillStyle = "#4a3a28";
+    ctx.fillRect(cx-66, by+14, 132, 10);
+    // 支架
+    ctx.fillStyle = "#7a5c3d";
+    ctx.fillRect(cx-10, by-70, 12, 70);
+    ctx.fillRect(cx-10, by-70, 44, 8);
+    // 投臂（指向发射方向，静止状态斜向左上）
+    ctx.save();
+    ctx.translate(cx-4, by-32);
+    ctx.rotate(-0.7);
+    ctx.fillStyle = "#8a6a45";
+    ctx.fillRect(0, -5, 80, 10);
+    // 臂头（勺）
+    ctx.fillStyle = "#6b5130";
+    ctx.beginPath(); ctx.arc(80, 0, 12, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    // 轮子
+    ctx.fillStyle = "#2a2a2a";
+    ctx.beginPath(); ctx.arc(cx-38, by+18, 12, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+30, by+18, 12, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#555";
+    ctx.beginPath(); ctx.arc(cx-38, by+18, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx+30, by+18, 5, 0, Math.PI*2); ctx.fill();
+  }
+
+  function drawArc(slotIdx){
+    const pts = arcPoints(slotIdx);
+    // 轨迹虚线
+    ctx.setLineDash([6,5]);
+    ctx.strokeStyle = "#f6c453"; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 球（在弧线最高点）
+    let maxY = -1e9, ballIdx = 0;
+    for (let i=0;i<pts.length;i++){ if (pts[i].y < maxY){ maxY = pts[i].y; ballIdx = i; } }
+    const b = pts[ballIdx];
+    ctx.fillStyle = "#ff5c7a";
+    ctx.beginPath(); ctx.arc(b.x, b.y, 11, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(b.x-3, b.y-3, 3, 0, Math.PI*2); ctx.fill();
+    // 落点 x 标记（竖直虚线到地面）
+    const landX = SLOT_XS[slotIdx];
+    ctx.setLineDash([3,4]);
+    ctx.strokeStyle = "rgba(246,196,83,.4)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(landX, SLOT_Y-SLOT_H/2); ctx.lineTo(landX, pts[pts.length-1].y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function render(){
+    drawScene();
+    if (phase === "show"){
+      drawArc(target);
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let sel = -1;
+    for (let i=0;i<SLOT_XS.length;i++){
+      const sx = SLOT_XS[i];
+      if (p.x >= sx-SLOT_W/2 && p.x <= sx+SLOT_W/2 && p.y >= SLOT_Y-SLOT_H/2 && p.y <= SLOT_Y+SLOT_H/2){ sel = i; break; }
+    }
+    if (sel === -1) return;
+    clickedIdx = sel;
+    const ok = (sel === target);
+    BENCH.results.push(ok ? "hit" : "miss");
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Miss! 未命中","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时），进游戏后空格不误触（作答用鼠标点槽位）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

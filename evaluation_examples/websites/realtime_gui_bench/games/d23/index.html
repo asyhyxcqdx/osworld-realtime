@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wandering Flip 游走充能</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #1c2a4a 0%, #070b12 58%);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:22px; font-weight:700; min-height:30px; letter-spacing:.4px; }
+  .status.ready { color:#9fe8ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .toast { position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay { position:fixed; inset:0; background:rgba(8,10,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+  .intro-rule b { color:var(--title); }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .retryOverlay.hidden { display:none; }
+  .retry-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn { margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="keys">Click the golden orb while it glows  点击发光的金色光球</div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Captured! 采集成功！</div>
+      <div class="celeb-sub">The golden orb is yours 金色光球已采集</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Wandering Flip 游走充能</div>
+      <div class="intro-rule">You are an <b>energy harvester</b>. Three <b>wandering orbs</b> drift in the dark — one is <b>charged gold</b> (collectible), and the charge <b>randomly jumps</b> between them. <b>Click the golden orb</b> while it glows <b>before they fade (3.4s)</b>.<br>你是<b>能量采集者</b>。三个<b>游走的光球</b>在黑暗中漂移——其中一个<b>充能成金色</b>（可采集），充能会在它们之间<b>随机跳跃</b>。在它们<b>消散（3.4 秒）前</b>，<b>点击发光的金色光球</b>。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Faded 消散了</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const LIFE_MS = 3400;       // 总可点击窗口
+  const R = 32;               // 光点判定半径
+  const MIN_X = 100, MAX_X = 700, MIN_Y = 110, MAX_Y = 390;
+  const APPEAR_MS = 300;      // 出现淡入动画时长
+  const HIT_MS = 650;         // 采集动画时长（结算成功）
+  const MISS_MS = 650;        // 消散动画时长（结算失败）
+
+  const BENCH = { task:"wandering_flip", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "waiting";   // waiting | out | hit | miss
+  let orbs = [], goldenIdx = 0, appearAt = 0, windowEnd = 0, switchAt = 0, lastNow = 0, appearTime = 0;
+  let settleLock = false;
+  let hitAt = 0, missAt = 0, lastSwitchAt = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, goldenIdx, orbs: orbs.map((o,i)=>({x: Math.round(o.x), y: Math.round(o.y), golden: i===goldenIdx})),
+             attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status };
+  };
+
+  function makeOrbs(){
+    const arr = [];
+    for (let i = 0; i < 3; i++) {
+      let x, y, tries = 0;
+      do {
+        x = MIN_X + Math.random()*(MAX_X-MIN_X);
+        y = MIN_Y + Math.random()*(MAX_Y-MIN_Y);
+        tries++;
+      } while (arr.some(o => Math.hypot(x-o.x, y-o.y) < 180) && tries < 20);
+      const ang = Math.random()*Math.PI*2;
+      const sp = 60 + Math.random()*60;   // 60~120 px/s
+      arr.push({ x, y, vx: Math.cos(ang)*sp, vy: Math.sin(ang)*sp });
+    }
+    return arr;
+  }
+
+  function resetRound(){
+    phase = "waiting";
+    settleLock = false;
+    orbs = makeOrbs();
+    goldenIdx = Math.floor(Math.random()*3);
+    appearAt = performance.now() + 400 + Math.random()*500;   // 随机延迟：时机随机
+    setStatus("Get ready… 准备…","ready");
+  }
+  function out(now){ phase = "out"; windowEnd = now + LIFE_MS; switchAt = now + 800 + Math.random()*700; lastNow = now; appearTime = now; lastSwitchAt = now; setStatus("Click the gold! 点击金色！","action"); }
+
+  function hit(){
+    if (phase !== "out" || settleLock) return;
+    settleLock = true;
+    phase = "hit";
+    hitAt = performance.now();
+    setStatus("Captured! 采集成功！","win");
+    // 结算延迟：先播「金色光球爆发」动画，再 celebrate
+    setTimeout(()=>{
+      BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+      syncURL(); celebrate();
+    }, HIT_MS);
+  }
+  function miss(){
+    if (phase !== "out" || settleLock) return;
+    settleLock = true;
+    phase = "miss";
+    missAt = performance.now();
+    setStatus("Faded 消散了","lose");
+    // 结算延迟：先播「光点消散」动画，再安排下一轮/失败框
+    setTimeout(()=>{
+      BENCH.results.push(false);
+      BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+      } else {
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retrySub").textContent = "Faded 消散了";
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }
+    }, MISS_MS);
+  }
+
+  function update(now){
+    if (phase === "waiting" && now >= appearAt) out(now);
+    else if (phase === "out") {
+      const dt = Math.min(0.05, (now-lastNow)/1000); lastNow = now;
+      // 光点随机游走
+      orbs.forEach(o => {
+        o.x += o.vx*dt; o.y += o.vy*dt;
+        if (o.x < MIN_X && o.vx < 0) { o.x = MIN_X; o.vx = -o.vx; }
+        if (o.x > MAX_X && o.vx > 0) { o.x = MAX_X; o.vx = -o.vx; }
+        if (o.y < MIN_Y && o.vy < 0) { o.y = MIN_Y; o.vy = -o.vy; }
+        if (o.y > MAX_Y && o.vy > 0) { o.y = MAX_Y; o.vy = -o.vy; }
+      });
+      // 金色随机切换
+      if (now >= switchAt) {
+        const others = [0,1,2].filter(i => i !== goldenIdx);
+        goldenIdx = others[Math.floor(Math.random()*others.length)];
+        switchAt = now + 800 + Math.random()*700;
+        lastSwitchAt = now;
+      }
+      if (now >= windowEnd) miss();
+    }
+  }
+
+  function canvasPos(e){ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)*(cv.width/r.width), y:(e.clientY-r.top)*(cv.height/r.height)}; }
+  cv.addEventListener("click",(e)=>{
+    if (phase !== "out") return;
+    const p = canvasPos(e);
+    const golden = orbs[goldenIdx];
+    if (Math.hypot(p.x-golden.x, p.y-golden.y) <= R) hit();
+    // 点蓝点/空白忽略
+  });
+
+  // ============ 渲染 ============
+  function drawBg(){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#0a1224"); g.addColorStop(.55,"#122238"); g.addColorStop(1,"#0c1a24");
+    ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+    // 星点
+    ctx.fillStyle="rgba(140,220,255,.25)";
+    [[300,150],[520,110],[680,200],[200,260],[600,300],[120,200],[480,360],[90,120],[740,90]].forEach(p=>{ ctx.beginPath(); ctx.arc(p[0],p[1],1.6,0,7); ctx.fill(); });
+  }
+
+  function drawOrb(o, i, alpha){
+    const golden = i === goldenIdx;
+    const now = performance.now();
+    const pulse = golden ? 1 + Math.sin(now/120)*0.1 : 1;
+    const r = R * pulse;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    // 金色光点拖尾（沿游走反方向，单位向量×间距）
+    if (golden) {
+      const sp = Math.hypot(o.vx, o.vy) || 1;
+      const ux = o.vx/sp, uy = o.vy/sp;
+      for (let k=1;k<=3;k++){
+        ctx.globalAlpha = (0.12/k) * alpha;
+        ctx.fillStyle = "#ffd257";
+        ctx.beginPath(); ctx.arc(o.x - ux*10*k, o.y - uy*10*k, r*(1-k*0.15), 0, 7); ctx.fill();
+      }
+      ctx.globalAlpha = alpha;
+    }
+    // 光晕
+    const halo = ctx.createRadialGradient(o.x, o.y, 2, o.x, o.y, r*2.2);
+    halo.addColorStop(0, golden ? "rgba(255,205,80,.55)" : "rgba(90,150,220,.25)");
+    halo.addColorStop(.5, golden ? "rgba(255,180,50,.18)" : "rgba(70,120,180,.12)");
+    halo.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(o.x, o.y, r*2.2, 0, 7); ctx.fill();
+    // 主体
+    const body = ctx.createRadialGradient(o.x-r*0.3, o.y-r*0.3, 2, o.x, o.y, r);
+    if (golden) {
+      body.addColorStop(0,"#fff6d8"); body.addColorStop(.5,"#ffd257"); body.addColorStop(1,"#c88a20");
+    } else {
+      body.addColorStop(0,"#cfe6f5"); body.addColorStop(.5,"#4a86c0"); body.addColorStop(1,"#1f4a78");
+    }
+    ctx.fillStyle = body; ctx.beginPath(); ctx.arc(o.x, o.y, r, 0, 7); ctx.fill();
+    // 描边
+    ctx.strokeStyle = golden ? "rgba(255,240,180,.9)" : "rgba(160,200,240,.4)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(o.x, o.y, r, 0, 7); ctx.stroke();
+    // 高光
+    ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.beginPath(); ctx.arc(o.x-r*0.25, o.y-r*0.28, r*0.2, 0, 7); ctx.fill();
+    // 金色切换瞬间的闪光（新金色光点闪一下）
+    if (golden && now - lastSwitchAt < 220) {
+      const s = 1 - (now - lastSwitchAt)/220;
+      ctx.strokeStyle="rgba(255,240,180,"+(0.8*s)+")"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(o.x, o.y, r*(1+0.6*s), 0, 7); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    const now = performance.now();
+    drawBg();
+    if (phase === "out"){
+      const tA = Math.min(1, (now - appearTime)/APPEAR_MS);
+      const grow = 0.3 + 0.7 * (1 - Math.pow(1-tA, 3));
+      orbs.forEach((o,i)=>drawOrb(o, i, tA));
+    }
+    if (phase === "hit"){
+      // 采集动画：金色光球爆发白光
+      const a = Math.min(1, (now - hitAt)/HIT_MS);
+      const golden = orbs[goldenIdx];
+      orbs.forEach((o,i)=>drawOrb(o, i, 1));
+      ctx.fillStyle="rgba(255,255,255,"+(0.8*(1-a))+")";
+      ctx.beginPath(); ctx.arc(golden.x, golden.y, R*(1+a*2.0), 0, 7); ctx.fill();
+      ctx.strokeStyle="rgba(255,210,80,"+(0.8*(1-a))+")"; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(golden.x, golden.y, R*(0.6+a*2.4), 0, 7); ctx.stroke();
+    }
+    if (phase === "miss"){
+      // 消散动画：光点淡出 + 光点向外飘散
+      const a = Math.min(1, (now - missAt)/MISS_MS);
+      orbs.forEach((o,i)=>drawOrb(o, i, 1-a));
+      for (let i=0;i<6;i++){
+        const ang = i*Math.PI/3 + a*0.5;
+        const d = 20 + a*54;
+        ctx.fillStyle = "rgba(150,220,255,"+(0.5*(1-a))+")";
+        ctx.beginPath(); ctx.arc(400+Math.cos(ang)*d, 250+Math.sin(ang)*d-a*36, 2.5*(1-a), 0, 7); ctx.fill();
+      }
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 阻止空格/方向键/Tab 触发页面滚动、刷新、焦点切换；空格触发 Start/Next（phase 隔离）
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode||e.which||0;
+    if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
+    if (e.code === "Space" && !e.repeat){
+      if (!introEl.classList.contains("hidden")) { startGame(); return; }
+      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    }
+  });
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

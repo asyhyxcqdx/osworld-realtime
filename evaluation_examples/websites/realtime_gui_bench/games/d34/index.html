@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curving Bullet Dodge</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:var(--bg);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6;user-select:none;overflow:hidden;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;}
+  .status{font-size:24px;font-weight:800;min-height:32px;letter-spacing:.4px;text-align:center;}
+  .status.alert{color:#ffd166;}
+  .status.action{font-size:30px;font-weight:800;color:var(--gold);text-shadow:0 0 14px rgba(246,196,83,.55);letter-spacing:.5px;}
+  .status.danger{font-size:30px;font-weight:800;color:#ff5c5c;text-shadow:0 0 16px rgba(255,80,80,.6);letter-spacing:.5px;}
+  .status.win{color:var(--ok1);} .status.lose{color:var(--fail1);}
+  canvas{border-radius:16px;box-shadow:0 16px 44px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);display:block;}
+  .hint{font-size:14px;color:#9aa3c7;letter-spacing:.5px;}
+  .tip{font-size:13px;color:#9aa3c7;letter-spacing:.4px;}
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 52px;text-align:center;max-width:640px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="tip">A/D or ←/→ to dodge the curving bullets  A/D 或方向键左右闪避弯曲子弹</div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功！</div>
+      <div class="celeb-sub">Dodged all the bullets 躲开了所有子弹</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Curving Bullet Dodge 弯曲子弹闪避</div>
+      <div class="intro-rule">Bullets fly toward you while <b>randomly curving</b>, then <b>track you</b>. Dodge all of them with <b>A/D or ←/→</b> — keep moving and make a sudden turn at the last moment!<br>几颗子弹朝你飞来，先<b>随机弯曲</b>、再<b>追踪你</b>。用 <b>A/D 或 ←/→</b> 躲开全部——持续移动，在最后时刻<b>突然变向</b>才能甩掉！</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Hit! 被击中了！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const W = 800, H = 460;
+
+  const PLAYER_Y = 410;                 // 玩家 y（底部）
+  const PLAYER_R = 30;                  // 玩家半径（用于命中判定，放宽保证长按必命中）
+  const BULLET_R = 9;                   // 子弹半径
+  const HIT_R = PLAYER_R + BULLET_R;    // 命中判定半径（39px）
+  const PLAYER_SPEED = 340;             // 玩家左右移动速度 px/s
+  const BULLET_VY = 340;                // 子弹垂直下落速度 px/s
+  const CURVE_MIN = 120;                // 子弹随机转向的最小间隔 ms
+  const CURVE_MAX = 350;                // 子弹随机转向的最大间隔 ms
+  const LOCK_DIST = 260;                // 子弹进入稳定段（距玩家 260px，约 0.76s）后开始持续追踪
+  const TRACK_MAX = 560;                // 追踪段最大水平速度（高于玩家 340，能追到）
+  const TRACK_DELAY_K = 12;             // 追踪延迟速率（trackX 一阶延迟玩家，时间常数约 0.083s：长按追上、变向甩开的平衡）
+  const BULLET_COUNT = 2;               // 弹幕数量（2 颗先后飞来）
+  const SPAWN_GAP = 450;                // 子弹之间的出生间隔 ms
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  const BENCH = { task:"curving_bullet_dodge", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  let phase = "fly";                    // fly(子弹飞行) | dodge(躲开) | hit | miss
+  let playerX = W/2;
+  let bullets = [];                     // 多颗子弹
+  let missAt = 0, dodgeAt = 0;
+  let lastT = performance.now();
+  let settleLock = false;
+  const keys = { left:false, right:false };
+
+  window.__dbg = function(){
+    return {
+      phase, playerX:+playerX.toFixed(1),
+      bullets: bullets.map(b => ({ x:+b.x.toFixed(1), y:+b.y.toFixed(1), locked:b.locked, done:b.done })),
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status
+    };
+  };
+
+  function spawnBullet(delay){
+    return {
+      x: 400 + (Math.random()-0.5)*240,  // 子弹初始 x 在玩家起始位置附近（±120px）
+      y: -20,
+      vx: (Math.random()-0.5)*320,
+      vy: BULLET_VY,
+      locked: false,
+      done: false,
+      trackX: 0,                            // 追踪目标 x（一阶延迟追踪玩家）
+      spawnAt: performance.now() + delay,   // 延迟出生
+      alive: delay === 0,                    // 立即出生
+      nextCurveAt: 0,
+    };
+  }
+
+  function resetRound(){
+    phase = "fly";
+    playerX = W/2;
+    // 多颗子弹：第 1 颗立即，后续延迟 SPAWN_GAP 出生
+    bullets = [];
+    for (let i = 0; i < BULLET_COUNT; i++) {
+      bullets.push(spawnBullet(i * SPAWN_GAP));
+    }
+    settleLock = false;
+    setStatus("Dodge! 闪避！","action");
+  }
+
+  function settleDodge(){
+    if (settleLock) return;
+    settleLock = true;
+    phase = "dodge";
+    dodgeAt = performance.now();
+    BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Dodged! 躲开了！","win"); syncURL(); celebrate();
+  }
+  function settleHit(){
+    if (settleLock) return;
+    settleLock = true;
+    phase = "hit";
+    missAt = performance.now();
+    BENCH.results.push("miss");
+    BENCH.attempts += 1; setHint();
+    setStatus("Hit! 被击中了！","lose"); syncURL();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      setTimeout(()=>{ BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show"); }, 700);
+      return;
+    }
+    setTimeout(()=>{
+      document.getElementById("retrySub").textContent = "Hit! 被击中了！";
+      document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+      document.getElementById("retryOverlay").classList.remove("hidden");
+    }, 700);
+  }
+
+  function update(dt){
+    const dtS = dt/1000;
+    const now = performance.now();
+    if (phase !== "fly") { return; }
+
+    // 玩家左右移动
+    if (keys.left) playerX -= PLAYER_SPEED * dtS;
+    if (keys.right) playerX += PLAYER_SPEED * dtS;
+    playerX = Math.max(30, Math.min(W-30, playerX));
+
+    let allDone = true;
+    for (const b of bullets) {
+      // 出生计时
+      if (!b.alive) {
+        if (now >= b.spawnAt) {
+          b.alive = true;
+          b.x = playerX + (Math.random()-0.5)*240;   // 出生在玩家当前 x 附近（±120px，随机弯曲的起点）
+          b.nextCurveAt = now + (CURVE_MIN + Math.random()*(CURVE_MAX - CURVE_MIN));
+        }
+        else { allDone = false; continue; }
+      }
+      if (b.done) continue;
+
+      if (!b.locked) {
+        // ★ 早期随机弯曲：隔随机时间随机重掷 vx（随机转向、落点不可预判）
+        if (now >= b.nextCurveAt) {
+          b.vx = (Math.random()-0.5)*480;
+          b.nextCurveAt = now + (CURVE_MIN + Math.random()*(CURVE_MAX - CURVE_MIN));
+        }
+        // 软边界：偏离玩家超过 60px 时，强制以固定速度朝玩家回拉（保证进入追踪段时足够靠近）
+        const off = b.x - playerX;
+        if (off > 60) b.vx = -250;   // 偏右太多 → 朝左回拉
+        if (off < -60) b.vx = 250;   // 偏左太多 → 朝右回拉
+        // 进入稳定段 → 开始持续追踪
+        if (b.y >= PLAYER_Y - LOCK_DIST) {
+          b.locked = true;
+          b.trackX = playerX;   // 锁定瞬间初始化追踪目标为玩家当前 x
+        }
+      } else {
+        // ★ 稳定段持续追踪（延迟追踪模型）：trackX 一阶延迟追踪玩家当前位置，
+        //   子弹瞬时精确追 trackX。长按匀速 → trackX 稳态落后固定 → 子弹命中；
+        //   玩家突然反向 → trackX 延迟跟不上 → 子弹追「旧位置」，玩家拉开甩掉。
+        b.trackX += (playerX - b.trackX) * Math.min(1, dtS * TRACK_DELAY_K);
+        const remainTime = Math.max(0.02, (PLAYER_Y - b.y) / b.vy);
+        let targetVx = (b.trackX - b.x) / remainTime;
+        b.vx = Math.max(-TRACK_MAX, Math.min(TRACK_MAX, targetVx));
+      }
+
+      b.x += b.vx * dtS;
+      b.y += b.vy * dtS;
+
+      // 抵达玩家高度 → 判定
+      if (b.y >= PLAYER_Y - BULLET_R) {
+        b.done = true;
+        if (Math.abs(b.x - playerX) < HIT_R) { settleHit(); return; }
+      } else {
+        allDone = false;
+      }
+    }
+
+    // 所有子弹都已飞过且无命中 → 躲开成功
+    if (allDone) settleDodge();
+  }
+
+  // ---- 渲染 ----
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function drawBack(){
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#141824"); g.addColorStop(0.6,"#1e2438"); g.addColorStop(1,"#12161f");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="#1a2030"; ctx.fillRect(0,PLAYER_Y+24,W,H-(PLAYER_Y+24));
+    ctx.fillStyle="#242c42"; ctx.fillRect(0,PLAYER_Y+24,W,4);
+    ctx.strokeStyle="rgba(255,80,80,.12)"; ctx.lineWidth=2; ctx.setLineDash([8,8]);
+    ctx.beginPath(); ctx.moveTo(0,30); ctx.lineTo(W,30); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  function drawBullets(){
+    for (const b of bullets) {
+      if (!b.alive || b.done) continue;
+      const g = ctx.createRadialGradient(b.x,b.y,1,b.x,b.y,BULLET_R);
+      g.addColorStop(0,"#fff2cc"); g.addColorStop(0.5,"#ffb060"); g.addColorStop(1,"#ff5c40");
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(b.x, b.y, BULLET_R, 0, 7); ctx.fill();
+      // 追踪段发红光（警示）
+      if (b.locked) {
+        ctx.strokeStyle="rgba(255,80,80,.5)"; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(b.x, b.y, BULLET_R+5, 0, 7); ctx.stroke();
+      }
+    }
+  }
+
+  function drawPlayer(){
+    ctx.save();
+    ctx.translate(playerX, PLAYER_Y);
+    const g = ctx.createLinearGradient(0,-18,0,18);
+    g.addColorStop(0,"#5cc8ff"); g.addColorStop(1,"#2a7ad0");
+    ctx.fillStyle=g; rr(-16,-18,32,36,9); ctx.fill();
+    ctx.strokeStyle="#1a5aa0"; ctx.lineWidth=2; rr(-16,-18,32,36,9); ctx.stroke();
+    ctx.fillStyle="#3a9ae0"; rr(-24,-4,8,16,3); ctx.fill(); rr(16,-4,8,16,3); ctx.fill();
+    ctx.fillStyle="#d8f0ff"; rr(-7,-12,14,10,4); ctx.fill();
+    if (keys.left || keys.right) {
+      const f = 0.6 + 0.4*Math.sin(performance.now()/40);
+      ctx.fillStyle=`rgba(255,180,80,${f})`;
+      ctx.beginPath(); ctx.moveTo(-8,18); ctx.lineTo(0,18+14*f); ctx.lineTo(8,18); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    drawBack(); drawBullets(); drawPlayer();
+
+    if (phase === "fly") {
+      for (const b of bullets) {
+        if (b.alive && !b.done && b.locked) {
+          const a = 0.4 + 0.4*Math.sin(performance.now()/50);
+          ctx.strokeStyle=`rgba(255,80,80,${a})`; ctx.lineWidth=3;
+          ctx.beginPath(); ctx.arc(playerX, PLAYER_Y, HIT_R+6, 0, 7); ctx.stroke();
+        }
+      }
+    }
+    if (phase === "dodge") {
+      const a = Math.max(0, 1-(performance.now()-dodgeAt)/500);
+      ctx.strokeStyle="rgba(52,211,153,"+a+")"; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(playerX, PLAYER_Y, 34+a*16, 0, 7); ctx.stroke();
+    }
+    if (phase === "hit") {
+      const a = Math.max(0, 1-(performance.now()-missAt)/800);
+      ctx.fillStyle="rgba(255,60,60,"+(a*0.3)+")"; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 44px Arial"; ctx.textAlign="center";
+      ctx.fillText("HIT 被击中", W/2, 140);
+      ctx.fillStyle="rgba(255,180,80,"+(1-a)+")";
+      ctx.beginPath(); ctx.arc(playerX, PLAYER_Y, 30*(1-a), 0, 7); ctx.fill();
+    }
+  }
+  function frame(now){
+    const dt = now - lastT; lastT = now;
+    if (dt > 0 && dt < 100) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener("keydown",(e)=>{
+    const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
+    const left = k==="a"||k==="arrowleft"||c==="KeyA"||c==="ArrowLeft"||kc===65||kc===37;
+    const right = k==="d"||k==="arrowright"||c==="KeyD"||c==="ArrowRight"||kc===68||kc===39;
+    if (kc === 32 || left || right) e.preventDefault();
+    if (left) keys.left = true;
+    if (right) keys.right = true;
+    if (e.code === "Space" && !e.repeat) {
+      if (!introEl.classList.contains("hidden")) { startGame(); return; }
+      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    }
+  });
+  window.addEventListener("keyup",(e)=>{
+    const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
+    const left = k==="a"||k==="arrowleft"||c==="KeyA"||c==="ArrowLeft"||kc===65||kc===37;
+    const right = k==="d"||k==="arrowright"||c==="KeyD"||c==="ArrowRight"||kc===68||kc===39;
+    if (left) keys.left = false;
+    if (right) keys.right = false;
+  });
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

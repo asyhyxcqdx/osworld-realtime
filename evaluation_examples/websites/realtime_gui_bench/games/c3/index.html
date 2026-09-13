@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sky Hop 云端跳跃</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the platform 盯住平台</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Space 空格</span> Jump 跳跃</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Landed on the hidden platform 落在隐藏平台上</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Sky Hop 云端跳跃</div>
+      <div class="intro-rule">A cloud traveller hops between floating islands. A <b>hidden platform</b> flashes through the clouds for a moment, then vanishes into the mist. Remember where it was, and jump at the right moment as you auto-run to land on it.<br>云端旅人在浮空岛之间跳跃。一块<b>隐藏平台</b>在云雾中闪现片刻，随后隐入云雾消失。记住它的位置，在自动奔跑中把握时机跳起、落在上面。<br><br>Space to jump 按空格跳跃</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Jump at the right moment 把握时机跳起</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  // 物理参数（Python 模拟定稿）：命中窗口 x0∈[153,252]，时间窗约 309ms
+  const G = 2000, VJ = 700, VX = 320;
+  const START_PLAT_R = 260, START_Y = 360;   // 起始浮空岛 [0,260] 顶 360
+  const HID_L = 300, HID_R = 400, HID_Y = 250;  // 隐藏平台 [300,400] 顶 250
+  const START_X = 30;
+  const SIZE = 34;
+  const FLASH_MS = 500;      // 平台闪现时长
+  const RUN_DELAY_MS = 100;  // 闪现结束后主角起跑延迟
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"sky_hop", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "flash";      // flash | run | jump | landed | fell | over
+  let phaseStart = 0, landStart = 0, fellStart = 0;
+  let x = START_X, y = START_Y, vy = 0;
+  let onGround = true, prevY = START_Y;
+  let platVisible = true;   // 隐藏平台可见性（闪现→云雾遮住→落地重现）
+  let squash = 1;
+  const particles = [];
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, x:Math.round(x), y:Math.round(y), vy:+vy.toFixed(0), onGround, platVisible,
+             plat:{L:HID_L,R:HID_R,y:HID_Y}, attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status,
+             windowMs:Math.round(100*(HID_R-HID_L)/VX) };
+  };
+
+  function reset(){
+    phase = "flash"; phaseStart = performance.now();
+    x = START_X; y = START_Y; vy = 0; onGround = true; prevY = START_Y;
+    platVisible = true; squash = 1;
+    particles.length = 0;
+    setStatus("Watch the platform 盯住平台","");
+  }
+
+  function jump(){
+    if (phase === "run" && onGround) {
+      vy = -VJ; onGround = false; phase = "jump"; squash = 1.30;
+      puff(x, y);
+    }
+  }
+
+  function puff(px, py){
+    for(let i=0;i<10;i++) particles.push({x:px+(-8+Math.random()*16), y:py-2, vx:-1+Math.random()*2, vy:-.5-Math.random()*1.5, life:1, size:2+Math.random()*3, c:"#cfd6e4"});
+  }
+
+  function groundSupport(){
+    if (x <= START_PLAT_R) return START_Y;
+    if (x >= HID_L && x <= HID_R) return HID_Y;
+    return null;
+  }
+
+  function onHit(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Success 成功","win"); syncURL(); celebrate();
+  }
+  function onMiss(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Failed 失败","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Fell 掉落","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt, now){
+    if (phase === "flash"){
+      if (now - phaseStart >= FLASH_MS) platVisible = false;                 // 平台开始隐入云雾
+      if (now - phaseStart >= FLASH_MS + RUN_DELAY_MS) { phase = "run"; setStatus("Jump! 跳！","action"); }
+      return;
+    }
+    if (phase === "run" || phase === "jump"){
+      prevY = y;
+      x += VX * dt;
+      if (!onGround) vy += G * dt;
+      y += vy * dt;
+      if (x - SIZE/2 < 0) x = SIZE/2;
+      squash += (1 - squash) * 12 * dt;
+
+      const g = groundSupport();
+      if (g !== null && vy >= 0 && y >= g && prevY < g) {
+        y = g; vy = 0; onGround = true; squash = .74;
+        if (g === HID_Y) {
+          phase = "landed"; landStart = now; platVisible = true;   // 落地时平台重现
+          setStatus("Landed! 落稳了！","win");
+          puff(x, y);
+        }
+        return;
+      }
+      if (g === null) onGround = false;
+
+      if (y > 460) {
+        y = 460;
+        phase = "fell"; fellStart = now;
+        setStatus("Fell 掉落","lose");
+      }
+      return;
+    }
+    if (phase === "landed"){
+      if (now - landStart >= 500) onHit();
+      return;
+    }
+    if (phase === "fell"){
+      if (now - fellStart >= 600) onMiss();
+      return;
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#4a6ab5"); g.addColorStop(.55,"#7a94c8"); g.addColorStop(1,"#b8c8e0");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+  }
+  function drawCloud(cx,cy,s,o){ ctx.fillStyle="rgba(255,255,255,"+o+")";
+    ctx.beginPath(); ctx.arc(cx,cy,16*s,0,7); ctx.arc(cx+20*s,cy-8*s,20*s,0,7); ctx.arc(cx+44*s,cy,15*s,0,7); ctx.arc(cx+20*s,cy+4*s,17*s,0,7); ctx.fill(); }
+  // 起始浮空岛（草地 + 向下渐细的岩石底座，带纹理与体积阴影）
+  function drawIsland(){
+    ctx.fillStyle="#4caf50"; ctx.fillRect(0,START_Y,START_PLAT_R,14);
+    ctx.fillStyle="#43a047"; ctx.fillRect(0,START_Y+14,START_PLAT_R,5);
+    const s = ctx.createLinearGradient(0,START_Y+19,0,460);
+    s.addColorStop(0,"#8d6e63"); s.addColorStop(1,"#4a3a30");
+    ctx.fillStyle = s;
+    ctx.beginPath();
+    ctx.moveTo(0,START_Y+19); ctx.lineTo(START_PLAT_R,START_Y+19);
+    ctx.lineTo(START_PLAT_R-60,460); ctx.lineTo(0,460);
+    ctx.closePath(); ctx.fill();
+    // 岩石层纹理（横向层理）
+    ctx.strokeStyle="rgba(0,0,0,.14)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(20,START_Y+44); ctx.lineTo(START_PLAT_R-30,START_Y+52); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(40,START_Y+86); ctx.lineTo(START_PLAT_R-50,START_Y+96); ctx.stroke();
+    // 斜裂缝
+    ctx.beginPath(); ctx.moveTo(50,START_Y+30); ctx.lineTo(38,START_Y+70); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(START_PLAT_R-55,START_Y+40); ctx.lineTo(START_PLAT_R-75,START_Y+90); ctx.stroke();
+    // 体积阴影（右侧暗边）
+    const shade = ctx.createLinearGradient(START_PLAT_R-70,0,START_PLAT_R,0);
+    shade.addColorStop(0,"rgba(0,0,0,0)"); shade.addColorStop(1,"rgba(0,0,0,.22)");
+    ctx.fillStyle = shade; ctx.fillRect(START_PLAT_R-70, START_Y+19, 70, 460-START_Y-19);
+  }
+  // 云海深渊（浮空岛之间的虚空 + 底部多层云海）
+  function drawAbyss(){
+    const s = ctx.createLinearGradient(0,START_Y,0,460);
+    s.addColorStop(0,"#16203a"); s.addColorStop(.55,"#1c2a48"); s.addColorStop(1,"#2e3f66");
+    ctx.fillStyle = s; ctx.fillRect(START_PLAT_R, START_Y, 800-START_PLAT_R, 460-START_Y);
+    // 远景淡雾（空气透视）
+    const fog = ctx.createLinearGradient(0,START_Y,0,430);
+    fog.addColorStop(0,"rgba(180,200,230,0)"); fog.addColorStop(1,"rgba(200,215,240,.18)");
+    ctx.fillStyle = fog; ctx.fillRect(START_PLAT_R, START_Y, 800-START_PLAT_R, 430-START_Y);
+    // 中景云带
+    ctx.fillStyle="rgba(255,255,255,.45)";
+    ctx.beginPath();
+    for (let cx=START_PLAT_R; cx<=800; cx+=52){
+      ctx.arc(cx, 420, 24, 0, 7);
+    }
+    ctx.fill();
+    // 近景云海
+    ctx.fillStyle="rgba(255,255,255,.82)";
+    ctx.beginPath();
+    for (let cx=START_PLAT_R; cx<=800; cx+=40){
+      ctx.arc(cx, 452, 30, 0, 7);
+    }
+    ctx.fill();
+    ctx.fillStyle="rgba(232,240,255,.75)";
+    ctx.beginPath();
+    for (let cx=START_PLAT_R+20; cx<=800; cx+=44){
+      ctx.arc(cx, 460, 26, 0, 7);
+    }
+    ctx.fill();
+  }
+  // 隐藏平台（岩石石板 + 云朵环绕，alpha 控制可见性；闪现时金光边缘表示「显形」）
+  function drawHiddenPlatform(alpha){
+    if (alpha <= 0) return;
+    const h = 16;
+    ctx.globalAlpha = alpha;
+    // 显形光晕（平台周围金光晕，闪现更醒目）
+    const glow = ctx.createRadialGradient((HID_L+HID_R)/2, HID_Y+h/2, 6, (HID_L+HID_R)/2, HID_Y+h/2, 58);
+    glow.addColorStop(0,"rgba(255,220,140,"+(0.4*alpha)+")"); glow.addColorStop(1,"rgba(255,220,140,0)");
+    ctx.fillStyle = glow; ctx.fillRect(HID_L-50, HID_Y-42, HID_R-HID_L+100, h+94);
+    // 草地顶部
+    ctx.fillStyle="#4caf50"; ctx.fillRect(HID_L, HID_Y, HID_R-HID_L, 8);
+    ctx.fillStyle="#43a047"; ctx.fillRect(HID_L, HID_Y+8, HID_R-HID_L, 4);
+    // 石板主体（岩石，灰色渐变）
+    const g2 = ctx.createLinearGradient(0,HID_Y+12,0,HID_Y+h);
+    g2.addColorStop(0,"#9a9aa6"); g2.addColorStop(1,"#5a5a68");
+    ctx.fillStyle = g2; ctx.beginPath(); ctx.roundRect(HID_L, HID_Y+12, HID_R-HID_L, h-12, 4); ctx.fill();
+    // 石板纹理（裂缝）
+    ctx.strokeStyle="rgba(0,0,0,.22)"; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(HID_L+22, HID_Y+14); ctx.lineTo(HID_L+36, HID_Y+20); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(HID_L+62, HID_Y+15); ctx.lineTo(HID_L+74, HID_Y+21); ctx.stroke();
+    // 石板下缘小岛（岩石底座）
+    ctx.fillStyle="#6a6a78"; ctx.beginPath();
+    ctx.moveTo(HID_L, HID_Y+h); ctx.lineTo(HID_R, HID_Y+h);
+    ctx.lineTo(HID_R-20, HID_Y+h+22); ctx.lineTo(HID_L+20, HID_Y+h+22); ctx.closePath(); ctx.fill();
+    // 显形金光边缘
+    ctx.strokeStyle="rgba(255,220,140,"+(0.8*alpha)+")"; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.roundRect(HID_L-2, HID_Y-2, HID_R-HID_L+4, h+4, 6); ctx.stroke();
+    // 环绕云朵
+    ctx.fillStyle="rgba(255,255,255,.85)";
+    ctx.beginPath();
+    ctx.arc(HID_L+16, HID_Y+h+16, 13, 0, 7);
+    ctx.arc(HID_L+50, HID_Y+h+20, 17, 0, 7);
+    ctx.arc(HID_R-22, HID_Y+h+15, 12, 0, 7);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  // 主角（复用 C1/c38 青蓝渐变小人）
+  function drawRunner(){
+    const py = y - SIZE*squash;
+    ctx.save();
+    ctx.translate(x, py + SIZE*squash);
+    ctx.scale(1, squash);
+    const grd = ctx.createLinearGradient(0,-SIZE,0,0);
+    grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+    ctx.fillStyle=grd; ctx.beginPath(); rr(-SIZE/2,-SIZE,SIZE,SIZE,9); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.25)"; ctx.beginPath(); rr(-SIZE/2+3,-SIZE+4,SIZE-6,SIZE/2-5,6); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(SIZE/2-9,-SIZE+14,5.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-22,-SIZE+14,5.5,0,7); ctx.fill();
+    ctx.fillStyle="#123039"; ctx.beginPath(); ctx.arc(SIZE/2-7,-SIZE+14,2.6,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-20,-SIZE+14,2.6,0,7); ctx.fill();
+    ctx.strokeStyle="#123039"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(SIZE/2-16,-SIZE+24,5,.1,Math.PI-.1); ctx.stroke();
+    ctx.restore();
+  }
+  function drawShadow(){
+    let sy = (x >= HID_L && x <= HID_R) ? HID_Y : (x <= START_PLAT_R ? START_Y : 460);
+    const h = Math.min(1, Math.max(0, (sy - y)/260));
+    const w = SIZE * (0.5 + 0.5*(1-h));
+    ctx.fillStyle = "rgba(0,0,0,"+(0.26*(1-h*0.5))+")";
+    ctx.beginPath(); ctx.ellipse(x, Math.min(sy+3,455), w, 4, 0, 0, 7); ctx.fill();
+  }
+  function drawParticles(){
+    particles.forEach(p=>{ ctx.globalAlpha = p.life; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.size*p.life+.5, 0, 7); ctx.fill(); });
+    ctx.globalAlpha = 1;
+  }
+
+  function platAlpha(now){
+    if (phase === "flash") return 1;
+    if (phase === "run" || phase === "jump"){ const t=(now-phaseStart-FLASH_MS)/350; return Math.max(0, 1-t); }
+    if (phase === "landed"){ const t=(now-landStart)/300; return Math.min(1, t); }
+    if (phase === "over") return platVisible ? 1 : 0;
+    return 0;
+  }
+
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function render(now){
+    drawSky();
+    drawCloud(120,70,1,.85); drawCloud(540,110,.8,.75); drawCloud(680,50,1.1,.8);
+    drawAbyss();
+    drawIsland();
+    drawHiddenPlatform(platAlpha(now));
+    drawShadow();
+    drawRunner();
+    drawParticles();
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt, now);
+    render(now);
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 空格触发 Start/Next + 跳跃（phase 隔离：intro/retry 页空格触发按钮，游戏内空格=跳跃）；W/Up 也跳跃
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const isSpace = k===" "||c==="Space"||kc===32;
+    const isJump  = k==="w"||k==="arrowup"||c==="KeyW"||c==="ArrowUp"||kc===87||kc===38;
+    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    if (isSpace){
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+      else jump();
+    } else if (isJump){
+      jump();
+    }
+  });
+  cv.addEventListener("mousedown", ()=>jump());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

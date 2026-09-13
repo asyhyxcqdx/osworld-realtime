@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Lantern 文字闪现</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:default;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .answerArea { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+  .answerArea.hidden { display:none; }
+  .num-btn {
+    min-width:76px; height:64px; padding:0 14px; border-radius:14px; border:1px solid rgba(255,255,255,.16);
+    background:linear-gradient(160deg,#232946 0%,#1c2743 100%); color:#e8eaf6;
+    font-size:26px; font-weight:800; cursor:pointer; transition:transform .12s, box-shadow .12s;
+    box-shadow:0 8px 20px rgba(0,0,0,.35);
+  }
+  .num-btn:hover { transform:translateY(-3px); box-shadow:0 12px 26px rgba(76,125,255,.4); }
+  .num-btn.correct { background:linear-gradient(160deg,var(--ok1),var(--ok2)); color:#fff; }
+  .num-btn.wrong { background:linear-gradient(160deg,var(--fail1),var(--fail2)); color:#fff; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Light the lantern to read the word 点灯读字</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="answerArea hidden" id="answerArea">
+    <button class="num-btn" data-w="moon">moon</button>
+    <button class="num-btn" data-w="fire">fire</button>
+    <button class="num-btn" data-w="star">star</button>
+    <button class="num-btn" data-w="wave">wave</button>
+    <button class="num-btn" data-w="gold">gold</button>
+    <button class="num-btn" data-w="leaf">leaf</button>
+  </div>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">You read the carved word 你读出了刻字</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Word Lantern 文字闪现</div>
+      <div class="intro-rule">In a dark ancient ruin, a <b>carved stone</b> bears a hidden word. Your <b>lantern lights it up for a moment</b>, then the flame <b>goes out</b> and the word sinks back into darkness. <b>Read the word while the lantern burns</b>, then <b>tap the matching word</b>.<br>在黑暗的古遗迹中，一块<b>石碑</b>上刻着一个隐藏的单词。你的<b>提灯照亮它片刻</b>，随后火焰<b>熄灭</b>、单词重新隐入黑暗。<b>趁提灯燃烧时读出单词</b>，然后<b>点对应的单词</b>。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·文字记忆）：黑暗古遗迹里，提灯照亮石碑上的刻字（单词）0.8s，随后火焰熄灭、单词隐入黑暗。
+  // 玩家凭记忆从候选单词选择（IEW 有限：单词只被提灯照亮一瞬；AVW=∞：作答无时限）。补丁=视频。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const WORDS = ["moon","fire","star","wave","gold","leaf"];
+  const READY_MIN = 300, READY_MAX = 2000;   // 防截图随机延迟（等提灯亮起）
+  const SHOW_MS = 800;       // 提灯照亮、单词可见时长（IEW）
+  const FADE_MS = 500;       // 火焰熄灭过渡时长
+  const SETTLE_MS = 450;     // 结算反馈动画
+
+  const BENCH = { task:"word_lantern", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const answerArea = document.getElementById("answerArea");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | show | fade | answer | winning | losing | done
+  let word = "";               // 目标单词
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, word, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  function startRound(){
+    word = WORDS[Math.floor(Math.random()*WORDS.length)];
+    phase = "idle";
+    revealBtn.disabled = false;
+    answerArea.classList.add("hidden");
+    answerArea.querySelectorAll(".num-btn").forEach(b=> b.classList.remove("correct","wrong"));
+    setStatus("Light the lantern to read the word 点灯读字","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "show"; phaseStart = now; setStatus("Read the word… 读字…","ready"); }
+    }
+    else if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "fade"; phaseStart = now; setStatus("The flame is out… 火焰灭了…","ready"); }
+    }
+    else if (phase === "fade"){
+      if (now - phaseStart >= FADE_MS){
+        phase = "answer";
+        answerArea.classList.remove("hidden");
+        setStatus("Which word was it? 是哪个单词？","action");
+      }
+    }
+    else if (phase === "winning"){
+      if (now - phaseStart >= SETTLE_MS){
+        phase = "done";
+        answerArea.classList.add("hidden");
+        BENCH.passed = true; BENCH.status = "passed";
+        setStatus("Success 成功","win"); syncURL(); celebrate();
+      }
+    }
+    else if (phase === "losing"){
+      if (now - phaseStart >= SETTLE_MS){
+        phase = "done";
+        answerArea.classList.add("hidden");
+        nextAttempt();
+      }
+    }
+  }
+
+  // 提灯亮度（0=熄灭，1=全亮），驱动文字显形 + 光晕
+  function brightness(){
+    if (phase === "show") return 1;
+    if (phase === "fade"){ const t = Math.min(1,(performance.now()-phaseStart)/FADE_MS); return 1 - (t*t*(3-2*t)); }
+    return 0;
+  }
+
+  function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  // 古遗迹洞穴（深色石壁 + 纹理 + 顶部垂藤）
+  function drawCave(now){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0, "#1b1622"); g.addColorStop(1, "#0e0b14");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 石壁颗粒纹理
+    ctx.fillStyle = "rgba(255,255,255,.025)";
+    for (let i=0;i<50;i++){
+      const tx = (i*73 + 29) % CW, ty = (i*47 + 13) % CH;
+      ctx.fillRect(tx, ty, 3, 2);
+    }
+    // 顶部垂藤（两侧）
+    ctx.fillStyle = "#3a4a28";
+    for (let i=0;i<5;i++){
+      const vx = 30 + i*170;
+      ctx.beginPath();
+      ctx.moveTo(vx, 0);
+      ctx.quadraticCurveTo(vx + Math.sin(now/900 + i)*14, 40, vx, 82);
+      ctx.lineTo(vx+7, 82);
+      ctx.quadraticCurveTo(vx+7 + Math.sin(now/900 + i)*14, 40, vx+7, 0);
+      ctx.closePath(); ctx.fill();
+    }
+    // 底部地面
+    ctx.fillStyle = "#191420";
+    ctx.fillRect(0, 420, CW, 80);
+  }
+
+  // 石碑（灰色石板 + 弧形碑顶 + 刻字凹槽 + 苔藓 + 裂纹）
+  function drawStone(){
+    // 碑身
+    ctx.fillStyle = "#4c4c54";
+    roundRect(230, 100, 340, 320, 12); ctx.fill();
+    // 弧形碑顶
+    ctx.fillStyle = "#57575f";
+    ctx.beginPath(); ctx.arc(400, 100, 170, Math.PI, 0); ctx.closePath(); ctx.fill();
+    // 刻字凹槽（中央）
+    ctx.fillStyle = "#3b3b43";
+    roundRect(265, 140, 270, 210, 8); ctx.fill();
+    // 苔藓（顶部/底部）
+    ctx.fillStyle = "rgba(90,140,60,.28)";
+    ctx.beginPath(); ctx.arc(400, 108, 26, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(270, 400, 18, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(540, 396, 15, 0, Math.PI*2); ctx.fill();
+    // 石缝裂纹
+    ctx.strokeStyle = "rgba(0,0,0,.22)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(280, 130); ctx.lineTo(300, 220); ctx.lineTo(286, 300); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(520, 150); ctx.lineTo(500, 240); ctx.stroke();
+  }
+
+  // 提灯（提手 + 灯体 + 灯芯 + 光晕，亮度随 b）
+  function drawLantern(b){
+    if (b <= 0.01) return;
+    const lx = 400, ly = 60;
+    // 光晕
+    const g = ctx.createRadialGradient(lx, ly+22, 8, lx, ly+22, 150);
+    g.addColorStop(0, "rgba(255,218,140," + (b*0.5) + ")");
+    g.addColorStop(1, "rgba(255,218,140,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(lx-155, ly-130, 310, 310);
+    // 提手
+    ctx.strokeStyle = "#5a4a30"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(lx, ly-8, 12, Math.PI, 0); ctx.stroke();
+    // 灯体
+    ctx.fillStyle = "rgba(255,198,116," + b + ")";
+    roundRect(lx-17, ly, 34, 42, 9); ctx.fill();
+    ctx.strokeStyle = "#6a5230"; ctx.lineWidth = 2;
+    roundRect(lx-17, ly, 34, 42, 9); ctx.stroke();
+    // 灯芯（亮白）
+    ctx.fillStyle = "rgba(255,255,230," + b + ")";
+    ctx.beginPath(); ctx.arc(lx, ly+21, 7, 0, Math.PI*2); ctx.fill();
+  }
+
+  // 刻字（金色发光单词，alpha 随提灯亮度）
+  function drawWord(){
+    const b = brightness();
+    if (b <= 0.01) return;
+    ctx.save();
+    ctx.globalAlpha = b;
+    ctx.fillStyle = "#f6c453";
+    ctx.shadowColor = "rgba(246,196,83,.85)";
+    ctx.shadowBlur = 20;
+    ctx.font = "bold 86px Georgia, 'Times New Roman', serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(word.toUpperCase(), 400, 248);
+    ctx.restore();
+  }
+
+  function render(now){
+    drawCave(now);
+    drawStone();
+    drawWord();
+    drawLantern(brightness());
+  }
+  function frame(now){ update(now); render(now); requestAnimationFrame(frame); }
+
+  function answer(w){
+    if (phase !== "answer") return;
+    const ok = (w === word);
+    BENCH.results.push(ok ? "hit" : "miss");
+    phase = ok ? "winning" : "losing";
+    phaseStart = performance.now();
+    const btn = answerArea.querySelector(`.num-btn[data-w="${w}"]`);
+    if (btn) btn.classList.add(ok ? "correct" : "wrong");
+    if (ok){ setStatus("Correct! 读对了！","win"); }
+    else { setStatus("Wrong word! 读错了！","lose"); }
+  }
+  answerArea.querySelectorAll(".num-btn").forEach((b)=>{
+    b.addEventListener("click", ()=> answer(b.dataset.w));
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时），进游戏后空格不误触（作答用鼠标点单词按钮）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

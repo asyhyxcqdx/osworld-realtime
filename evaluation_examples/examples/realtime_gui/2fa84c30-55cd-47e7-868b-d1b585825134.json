@@ -1,0 +1,84 @@
+{
+  "id": "2fa84c30-55cd-47e7-868b-d1b585825134",
+  "snapshot": "chrome",
+  "instruction": "保持当前难度和所有游戏设置不变，直接点击 Start Game 开始一局贪吃蛇游戏。控制蛇移动并吃掉食物；每吃到一个食物，SCORE 会增加 1 分，请尽可能将本局 SCORE 提高到 10。\n\n整个任务过程中，不要暂停游戏、打开设置或重新开始。当 SCORE 达到 10，或者本局出现 Game Over 时，请停留在当前页面并结束任务，不要点击 Play Again。",
+  "source": "https://oldsnakegame.com/",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://oldsnakegame.com/"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Google Chrome"
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 20
+      }
+    },
+    {
+      "type": "execute",
+      "parameters": {
+        "command": [
+          "python",
+          "-c",
+          "import pyautogui; import time; script=\"javascript:localStorage.setItem('snakeSettings','{\\\"wallMode\\\":\\\"wrap\\\",\\\"gridSize\\\":20,\\\"speedIncrease\\\":false,\\\"bonusFood\\\":false,\\\"gridLines\\\":true,\\\"scorePopups\\\":true,\\\"particles\\\":true,\\\"screenShake\\\":true,\\\"countdown\\\":true}');localStorage.setItem('snakeHighScore','0');location.reload()\"; pyautogui.hotkey('ctrl','l'); time.sleep(0.5); pyautogui.write(script, interval=0.001); pyautogui.press('enter'); time.sleep(10); pyautogui.click(100, 500); pyautogui.press('1'); time.sleep(2)"
+        ]
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Google Chrome"
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "chrome"
+  ],
+  "evaluator": {
+    "func": "score_ratio_to_threshold",
+    "result": {
+      "type": "active_tab_html_parse",
+      "category": "xpath",
+      "xpathObject": {
+        "//*[@id='score-display']": "score"
+      }
+    },
+    "options": {
+      "threshold": 10,
+      "result_key": "score"
+    }
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "medium"
+}

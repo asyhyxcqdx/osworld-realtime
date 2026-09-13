@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Air Dash 空中冲刺</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:600px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the gap 观察缝隙</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Space</span> Dash through 冲刺穿过</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Dashed through 冲刺穿过</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Crashed 撞舱门</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Air Dash 空中冲刺</div>
+      <div class="intro-rule">You pilot a hover-glider through the station. A <b>blast door cycles open and shut</b> ahead — dash through <b>just as it opens</b>.<br>你驾驶悬浮滑翔翼穿过空间站通道，前方一道<b>防爆舱门周期性开合</b>——在它<b>打开的瞬间</b>冲刺穿过。<br><br>Space to dash 按空格冲刺</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Dash when the door opens 舱门打开时冲刺</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  // 物理参数：空间站防爆舱门周期性开合，滑翔翼主角冲刺穿过。
+  // 判定 = 纯碰撞：dash 期间每帧检测「主角滑翔翼矩形」与「上/下门片矩形」是否重叠，重叠 → 撞门失败；完全穿过且从未重叠 → 成功。
+  const PERIOD = 2000, OPEN_MS = 600;     // 舱门周期、开启时长（再放宽：起跳窗口 ~431ms ≥400ms，开门占比 30%）
+  const GAP_MIN = 12, GAP_MAX = 120;       // 缝隙半高范围（放宽：缝隙更大）
+  const PLAYER_X = 450, PLAYER_Y = 230, GATE_X = 530;
+  const DASH_VX = 700;
+  const PW = 34, PH = 34;                  // 主角碰撞盒宽/高（半高 17 = 原 openThreshold 等效）
+  const GATE_W = 16;                       // 门片半宽
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"air_dash", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "wait";     // wait | dash | resolve（后果动画） | over
+  let x = PLAYER_X, y = PLAYER_Y, vx = 0;
+  let gapHalf = GAP_MIN;
+  let resolveT0 = 0, resolveResult = null;
+  let sparks = [];
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  function gapHalfAt(now){
+    const t = now % PERIOD;
+    if (t < OPEN_MS) return GAP_MIN + (GAP_MAX-GAP_MIN) * Math.sin(Math.PI * t / OPEN_MS);
+    return GAP_MIN;
+  }
+
+  window.__dbg = function(){
+    return { phase, x:Math.round(x), y:Math.round(y), vx:+vx.toFixed(0),
+             gapHalf:+gapHalf.toFixed(1), gateX:GATE_X,
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "wait"; x = PLAYER_X; y = PLAYER_Y; vx = 0; gapHalf = GAP_MIN;
+    resolveT0 = 0; resolveResult = null; sparks = [];
+    setStatus("Watch the gap 观察缝隙","");
+  }
+
+  function dash(e){
+    if (e && e.repeat) return;
+    if (phase === "wait") {
+      vx = DASH_VX; phase = "dash";
+      setStatus("Dash! 冲刺！","action");
+    }
+  }
+
+  // 矩形重叠检测
+  function rectsOverlap(ax1,ay1,ax2,ay2, bx1,by1,bx2,by2){
+    return ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1;
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Dashed through 冲刺穿过","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Crashed 撞舱门","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Crashed 撞舱门","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt, now){
+    if (phase === "wait") {
+      gapHalf = gapHalfAt(now);
+      return;
+    }
+    if (phase === "dash") {
+      gapHalf = gapHalfAt(now);
+      x += vx * dt;
+      // 纯碰撞：主角矩形 vs 上门片矩形、下门片矩形
+      const pl = x - PW/2, pr = x + PW/2, pt = y - PH/2, pb = y + PH/2;
+      const topBot = PLAYER_Y - gapHalf;      // 上门片底
+      const botTop = PLAYER_Y + gapHalf;      // 下门片顶
+      const gateL = GATE_X - GATE_W, gateR = GATE_X + GATE_W;
+      const hitTop = rectsOverlap(pl,pt,pr,pb, gateL, 0, gateR, topBot);
+      const hitBottom = rectsOverlap(pl,pt,pr,pb, gateL, botTop, gateR, 460);
+      if (hitTop || hitBottom) {
+        // 撞门：进入后果动画（火花 + 反弹）
+        phase = "resolve";
+        resolveT0 = now;
+        resolveResult = "crash";
+        vx = -180;   // 撞门弹回
+        for (let i=0;i<22;i++) sparks.push({x:GATE_X, y:PLAYER_Y, vx:-80+Math.random()*260, vy:-140+Math.random()*280, life:1, c:Math.random()<0.5?"#ff8c42":"#ffe9a8"});
+        setStatus("Crashed 撞舱门","lose");
+        return;
+      }
+      // 完全穿过（左缘越过门右缘）且从未重叠 → 成功
+      if (pl > gateR) {
+        phase = "resolve";
+        resolveT0 = now;
+        resolveResult = "through";
+        setStatus("Dashed through 冲刺穿过","win");
+      }
+    } else if (phase === "resolve") {
+      // 后果动画：穿过=继续向前飞；撞门=被弹回 + 火花散落
+      if (resolveResult === "through") { x += vx * dt; }
+      else { x += vx * dt; }
+      sparks.forEach(p => { p.life -= dt*2.2; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 800*dt; });
+      sparks = sparks.filter(p => p.life > 0);
+      const el = now - resolveT0;
+      if (el > (resolveResult === "through" ? 650 : 600)) {
+        if (resolveResult === "through") win(); else fail();
+      }
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawSky(){
+    // 空间站星空 + 远处舷窗 / 通道
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#141a30"); g.addColorStop(0.5,"#1e2a4a"); g.addColorStop(1,"#2c3a5e");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+    // 星空
+    for (let i=0;i<60;i++){
+      const sx = (i*61+13)%800, sy = (i*37+7)%420;
+      ctx.fillStyle = "rgba(230,240,255,"+(0.3+0.5*((i*7)%3)/2)+")";
+      ctx.beginPath(); ctx.arc(sx, sy, (i%2)?1.3:1.8, 0, Math.PI*2); ctx.fill();
+    }
+    // 通道两侧金属墙（给空间感）
+    const wg = ctx.createLinearGradient(0,0,0,460);
+    wg.addColorStop(0,"rgba(80,90,120,.35)"); wg.addColorStop(1,"rgba(50,58,80,.2)");
+    ctx.fillStyle = wg; ctx.fillRect(0,0,14,460); ctx.fillRect(786,0,14,460);
+    // 地面引导线
+    ctx.strokeStyle = "rgba(120,180,255,.25)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, 420); ctx.lineTo(800, 420); ctx.stroke();
+    for (let i=0;i<16;i++){ ctx.fillStyle="rgba(120,180,255,.2)"; ctx.fillRect(i*50, 416, 28, 2); }
+  }
+
+  function drawGate(){
+    // 防爆舱门：上下两片金属门片 + 警示条纹 + 发光门框
+    const topH = PLAYER_Y - gapHalf;
+    const botY = PLAYER_Y + gapHalf;
+    // 上门片（金属渐变）
+    const g1 = ctx.createLinearGradient(0,0,0,Math.max(1,topH));
+    g1.addColorStop(0,"#9aa3b8"); g1.addColorStop(1,"#4a5268");
+    ctx.fillStyle = g1; ctx.fillRect(GATE_X-GATE_W, 0, GATE_W*2, topH);
+    // 上门片斜向警示条纹（黄黑）
+    ctx.save();
+    ctx.beginPath(); ctx.rect(GATE_X-GATE_W, 0, GATE_W*2, Math.max(0,topH));
+    ctx.clip();
+    ctx.fillStyle = "rgba(230,150,40,.55)";
+    for (let i=-8; i<40; i+=10){ ctx.beginPath(); ctx.moveTo(GATE_X-GATE_W+i, 0); ctx.lineTo(GATE_X-GATE_W+i+8, 0); ctx.lineTo(GATE_X-GATE_W+i+8-8, topH); ctx.lineTo(GATE_X-GATE_W+i-8, topH); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+    // 上门片下缘警示条
+    ctx.fillStyle = "#e0903a"; ctx.fillRect(GATE_X-GATE_W, Math.max(0,topH-7), GATE_W*2, 7);
+    // 下门片（金属渐变 + 警示条纹）
+    const g2 = ctx.createLinearGradient(0,botY,0,460);
+    g2.addColorStop(0,"#4a5268"); g2.addColorStop(1,"#9aa3b8");
+    ctx.fillStyle = g2; ctx.fillRect(GATE_X-GATE_W, botY, GATE_W*2, 460-botY);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(GATE_X-GATE_W, botY, GATE_W*2, 460-botY); ctx.clip();
+    ctx.fillStyle = "rgba(230,150,40,.55)";
+    for (let i=-8; i<40; i+=10){ ctx.beginPath(); ctx.moveTo(GATE_X-GATE_W+i, botY); ctx.lineTo(GATE_X-GATE_W+i+8, botY); ctx.lineTo(GATE_X-GATE_W+i+8-8, 460); ctx.lineTo(GATE_X-GATE_W+i-8, 460); ctx.closePath(); ctx.fill(); }
+    ctx.restore();
+    // 下门片顶缘警示条
+    ctx.fillStyle = "#e0903a"; ctx.fillRect(GATE_X-GATE_W, botY, GATE_W*2, 7);
+    // 发光门框（更亮）
+    ctx.strokeStyle = "rgba(120,200,255,.85)"; ctx.lineWidth = 4;
+    ctx.shadowColor = "rgba(80,180,255,.8)"; ctx.shadowBlur = 12;
+    ctx.strokeRect(GATE_X-GATE_W-6, 6, GATE_W*2+12, 448);
+    ctx.shadowBlur = 0;
+    // 缝隙打开时发光
+    if (gapHalf > 17) {
+      const glow = ctx.createLinearGradient(0, PLAYER_Y-gapHalf, 0, PLAYER_Y+gapHalf);
+      glow.addColorStop(0,"rgba(90,230,255,.55)"); glow.addColorStop(1,"rgba(90,230,255,.55)");
+      ctx.fillStyle = glow; ctx.fillRect(GATE_X-GATE_W, PLAYER_Y-gapHalf, GATE_W*2, gapHalf*2);
+    }
+  }
+
+  function drawPlayer(){
+    // 卡通悬浮滑翔翼（非 emoji）：机翼 + 座舱 + 飞行员 + 推进尾焰（视觉放大，碰撞盒 PW/PH 不变）
+    const hover = Math.sin(performance.now()/180) * 2;
+    const cx = x, cy = y + hover;
+    ctx.save();
+    ctx.translate(cx, cy);
+    // 推进尾焰（dash 时更亮）
+    if (phase === "dash" || phase === "resolve") {
+      const fl = ctx.createLinearGradient(-20, 0, -76, 0);
+      fl.addColorStop(0,"rgba(140,230,255,.9)"); fl.addColorStop(1,"rgba(140,230,255,0)");
+      ctx.fillStyle = fl;
+      ctx.beginPath(); ctx.moveTo(-20, -8); ctx.lineTo(-68, 0); ctx.lineTo(-20, 8); ctx.closePath(); ctx.fill();
+    }
+    // 滑翔翼（大三角机翼，机头朝右）
+    const wg = ctx.createLinearGradient(0,-40,0,40);
+    wg.addColorStop(0,"#f0be6e"); wg.addColorStop(0.5,"#d6954a"); wg.addColorStop(1,"#a0642c");
+    ctx.fillStyle = wg;
+    ctx.beginPath(); ctx.moveTo(30, 0); ctx.lineTo(-30, -38); ctx.lineTo(-38, -20);
+    ctx.lineTo(-30, 0); ctx.lineTo(-34, 10); ctx.lineTo(-30, 38); ctx.closePath(); ctx.fill();
+    // 机翼高光/边条
+    ctx.fillStyle = "#f7d89a"; ctx.fillRect(-30, -4, 56, 4);
+    // 座舱（透明玻璃，更清晰）
+    ctx.fillStyle = "rgba(180,225,255,.9)";
+    ctx.beginPath(); ctx.ellipse(2, -4, 13, 9, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "rgba(120,170,210,.8)"; ctx.lineWidth = 1.5; ctx.stroke();
+    // 飞行员（头盔 + 身体，更大）
+    ctx.fillStyle = "#e0b566"; ctx.beginPath(); ctx.ellipse(2, -2, 8, 10, 0, 0, Math.PI*2); ctx.fill();   // 身体
+    ctx.fillStyle = "#f0c9a0"; ctx.beginPath(); ctx.arc(2, -8, 7, 0, Math.PI*2); ctx.fill();              // 头
+    ctx.fillStyle = "#3a4a6e"; ctx.beginPath(); ctx.arc(2, -11, 8, Math.PI, 0); ctx.fill();               // 头盔
+    ctx.fillStyle = "#ff5c5c"; ctx.beginPath(); ctx.arc(2, -11, 8, Math.PI, 0); ctx.fill();               // 头带
+    ctx.fillStyle = "#2a1a12"; ctx.beginPath(); ctx.arc(4, -8, 1.8, 0, Math.PI*2); ctx.fill();            // 眼
+    ctx.restore();
+  }
+
+  function drawSparks(){
+    sparks.forEach(p => {
+      ctx.fillStyle = p.c;
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillRect(p.x-3, p.y-3, 6, 6);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  function render(){
+    drawSky();
+    drawGate();
+    drawPlayer();
+    drawSparks();
+  }
+
+  function frame(t){ if (!started) { requestAnimationFrame(frame); return; }
+    const dt = Math.min((t - (frame.last||t))/1000, 0.05); frame.last = t;
+    update(dt, t);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  addEventListener("keydown",(e)=>{
+    // 空格触发 Start / Next（phase 隔离）
+    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
+      const introShown = !introEl.classList.contains("hidden");
+      const retryShown = !retryOverlay.classList.contains("hidden");
+      if (introShown) { e.preventDefault(); startGame(); return; }
+      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
+    }
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    const up = k===" " || k==="w" || k==="arrowup" || c==="Space" || c==="KeyW" || c==="ArrowUp" || kc===32 || kc===87 || kc===38;
+    if (up) dash(e);
+  });
+  cv.addEventListener("mousedown", ()=>dash());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

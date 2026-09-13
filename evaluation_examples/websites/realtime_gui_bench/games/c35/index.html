@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Graze Dodge 极限闪避</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;text-align:left;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Dodge the missile 闪避导弹</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">↑</span><span class="key">↓</span> or <span class="key">W</span><span class="key">S</span> Move 移动 · 贴导弹边缘极限闪避</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Shook off the lock-on! 甩掉追踪！</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Graze Dodge 极限闪避</div>
+      <div class="intro-rule">A homing missile has locked onto your fighter and flies in. <b>Graze past its edge</b> to break the radar lock: dodge too close and you crash; dodge too far and the radar re-locks onto you.<br>一枚追踪导弹已锁定你的战机，正飞来。贴<b>导弹边缘极限闪避</b>来甩掉雷达追踪：贴太近会撞上，躲太远雷达会重新锁定你。<br><br>↑ / ↓ or W / S to move 上下键移动战机 · <b>金色环 = 极限闪避区，红色核心 = 撞毁区</b></div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Graze past the missile's edge 贴导弹边缘极限闪避</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+
+  /* ================================================================
+   * 极限闪避物理（确定性追踪，硬编码可复现，非随机）
+   *   背景：追踪导弹锁定战机，从右侧飞来，持续朝战机当前位置追踪。
+   *   追踪规则（确定性，非随机）：导弹每帧朝战机方向转向，但角速度受 OMEGA_MAX 限制，
+   *   因此速度快、转弯半径大，战机移动时导弹会「过冲」从战机旁边划弧线擦过。
+   *   给定战机的移动路径，导弹轨迹完全可复现 → 仍是 c 类（运动硬编码可复现）。
+   *   判定（导弹 x 经过战机 x 时，最近距离 d = |导弹y - 战机y|）：
+   *     d < R1        → 撞毁（贴太近）
+   *     R1 ≤ d ≤ R2   → 极限闪避成功（甩掉雷达锁，导弹直线飞出失锁）
+   *     d > R2        → 没擦到（导弹继续追踪，最终撞上或飞出 → 失败）
+   *   阈值可视化：战机红色核心圈（R1=撞毁区）+ 金色环（R2=极限闪避区）。
+   * ================================================================ */
+  const MISSILE_X0 = 780, MISSILE_Y0 = 250;  // 导弹起点（硬编码）
+  const MISSILE_V = 1100;                     // 导弹速度 px/s（快，有惯性过冲）
+  const OMEGA_MAX = 1.4;                      // 最大转向角速度 rad/s（转弯半径大）
+  const PREDICT_MS = 80;                      // 预测追踪：导弹追战机未来 80ms 位置（防长按单方向擦过）
+  const SELF_X = 160;                         // 战机固定 x
+  const R1 = 20;                              // 内圈半径（撞毁判定）
+  const R2 = 48;                              // 外圈半径（极限闪避判定，可视化）
+  const SELF_Y_MIN = 70, SELF_Y_MAX = 390;    // 战机 y 范围
+  const SELF_SPEED = 300;                     // 战机移动速度 px/s
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"graze_dodge", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "play";   // play(导弹追踪) | graze(极限闪避成功) | hit(撞毁) | miss(没擦到) | over
+  let selfY = 200;      // 战机 y
+  let mx = MISSILE_X0, my = MISSILE_Y0;  // 导弹位置
+  let mAngle = Math.atan2(selfY - MISSILE_Y0, SELF_X - MISSILE_X0);  // 导弹飞行方向
+  let locked = true;    // true=导弹追踪中，擦过成功后 false=失锁直线飞
+  let crossed = false;  // 导弹是否已穿过战机 x
+  let keys = { up:false, down:false };
+  let selfVy = 0;         // 战机当前速度（-300 上移 / +300 下移 / 0 静止）
+  let settleT = 0;
+  let grazeD = 0;       // 擦过瞬间距离 d
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status); }catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, selfY:Math.round(selfY), mx:Math.round(mx), my:Math.round(my),
+             r1:R1, r2:R2, selfX:SELF_X, locked,
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "play"; selfY = 200; mx = MISSILE_X0; my = MISSILE_Y0;
+    mAngle = Math.atan2(selfY - MISSILE_Y0, SELF_X - MISSILE_X0);
+    locked = true; crossed = false; settleT = 0; grazeD = 0; keys = { up:false, down:false };
+    setStatus("Dodge the missile 闪避导弹","");
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Graze Dodge! 极限闪避成功！","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Failed 失败","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Failed 失败","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt){
+    if (phase === "over") return;
+
+    if (phase === "play") {
+      // 战机上下移动（记录当前速度 selfVy，供预测追踪用）
+      selfVy = 0;
+      if (keys.up) selfVy = -SELF_SPEED;
+      if (keys.down) selfVy = SELF_SPEED;
+      selfY += selfVy * dt;
+      selfY = Math.max(SELF_Y_MIN, Math.min(SELF_Y_MAX, selfY));
+      // 导弹追踪（确定性：朝战机「预测未来位置」转向，角速度受 OMEGA_MAX 限制）
+      // 预测追踪：长按单方向时导弹追「前方」能追上（撞毁），只有突然变向才让导弹过冲擦过
+      if (locked) {
+        const predY = Math.max(SELF_Y_MIN, Math.min(SELF_Y_MAX, selfY + selfVy * PREDICT_MS / 1000));
+        const targetAngle = Math.atan2(predY - my, SELF_X - mx);
+        let diff = (targetAngle - mAngle + Math.PI) % (2*Math.PI) - Math.PI;
+        const maxTurn = OMEGA_MAX * dt;
+        diff = Math.max(-maxTurn, Math.min(maxTurn, diff));
+        mAngle += diff;
+      }
+      // 导弹移动（追踪时朝 mAngle，失锁后沿 mAngle 直线飞出）
+      mx += MISSILE_V * Math.cos(mAngle) * dt;
+      my += MISSILE_V * Math.sin(mAngle) * dt;
+      // 导弹经过战机 x 时判定（一次）
+      if (!crossed && mx <= SELF_X) {
+        crossed = true;
+        const d = Math.abs(my - selfY);
+        grazeD = d;
+        if (d < R1) { phase = "hit"; settleT = 0; setStatus("Crashed! 撞毁了！","lose"); }
+        else if (d <= R2) {
+          phase = "graze"; settleT = 0; locked = false;  // 擦过成功 → 雷达失锁，导弹直线飞出
+          setStatus("Shook it off! 甩掉追踪！","action");
+        }
+        else { phase = "miss"; settleT = 0; setStatus("Re-locked 重新锁定","lose"); }
+      }
+      // 导弹飞出左侧/上下边界（没擦到仍追踪，追丢飞出 → 失败）
+      if (mx < -60 || my < -60 || my > 520) {
+        if (phase === "play") { phase = "miss"; settleT = 0; grazeD = 999; setStatus("Re-locked 重新锁定","lose"); }
+      }
+    } else if (phase === "graze") {
+      // 极限闪避成功：导弹失锁直线飞出 + 特效，再弹成功框
+      mx += MISSILE_V * Math.cos(mAngle) * dt;
+      my += MISSILE_V * Math.sin(mAngle) * dt;
+      settleT += dt;
+      if (settleT >= 0.6) { win(); }
+    } else if (phase === "hit" || phase === "miss") {
+      // 撞毁/没擦到：结算延迟
+      settleT += dt;
+      if (settleT >= 0.45) { fail(); }
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#0d0a24"); g.addColorStop(.5,"#1a1035"); g.addColorStop(1,"#241545");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+  }
+  // 弹幕背景（星空/远处弹幕剪影）
+  function drawStars(){
+    ctx.fillStyle="rgba(255,255,255,.35)";
+    const pts = [[80,60],[180,110],[320,70],[460,120],[560,55],[660,90],[720,140],[250,40],[500,30],[90,160]];
+    pts.forEach(([x,y])=>{ ctx.beginPath(); ctx.arc(x,y,1.6,0,7); ctx.fill(); });
+  }
+  // 导弹（追踪导弹造型：弹头 + 尾焰）
+  function drawMissile(){
+    ctx.save();
+    ctx.translate(mx, my);
+    ctx.rotate(mAngle);
+    // 尾焰（追踪时亮，失锁后熄灭）
+    if (locked || phase === "play") {
+      ctx.fillStyle="rgba(255,170,60,.7)";
+      ctx.beginPath(); ctx.moveTo(-10,-3); ctx.lineTo(-22,0); ctx.lineTo(-10,3); ctx.closePath(); ctx.fill();
+    }
+    // 弹体
+    ctx.fillStyle="#c9cdd6";
+    ctx.beginPath(); ctx.ellipse(0, 0, 10, 4, 0, 0, 7); ctx.fill();
+    // 弹头（红）
+    ctx.fillStyle="#ff5c7a";
+    ctx.beginPath(); ctx.moveTo(8,-4); ctx.lineTo(14,0); ctx.lineTo(8,4); ctx.closePath(); ctx.fill();
+    // 雷达锁光环（追踪中金色闪烁）
+    if (locked && phase === "play") {
+      ctx.strokeStyle="rgba(246,196,83,.8)"; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(0,0,14,0,7); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // 自机（简约战机：机身 + 判定圈可视化）
+  function drawSelf(){
+    const x = SELF_X, y = selfY;
+    // 擦弹环（外圈 R2，金色半透明，可视化「贴多近算擦弹」）
+    ctx.strokeStyle="rgba(246,196,83,.6)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(x, y, R2, 0, 7); ctx.stroke();
+    ctx.fillStyle="rgba(246,196,83,.08)";
+    ctx.beginPath(); ctx.arc(x, y, R2, 0, 7); ctx.fill();
+    // 中弹核心（内圈 R1，红色，可视化「撞上算中弹」）
+    ctx.strokeStyle="rgba(255,92,122,.7)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(x, y, R1, 0, 7); ctx.stroke();
+    // 机身（战机简形）
+    ctx.save();
+    ctx.translate(x, y);
+    const bg = ctx.createLinearGradient(0,-10,0,10);
+    bg.addColorStop(0,"#7cc6ff"); bg.addColorStop(1,"#3a7bd5");
+    ctx.fillStyle="#0a2034";
+    ctx.beginPath(); ctx.arc(0,0,9,0,7); ctx.fill();
+    ctx.fillStyle=bg; ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(1,2,1.8,0,7); ctx.fill();
+    // 机翼
+    ctx.fillStyle="#4a8fd8";
+    ctx.beginPath(); ctx.moveTo(2,0); ctx.lineTo(12,-7); ctx.lineTo(14,0); ctx.lineTo(12,7); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // 擦弹成功特效（金色环扩散）
+  function drawGrazeFx(){
+    const r = Math.min(1, settleT / 0.4);
+    ctx.strokeStyle=`rgba(246,196,83,${0.8*(1-r)})`; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.arc(SELF_X, selfY, R2 + r*40, 0, 7); ctx.stroke();
+  }
+
+  function render(){
+    drawSky();
+    drawStars();
+    drawMissile();
+    drawSelf();
+    if (phase === "graze") drawGrazeFx();
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 移动键 + 空格触发 Start/Next（phase 隔离）
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const up = k==="arrowup"||k==="w"||c==="ArrowUp"||c==="KeyW"||kc===38||kc===87;
+    const down = k==="arrowdown"||k==="s"||c==="ArrowDown"||c==="KeyS"||kc===40||kc===83;
+    const space = k===" "||c==="Space"||kc===32;
+    if (up) { e.preventDefault(); keys.up = true; }
+    if (down) { e.preventDefault(); keys.down = true; }
+    if (space) {
+      e.preventDefault();
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+    }
+  });
+  addEventListener("keyup",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const up = k==="arrowup"||k==="w"||c==="ArrowUp"||c==="KeyW"||kc===38||kc===87;
+    const down = k==="arrowdown"||k==="s"||c==="ArrowDown"||c==="KeyS"||kc===40||kc===83;
+    if (up) keys.up = false;
+    if (down) keys.down = false;
+  });
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

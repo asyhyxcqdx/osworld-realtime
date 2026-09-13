@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wall Jump 墙跳</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Slide down the wall 沿墙滑下</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Space</span> Jump off 反向跳</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Landed on the rooftop 落在屋顶上</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Wall Jump 墙跳</div>
+      <div class="intro-rule">A rooftop runner slides down the wall, then kicks off at the <b>right height</b> to arc onto the rooftop across the gap.<br>跑酷者沿墙滑下，在<b>正确高度</b>蹬墙反向跳、越过深渊落在对面屋顶上。<br><br>Space to jump off 按空格反向跳</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Jump off at the right height 在正确高度反向跳</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  // 物理参数（Python 模拟定稿）：正确跳离高度 y∈[222,342]，时间窗口约 183ms
+  const G_SLIDE = 900;   // 贴墙滑行重力
+  const G_FLY = 1400;    // 反向跳后飞行重力
+  const VJY = 520;       // 反向跳垂直速度（向上）
+  const VJX = 420;       // 反向跳水平速度（向左）
+  const WALL_X = 650;    // 主角贴墙 x
+  const START_Y = 40;    // 起始 y
+  const PLAT_L = 300, PLAT_R = 400, PLAT_Y = 290;  // 高台 [300,400] 顶 290
+  const SIZE = 34;
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"wall_jump", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "slide";      // slide | fly | landed | fell | over
+  let x = WALL_X, y = START_Y, vx = 0, vy = 0, prevY = START_Y;
+  let squash = 1, landStart = 0, fellStart = 0;
+  const particles = [];
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, x:Math.round(x), y:Math.round(y), vx:+vx.toFixed(0), vy:+vy.toFixed(0),
+             plat:{L:PLAT_L,R:PLAT_R,y:PLAT_Y}, windowY:[222,342],
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "slide"; x = WALL_X; y = START_Y; vx = 0; vy = 0; prevY = START_Y;
+    squash = 1; particles.length = 0;
+    setStatus("Slide down the wall 沿墙滑下","");
+  }
+
+  function jump(){
+    if (phase === "slide") {
+      vx = -VJX; vy = -VJY; phase = "fly"; prevY = y; squash = 1.30;
+      puff(x, y);
+      setStatus("Jump! 跳！","action");
+    }
+  }
+
+  function puff(px, py){
+    for(let i=0;i<10;i++) particles.push({x:px+(-8+Math.random()*16), y:py-2, vx:1-Math.random()*2, vy:-.5-Math.random()*1.5, life:1, size:2+Math.random()*3, c:"#cfd6e4"});
+  }
+
+  function onHit(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Success 成功","win"); syncURL(); celebrate();
+  }
+  function onMiss(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Failed 失败","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Fell 掉落","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt, now){
+    if (phase === "slide") {
+      vy += G_SLIDE * dt;
+      y += vy * dt;
+      squash += (1 - squash) * 12 * dt;
+      if (y > 460) {
+        y = 460;
+        phase = "fell"; fellStart = now;
+        setStatus("Fell 掉落","lose");
+      }
+      return;
+    }
+    if (phase === "fly") {
+      prevY = y;
+      vy += G_FLY * dt;
+      y += vy * dt;
+      x += vx * dt;
+      squash += (1 - squash) * 12 * dt;
+      // 从上方落在屋顶孤岛顶（只有 x∈[300,400] 才判定落地；否则穿过继续下落）
+      if (y >= PLAT_Y && prevY < PLAT_Y && x >= PLAT_L && x <= PLAT_R) {
+        y = PLAT_Y; vy = 0;
+        phase = "landed"; landStart = now; squash = .74;
+        puff(x, y);
+        setStatus("Landed! 落稳了！","win");
+        return;
+      }
+      // 掉深渊（y>460 或 x 飞出画布）
+      if (y > 460 || x < -60 || x > 800) {
+        phase = "fell"; fellStart = now;
+        setStatus("Fell 掉落","lose");
+        return;
+      }
+      return;
+    }
+    if (phase === "landed") {
+      if (now - landStart >= 500) onHit();
+      return;
+    }
+    if (phase === "fell") {
+      vy += G_FLY * dt;
+      y += vy * dt;
+      if (now - fellStart >= 600) onMiss();
+      return;
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#2a3a5c"); g.addColorStop(.55,"#4a5a80"); g.addColorStop(1,"#7a88a8");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+  }
+  function drawCloud(cx,cy,s,o){ ctx.fillStyle="rgba(255,255,255,"+o+")";
+    ctx.beginPath(); ctx.arc(cx,cy,16*s,0,7); ctx.arc(cx+20*s,cy-8*s,20*s,0,7); ctx.arc(cx+44*s,cy,15*s,0,7); ctx.arc(cx+20*s,cy+4*s,17*s,0,7); ctx.fill(); }
+  // 远景城市剪影
+  function drawSkyline(){
+    ctx.fillStyle = "rgba(20,30,50,.5)";
+    for (let i=0;i<8;i++){
+      const bx = i*70, bw = 40, bh = 60 + (i%3)*36;
+      ctx.fillRect(bx, 340-bh, bw, bh);
+    }
+  }
+  // 对面楼（高台 [300,400] 顶 290，长方形楼体）
+  function drawRooftop(){
+    const w = PLAT_R - PLAT_L;
+    // 屋顶草地（带厚度 + 阴影）
+    ctx.fillStyle="#3a8a3a"; ctx.fillRect(PLAT_L, PLAT_Y, w, 16);
+    ctx.fillStyle="#4caf50"; ctx.fillRect(PLAT_L, PLAT_Y, w, 11);
+    ctx.fillStyle="#43a047"; ctx.fillRect(PLAT_L, PLAT_Y+11, w, 5);
+    // 屋顶前缘厚度
+    ctx.fillStyle="#2e7d32"; ctx.fillRect(PLAT_L, PLAT_Y+14, w, 3);
+    // 楼体（长方形，垂直矩形楼体）
+    const s=ctx.createLinearGradient(0,PLAT_Y+19,0,460);
+    s.addColorStop(0,"#6a5a4a"); s.addColorStop(1,"#3a2f28");
+    ctx.fillStyle=s;
+    ctx.fillRect(PLAT_L, PLAT_Y+19, w, 460-PLAT_Y-19);
+    // 建筑明暗（右侧暗边）
+    const sh=ctx.createLinearGradient(PLAT_R-40,0,PLAT_R,0);
+    sh.addColorStop(0,"rgba(0,0,0,0)"); sh.addColorStop(1,"rgba(0,0,0,.3)");
+    ctx.fillStyle=sh; ctx.fillRect(PLAT_R-40, PLAT_Y+19, 40, 460-PLAT_Y-19);
+    // 建筑窗户（暖光）
+    ctx.fillStyle="rgba(255,220,140,.5)";
+    for(let wy=PLAT_Y+30; wy<440; wy+=28){
+      for(let wx=PLAT_L+12; wx<PLAT_R-26; wx+=34){ ctx.fillRect(wx,wy,14,11); }
+    }
+    // 右缘金色目标提示
+    ctx.fillStyle="rgba(246,196,83,.7)"; ctx.fillRect(PLAT_R-4, PLAT_Y-8, 8, 16);
+    ctx.fillStyle="rgba(246,196,83,.3)"; ctx.fillRect(PLAT_R-8, PLAT_Y-10, 16, 20);
+  }
+  // 深渊（屋顶孤岛左右两侧，带雾层与边缘阴影）
+  function drawAbyss(){
+    const s=ctx.createLinearGradient(0,PLAT_Y,0,460);
+    s.addColorStop(0,"#1a2438"); s.addColorStop(.55,"#121a2c"); s.addColorStop(1,"#0a0e1a");
+    ctx.fillStyle=s;
+    ctx.fillRect(0, PLAT_Y, PLAT_L, 460-PLAT_Y);                      // 左侧深渊
+    ctx.fillRect(PLAT_R, PLAT_Y, WALL_X+17-PLAT_R, 460-PLAT_Y);       // 右侧深渊
+    // 底部雾层（深渊深度感）
+    const fog=ctx.createLinearGradient(0,370,0,460);
+    fog.addColorStop(0,"rgba(130,150,190,0)"); fog.addColorStop(1,"rgba(130,150,190,.28)");
+    ctx.fillStyle=fog;
+    ctx.fillRect(0, 370, PLAT_L, 90);
+    ctx.fillRect(PLAT_R, 370, WALL_X+17-PLAT_R, 90);
+    // 屋顶左缘暗边（左侧深渊边缘）
+    const ledge=ctx.createLinearGradient(PLAT_L-18,0,PLAT_L,0);
+    ledge.addColorStop(0,"rgba(0,0,0,0)"); ledge.addColorStop(1,"rgba(0,0,0,.5)");
+    ctx.fillStyle=ledge; ctx.fillRect(PLAT_L-18, PLAT_Y, 18, 460-PLAT_Y);
+    // 屋顶右缘暗边（右侧深渊边缘）
+    const redge=ctx.createLinearGradient(PLAT_R,0,PLAT_R+18,0);
+    redge.addColorStop(0,"rgba(0,0,0,.5)"); redge.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=redge; ctx.fillRect(PLAT_R, PLAT_Y, 18, 460-PLAT_Y);
+    // 墙左缘暗边
+    const wed=ctx.createLinearGradient(WALL_X+17,0,WALL_X+35,0);
+    wed.addColorStop(0,"rgba(0,0,0,.4)"); wed.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=wed; ctx.fillRect(WALL_X+17, 0, 18, 460);
+  }
+  // 右侧高楼外墙（砖墙 + 窗户）
+  function drawWall(){
+    const wx = WALL_X + 17;   // 主角右边缘贴墙
+    const g=ctx.createLinearGradient(wx,0,wx+133,0);
+    g.addColorStop(0,"#6a5a4a"); g.addColorStop(1,"#46382e");
+    ctx.fillStyle=g; ctx.fillRect(wx,0,800-wx,460);
+    // 砖缝
+    ctx.strokeStyle="rgba(0,0,0,.28)"; ctx.lineWidth=1.5;
+    for(let yy=18; yy<460; yy+=30){ ctx.beginPath(); ctx.moveTo(wx,yy); ctx.lineTo(800,yy); ctx.stroke(); }
+    for(let xx=wx+26; xx<800; xx+=26){ ctx.beginPath(); ctx.moveTo(xx,0); ctx.lineTo(xx,460); ctx.stroke(); }
+    // 窗户（暖光，部分暗模拟未开灯）
+    for(let wy=30; wy<440; wy+=60){
+      for(let wx2=wx+12; wx2<790; wx2+=52){
+        const lit = ((wx2*7 + wy) % 17 < 11);
+        ctx.fillStyle = lit ? "rgba(255,220,140,.45)" : "rgba(30,40,60,.5)";
+        ctx.fillRect(wx2,wy,22,28);
+      }
+    }
+    // 墙底阴影
+    const bsh=ctx.createLinearGradient(0,400,0,460);
+    bsh.addColorStop(0,"rgba(0,0,0,0)"); bsh.addColorStop(1,"rgba(0,0,0,.3)");
+    ctx.fillStyle=bsh; ctx.fillRect(wx,400,800-wx,60);
+  }
+  // 主角（复用 C1/c38 青蓝小人，朝左）
+  function drawRunner(){
+    const py = y - SIZE*squash;
+    ctx.save();
+    ctx.translate(x, py + SIZE*squash);   // 主角矩形中心在 x，右边缘 = x+SIZE/2 = 667 贴墙
+    ctx.scale(-1, 1);   // 朝左
+    ctx.scale(1, squash);
+    const grd = ctx.createLinearGradient(0,-SIZE,0,0);
+    grd.addColorStop(0,"#45d5f0"); grd.addColorStop(1,"#1fa8c9");
+    ctx.fillStyle=grd; ctx.beginPath(); rr(-SIZE/2,-SIZE,SIZE,SIZE,9); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,.25)"; ctx.beginPath(); rr(-SIZE/2+3,-SIZE+4,SIZE-6,SIZE/2-5,6); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(SIZE/2-9,-SIZE+14,5.5,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-22,-SIZE+14,5.5,0,7); ctx.fill();
+    ctx.fillStyle="#123039"; ctx.beginPath(); ctx.arc(SIZE/2-7,-SIZE+14,2.6,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(SIZE/2-20,-SIZE+14,2.6,0,7); ctx.fill();
+    ctx.strokeStyle="#123039"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(SIZE/2-16,-SIZE+24,5,.1,Math.PI-.1); ctx.stroke();
+    ctx.restore();
+  }
+  function drawParticles(){
+    particles.forEach(p=>{ ctx.globalAlpha = p.life; ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.size*p.life+.5, 0, 7); ctx.fill(); });
+    ctx.globalAlpha = 1;
+  }
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function render(){
+    drawSky();
+    drawCloud(120,70,1,.85); drawCloud(520,110,.8,.75); drawCloud(90,150,.7,.7);
+    drawSkyline();
+    drawRooftop();
+    drawAbyss();
+    drawWall();
+    drawRunner();
+    drawParticles();
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt, now);
+    // 粒子持续衰减
+    particles.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.vy+=0.05; p.life-=0.03; });
+    for(let i=particles.length-1;i>=0;i--) if(particles[i].life<=0) particles.splice(i,1);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 空格触发 Start/Next + 反向跳（phase 隔离）；W/Up 也跳跃
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const isSpace = k===" "||c==="Space"||kc===32;
+    const isJump  = k==="w"||k==="arrowup"||c==="KeyW"||c==="ArrowUp"||kc===87||kc===38;
+    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    if (isSpace){
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+      else jump();
+    } else if (isJump){
+      jump();
+    }
+  });
+  cv.addEventListener("mousedown", ()=>jump());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

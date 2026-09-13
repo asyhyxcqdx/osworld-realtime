@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Variable-Speed Knife Throw</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:var(--bg);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6;user-select:none;overflow:hidden;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;}
+  .status{font-size:24px;font-weight:800;min-height:32px;letter-spacing:.4px;text-align:center;}
+  .status.alert{color:#ffd166;}
+  .status.action{font-size:30px;font-weight:800;color:var(--gold);text-shadow:0 0 14px rgba(246,196,83,.55);letter-spacing:.5px;}
+  .status.danger{font-size:30px;font-weight:800;color:#ff5c5c;text-shadow:0 0 16px rgba(255,80,80,.6);letter-spacing:.5px;}
+  .status.win{color:var(--ok1);} .status.lose{color:var(--fail1);}
+  canvas{border-radius:16px;box-shadow:0 16px 44px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);display:block;}
+  .hint{font-size:14px;color:#9aa3c7;letter-spacing:.5px;}
+  .tip{font-size:13px;color:#9aa3c7;letter-spacing:.4px;}
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 52px;text-align:center;max-width:640px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="tip">Press SPACE to throw when the gap faces the left slot  空隙转到左侧投刀口时按空格水平投刀</div>
+  <div class="hint" id="hint">Attempt 0 / 3 尝试 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功！</div>
+      <div class="celeb-sub">Knife landed safely in the gap 刀安全穿过空隙</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Variable-Speed Knife Throw 飞刀马戏团</div>
+      <div class="intro-rule">Circus knife-throwing: <b>hostages</b> are tied to a spinning disc. The disc spins at a <b>randomly changing speed</b> (a mechanical glitch). Throw your knife horizontally through a <b>narrow gap</b> to hit the board — but never hit a hostage!<br>马戏团飞刀表演：几个<b>人质</b>被绑在旋转圆盘上。圆盘因<b>机关故障</b>转速随机变化。等盘上的<b>窄空隙</b>转到左侧投刀口时，按空格<b>水平投出</b>飞刀穿过空隙击中标靶，但绝不能伤到人质！</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Hit a hostage! 伤到人质了！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const W = 800, H = 460;
+
+  // 刀盘几何
+  const CX = 400, CY = 250;             // 圆盘中心
+  const DISK_R = 180;                    // 圆盘半径
+  const SHOOT_ANG = Math.PI;             // 投刀口固定位置（左侧 9 点方向，绝对角 π，刀从左侧水平投出）
+
+  // 空隙布局（盘上相对角度，弧度）：1 个主空隙（人类瞄准）+ 2 个窄空隙（几乎投不进）
+  const d2r = (deg) => deg * Math.PI / 180;
+  // 障碍：4 个人质（填满大部分盘面）+ 3 把刀；安全空隙只剩 3 个窄缝
+  const GAPS = [
+    { start: d2r(72),  end: d2r(79),  wide: false },   // 窄空隙 1（7°，投不进）
+    { start: d2r(161), end: d2r(168), wide: false },   // 窄空隙 2（7°，投不进）
+    { start: d2r(178), end: d2r(206), wide: true  },   // 主空隙（28°，人类瞄准这条）
+  ];
+  // 人质占据的盘上弧段（红色不可投区）：0~72、89~161、216~288、288~360
+  const PARTNER_ARCS = [
+    [0, 72], [89, 161], [216, 288], [288, 360],
+  ];
+  // 人质中点（画人形用）
+  const PARTNER_MIDS = [36, 125, 252, 324];
+  // 刀中点（画刀用）
+  const KNIFE_MIDS = [84, 173, 211];
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  const BENCH = { task:"variable_speed_knife_throw", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+"  尝试 "+BENCH.attempts+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  // 状态机：spin(刀盘旋转) | throwFlight(刀飞出) | hit | miss
+  let phase = "spin";
+  let angle = 0;                        // 刀盘当前旋转角
+  let angV = 2.0;                       // 角速度 rad/s（随机，可正可负=可反转）
+  let phaseT = 0;
+  let lastT = performance.now();
+  let throwResult = null;
+
+  function normalize(a){ return ((a % (Math.PI*2)) + Math.PI*2) % (Math.PI*2); }
+  function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+
+  window.__dbg = function(){
+    const g = gapAtShoot();
+    return { phase, angle:+normalize(angle).toFixed(3), angV:+angV.toFixed(3), gap:g ? (g.wide ? "wide" : "narrow") : null, attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  // 投刀口当前落在哪个空隙（按盘上相对角 SHOOT_ANG - angle 归一化后判断）
+  function gapAtShoot(){
+    const rel = normalize(SHOOT_ANG - angle);
+    for (const g of GAPS){
+      if (rel >= g.start && rel <= g.end) return g;
+    }
+    return null;
+  }
+
+  function resetRound(){
+    phase = "spin";
+    angle = Math.random() * Math.PI * 2;
+    // ★ 随机旋转速度：每次 try 初始转速随机（1.5~3.0 rad/s）
+    angV = 1.5 + Math.random() * 1.5;
+    phaseT = 0;
+    throwResult = null;
+    setStatus("Throw! 投刀！","action");
+  }
+
+  function doThrow(){
+    if (phase !== "spin") return;
+    const g = gapAtShoot();
+    throwResult = g ? "hit" : "miss";
+    phase = "throwFlight";
+    phaseT = 0;
+    setStatus(throwResult === "hit" ? "Throwing… 投刀中…" : "Throw… 投刀…","");
+  }
+
+  function settle(){
+    if (throwResult === "hit") {
+      phase = "hit";
+      BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Landed safely! 安全穿过！","win"); syncURL(); celebrate();
+    } else {
+      phase = "miss";
+      missAt = performance.now();
+      BENCH.results.push("miss");
+      BENCH.attempts += 1; setHint();
+      setStatus("Hit! 伤到人质了！","lose"); syncURL();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        setTimeout(()=>{ BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show"); }, 700);
+        return;
+      }
+      setTimeout(()=>{
+        document.getElementById("retrySub").textContent = "Hit a hostage! 伤到人质了！";
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }, 700);
+    }
+  }
+
+  function update(dt){
+    const dtS = dt/1000;
+    if (phase === "spin") {
+      // ★ 随机旋转速度：角速度每帧随机扰动（加速/减速）+ 偶尔反转
+      angV += (Math.random()-0.5) * 1.6;
+      if (Math.random() < 0.004) angV = -angV;           // 偶尔反转方向
+      const absCap = Math.max(0.6, Math.min(4.5, Math.abs(angV)));
+      angV = (angV >= 0 ? 1 : -1) * absCap;
+      angle += angV * dtS;
+      angle = normalize(angle);
+    } else if (phase === "throwFlight") {
+      phaseT += dt;
+      if (phaseT >= 600) settle();   // 投刀动画 600ms 后结算
+    }
+  }
+
+  // ---- 渲染 ----
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function drawBack(){
+    // 马戏团帐篷舞台
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#3a1e2a"); g.addColorStop(0.5,"#4a2438"); g.addColorStop(1,"#2a1520");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // 帐篷顶条纹
+    ctx.fillStyle="rgba(255,255,255,.05)";
+    for (let i=0;i<8;i++){ ctx.beginPath(); ctx.moveTo(100+i*80,0); ctx.lineTo(40+i*80,H); ctx.lineTo(120+i*80,H); ctx.closePath(); ctx.fill(); }
+    // 顶部彩旗（马戏团标志）
+    const flagColors = ["#f6c453","#ff5c7a","#4c7dff","#34d399","#f59e0b"];
+    for (let i=0;i<9;i++) {
+      const fx = 90 + i*78;
+      ctx.fillStyle = flagColors[i%5];
+      ctx.beginPath(); ctx.moveTo(fx, 6); ctx.lineTo(fx+20, 14); ctx.lineTo(fx, 30); ctx.closePath(); ctx.fill();
+    }
+    // 顶部横幅绳
+    ctx.strokeStyle="#c9a86a"; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(70,14); ctx.lineTo(730,14); ctx.stroke();
+    // 聚光灯（两侧射向舞台中心）
+    const light1 = ctx.createLinearGradient(40,0,400,240);
+    light1.addColorStop(0,"rgba(255,240,180,.16)"); light1.addColorStop(1,"rgba(255,240,180,0)");
+    ctx.fillStyle=light1;
+    ctx.beginPath(); ctx.moveTo(40,0); ctx.lineTo(300,0); ctx.lineTo(500,300); ctx.lineTo(200,300); ctx.closePath(); ctx.fill();
+    const light2 = ctx.createLinearGradient(760,0,400,240);
+    light2.addColorStop(0,"rgba(255,240,180,.16)"); light2.addColorStop(1,"rgba(255,240,180,0)");
+    ctx.fillStyle=light2;
+    ctx.beginPath(); ctx.moveTo(760,0); ctx.lineTo(500,0); ctx.lineTo(300,300); ctx.lineTo(600,300); ctx.closePath(); ctx.fill();
+    // 舞台地面
+    ctx.fillStyle="#2a1a2a"; ctx.fillRect(0,420,W,H-420);
+    ctx.fillStyle="#3a2a3a"; ctx.fillRect(0,420,W,5);
+    // 机械投刀发射装置（左侧，弓弩造型，管口朝右指向圆盘）
+    drawLauncher();
+  }
+
+  function drawLauncher(){
+    const lx = 112, ly = CY;   // 发射装置中心（远离圆盘左缘 220，避免与盘上刀穿模）
+    // 弩身（横置木座）
+    ctx.fillStyle="#6b4f32"; rr(lx-46, ly-16, 52, 32, 6); ctx.fill();
+    ctx.strokeStyle="#4a3522"; ctx.lineWidth=2; rr(lx-46, ly-16, 52, 32, 6); ctx.stroke();
+    // 弓臂（竖着的弧形弓，在弩身左侧）
+    ctx.strokeStyle="#8a5a3a"; ctx.lineWidth=5;
+    ctx.beginPath(); ctx.arc(lx-40, ly, 30, -Math.PI/2.4, Math.PI/2.4); ctx.stroke();
+    // 弓弦
+    ctx.strokeStyle="#d9c9a0"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(lx-40, ly-27); ctx.lineTo(lx+2, ly); ctx.lineTo(lx-40, ly+27); ctx.stroke();
+    // 发射轨道（导轨，刀从这里水平滑出）
+    ctx.fillStyle="#3a2e24"; rr(lx-8, ly-6, 60, 12, 3); ctx.fill();
+    ctx.strokeStyle="#5a4a3a"; ctx.lineWidth=1.5; rr(lx-8, ly-6, 60, 12, 3); ctx.stroke();
+    // 管口金属环（朝右，指向圆盘）
+    ctx.fillStyle="#9aa3b2"; rr(lx+48, ly-12, 10, 24, 4); ctx.fill();
+    ctx.strokeStyle="#6b7280"; ctx.lineWidth=1.5; rr(lx+48, ly-12, 10, 24, 4); ctx.stroke();
+    // 支架（下支撑）
+    ctx.fillStyle="#4a3a34"; ctx.fillRect(lx-8, ly+16, 14, 24);
+    ctx.fillStyle="#332a22"; ctx.fillRect(lx-16, ly+40, 30, 8);
+    // 待投的刀（放在轨道上，管口内侧，刀尖朝右）
+    ctx.fillStyle="#e8e8f0";
+    ctx.beginPath(); ctx.moveTo(lx+30, ly-4); ctx.lineTo(lx+46, ly); ctx.lineTo(lx+30, ly+4); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="#8888a0"; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle="#8a5a3a"; ctx.fillRect(lx+22, ly-5, 8, 10);
+  }
+
+  function drawDisk(){
+    const g = ctx.createLinearGradient(CX-DISK_R, CY-DISK_R, CX+DISK_R, CY+DISK_R);
+    g.addColorStop(0,"#c9a86a"); g.addColorStop(.5,"#a8864e"); g.addColorStop(1,"#7a5f34");
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(CX, CY, DISK_R, 0, 7); ctx.fill();
+    ctx.strokeStyle="#5a4428"; ctx.lineWidth=5; ctx.stroke();
+    ctx.strokeStyle="rgba(0,0,0,.2)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(CX, CY, DISK_R-24, 0, 7); ctx.stroke();
+    ctx.fillStyle="#4a3a34"; ctx.beginPath(); ctx.arc(CX, CY, 16, 0, 7); ctx.fill();
+    ctx.fillStyle="#6b584e"; ctx.beginPath(); ctx.arc(CX, CY, 9, 0, 7); ctx.fill();
+  }
+
+  function drawPartner(){
+    // 4 个人质（被绑在盘上，填满大部分盘面的危险区）
+    ctx.save();
+    // 先画「不可投」红色警示扇区（人质占据的区域，实心填充更醒目）
+    ctx.fillStyle="rgba(200,70,90,.30)";
+    for (const [a0, a1] of PARTNER_ARCS) {
+      ctx.beginPath();
+      ctx.moveTo(CX, CY);
+      ctx.arc(CX, CY, DISK_R, angle+d2r(a0), angle+d2r(a1));
+      ctx.closePath();
+      ctx.fill();
+    }
+    // 人质人形（4 个，大字型被绑 + 惊恐表情）
+    for (const deg of PARTNER_MIDS) {
+      const mid = angle + d2r(deg);
+      const px = CX + Math.cos(mid) * (DISK_R - 32);
+      const py = CY + Math.sin(mid) * (DISK_R - 32);
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(mid + Math.PI/2);
+      // 四肢（大字型被绑）
+      ctx.strokeStyle="#7a5a5a"; ctx.lineWidth=6; ctx.lineCap="round";
+      ctx.beginPath(); ctx.moveTo(-5,-7); ctx.lineTo(-36,-5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5,-7); ctx.lineTo(36,-5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5,24); ctx.lineTo(-30,36); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5,24); ctx.lineTo(30,36); ctx.stroke();
+      // 身体
+      ctx.fillStyle="#8a5a6a"; rr(-13,-9,26,36,7); ctx.fill();
+      ctx.strokeStyle="#5a3540"; ctx.lineWidth=2; rr(-13,-9,26,36,7); ctx.stroke();
+      // 腰绳
+      ctx.strokeStyle="#c9a86a"; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(-13,8); ctx.lineTo(13,8); ctx.stroke();
+      // 头
+      ctx.fillStyle="#e8c8a0"; ctx.beginPath(); ctx.arc(0,-20,11,0,7); ctx.fill();
+      ctx.fillStyle="#2a1a1a"; ctx.beginPath(); ctx.arc(-3.5,-22,2,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(3.5,-22,2,0,7); ctx.fill();
+      ctx.strokeStyle="#2a1a1a"; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(0,-16,3.5,0,Math.PI); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawKnives(){
+    // 盘上 3 把刀（障碍）
+    for (const deg of KNIFE_MIDS) {
+      const a = angle + d2r(deg);
+      const bx = CX + Math.cos(a) * (DISK_R - 10);
+      const by = CY + Math.sin(a) * (DISK_R - 10);
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate(a);
+      ctx.fillStyle="#8a5a3a"; rr(-5, -6, 20, 12, 3); ctx.fill();
+      const bladeG = ctx.createLinearGradient(14,0,52,0);
+      bladeG.addColorStop(0,"#e8e8f0"); bladeG.addColorStop(1,"#c0c0cc");
+      ctx.fillStyle=bladeG;
+      ctx.beginPath(); ctx.moveTo(14,-4); ctx.lineTo(52,0); ctx.lineTo(14,4); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle="#8888a0"; ctx.lineWidth=1.5; ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawGapHint(){
+    // 宽空隙对准投刀口时高亮（绿圈）
+    if (phase !== "spin") return;
+    const g = gapAtShoot();
+    if (g && g.wide) {
+      const ga = angle + (g.start + g.end)/2;
+      const gx = CX + Math.cos(ga) * (DISK_R - 10);
+      const gy = CY + Math.sin(ga) * (DISK_R - 10);
+      const now = performance.now();
+      const a = 0.6 + 0.4*Math.sin(now/60);
+      ctx.strokeStyle=`rgba(52,211,153,${a})`; ctx.lineWidth=7;
+      ctx.beginPath(); ctx.arc(gx, gy, 26, 0, 7); ctx.stroke();
+    }
+  }
+
+  function drawFlyingKnife(){
+    if (phase !== "throwFlight") return;
+    // 刀从左侧发射装置（x≈112）水平投出，飞向圆盘左缘（x=220）
+    const p = Math.min(1, phaseT/650);
+    const startX = 112;
+    const endX = CX - 16;               // 飞到圆盘左缘附近
+    const curX = startX + (endX - startX) * easeOutCubic(p);
+    const deflect = throwResult === "miss" ? Math.sin(p*Math.PI) * 40 : 0;   // miss 时垂直偏转弹开
+    const rot = throwResult === "miss" ? (1-p) * 2.2 : 0;                    // miss 时旋转打飞
+    ctx.save();
+    ctx.translate(curX, CY + deflect);
+    ctx.rotate(rot);
+    // 刀尖朝右（水平），刀柄在左
+    const bladeG = ctx.createLinearGradient(0,0,40,0);
+    bladeG.addColorStop(0,"#e8e8f0"); bladeG.addColorStop(1,"#c0c0cc");
+    ctx.fillStyle=bladeG;
+    ctx.beginPath(); ctx.moveTo(-4,-5); ctx.lineTo(40,0); ctx.lineTo(-4,5); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="#8888a0"; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.fillStyle="#8a5a3a"; ctx.fillRect(-18,-7,14,14);   // 刀柄在左
+    ctx.restore();
+  }
+
+  function render(){
+    drawBack(); drawDisk(); drawPartner(); drawKnives(); drawGapHint(); drawFlyingKnife();
+
+    if (phase === "hit") {
+      const a = Math.max(0, 1-(performance.now()-hitAt)/500);
+      ctx.strokeStyle="rgba(246,196,83,"+a+")"; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(CX, CY, 70+a*20, 0, 7); ctx.stroke();
+    }
+    if (phase === "miss") {
+      const a = Math.max(0, 1-(performance.now()-missAt)/800);
+      ctx.fillStyle="rgba(255,60,60,"+(a*0.3)+")"; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 44px Arial"; ctx.textAlign="center";
+      ctx.fillText("HIT! 伤到了！", W/2, 140);
+    }
+  }
+  let hitAt = 0, missAt = 0;
+  function frame(now){
+    const dt = now - lastT; lastT = now;
+    if (dt > 0 && dt < 100) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // 空格键统一处理（按覆盖层状态隔离）
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode||e.which||0;
+    if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
+    if (e.code !== "Space" || e.repeat) return;
+    if (!introEl.classList.contains("hidden")) { startGame(); return; }
+    if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    doThrow();   // 游戏进行中：空格 = 投刀
+  });
+
+  function celebrate(){ hitAt = performance.now(); overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Breath Sway Sniper Shot 呼吸漂移狙击</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:22px; font-weight:700; min-height:30px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; cursor:crosshair; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:12px; color:#7d86ab; }
+  .key { display:inline-block; min-width:24px; height:24px; line-height:24px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 5px; }
+  .toast { position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay { position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+  .intro-rule b { color:var(--title); }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .retryOverlay.hidden { display:none; }
+  .retry-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn { margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys">
+    <span class="key">J</span> 或 点击 扣扳机 · 等准星覆盖目标再开枪
+  </div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Hit! 命中！</div>
+      <div class="celeb-sub">Bullseye 正中目标</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Breath Sway Sniper Shot 呼吸漂移狙击</div>
+      <div class="intro-rule">Aim down the scope: your <b>crosshair drifts randomly</b> from your breathing. Press <b>J</b> (or click) the instant the crosshair <b>covers the target</b>!<br>开镜瞄准：你的<b>准星因呼吸随机漂移</b>。等准星<b>覆盖目标</b>的瞬间按 <b>J</b>（或点击）扣扳机！</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Miss! 脱靶了！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const CW = 800, CH = 460;
+  const MAX_ATTEMPTS = 3;
+  const SCOPE_X = 400, SCOPE_Y = 230;   // 狙击镜中心
+  const SCOPE_R = 195;                  // 狙击镜半径
+  const TARGET_X = SCOPE_X, TARGET_Y = SCOPE_Y; // 目标在镜中心（靶心，准星从中心附近漂移必覆盖）
+  const TARGET_R = 30;                  // 目标半径
+  const HIT_R = 30;                     // 命中判定半径（准星到目标中心距离 < 此值算命中）
+  const SWAY_MIN = 55, SWAY_MAX = 140;  // 准星漂移速度范围（呼吸摇晃，持续随机，覆盖窗口约 0.4~1s）
+  const ROUND_LIMIT = 10000;            // 限时 10s（放宽，让玩家有充足时间等准星漂到靶心再扣扳机）
+
+  const BENCH = { task:"breath_sway_sniper_shot", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "aim";          // aim(瞄准) | shoot(射击动画) | hit(命中) | miss(脱靶)
+  let crossX = SCOPE_X, crossY = SCOPE_Y;  // 准星位置
+  let crossVX = 0, crossVY = 0;             // 准星漂移速度（随机游走）
+  let roundStart = 0;
+  let settleLock = false;
+  let lastTime = 0;
+  let shootAt = 0, shotX = 0, shotY = 0, shotHit = false;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    const dist = Math.hypot(crossX - TARGET_X, crossY - TARGET_Y);
+    return {
+      phase, crossX:Math.round(crossX), crossY:Math.round(crossY), crossVX:+crossVX.toFixed(1), crossVY:+crossVY.toFixed(1),
+      targetDist:Math.round(dist), covering: dist < HIT_R,
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status
+    };
+  };
+
+  function resetRound(){
+    phase = "aim";
+    // 准星初始位置在目标附近（±90px），保证漂移必然经过并覆盖目标（否则随机游走可能绕开目标、任务无解）
+    crossX = TARGET_X + (Math.random()-0.5)*180;
+    crossY = TARGET_Y + (Math.random()-0.5)*180;
+    crossVX = (Math.random()<0.5?-1:1) * (SWAY_MIN + Math.random()*(SWAY_MAX-SWAY_MIN));
+    crossVY = (Math.random()<0.5?-1:1) * (SWAY_MIN + Math.random()*(SWAY_MAX-SWAY_MIN));
+    roundStart = performance.now();
+    settleLock = false;
+    setStatus("Aim! 瞄准！","action");
+  }
+
+  function doShoot(){
+    if (phase !== "aim") return;
+    if (settleLock) return;
+    // 判定：准星是否覆盖目标
+    const dist = Math.hypot(crossX - TARGET_X, crossY - TARGET_Y);
+    shotHit = dist < HIT_R;
+    shotX = crossX; shotY = crossY;
+    phase = "shoot";
+    shootAt = performance.now();
+    setStatus("Shooting… 射击中…","");
+  }
+
+  function settle(){
+    if (settleLock) return;
+    settleLock = true;
+    if (shotHit){
+      // 命中：先播「目标碎裂」动画（phase=hit 的 700ms），动画播完再弹结算框（结算延迟）
+      phase = "hit";
+      BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Hit! 命中！","win"); syncURL();
+      setTimeout(()=>{ celebrate(); }, 700);
+    } else {
+      // 脱靶：先播「弹孔」动画（phase=miss 的 700ms），动画播完再结算失败
+      phase = "miss";
+      setStatus("Miss! 脱靶了！","lose"); syncURL();
+      setTimeout(()=>{
+        BENCH.results.push("miss");
+        BENCH.attempts += 1; setHint();
+        if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+          BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+        } else {
+          document.getElementById("retrySub").textContent = "Miss! 脱靶了！";
+          document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+          document.getElementById("retryOverlay").classList.remove("hidden");
+        }
+      }, 700);
+    }
+  }
+
+  function update(now){
+    if (phase !== "aim") {
+      if (phase === "shoot" && now - shootAt >= 400) settle();   // 射击动画 400ms 后结算
+      return;
+    }
+    if (!lastTime) lastTime = now;
+    const dt = Math.min((now - lastTime)/1000, 0.033);
+    lastTime = now;
+
+    // ★ 持续随机漂移：准星速度每帧随机扰动（呼吸摇晃不规则游走），位置/方向持续随机、每次 retry 序列不同
+    crossVX += (Math.random()-0.5) * 160;
+    crossVY += (Math.random()-0.5) * 160;
+    crossVX = Math.max(-SWAY_MAX, Math.min(SWAY_MAX, crossVX));
+    crossVY = Math.max(-SWAY_MAX, Math.min(SWAY_MAX, crossVY));
+    if (Math.abs(crossVX) < 20) crossVX = (Math.random()<0.5?-1:1)*(SWAY_MIN+Math.random()*30);
+    if (Math.abs(crossVY) < 20) crossVY = (Math.random()<0.5?-1:1)*(SWAY_MIN+Math.random()*30);
+    crossX += crossVX * dt;
+    crossY += crossVY * dt;
+
+    // 软约束（加强）：呼吸漂移围绕目标，偏移过大时强力回拉，保证任何一次 retry 准星都必然覆盖靶心
+    const offx = crossX - TARGET_X, offy = crossY - TARGET_Y;
+    const off = Math.hypot(offx, offy);
+    if (off > 45){
+      const ang = Math.atan2(offy, offx);
+      const pull = (off - 45) * 8;
+      crossVX -= Math.cos(ang) * pull * dt * 14;
+      crossVY -= Math.sin(ang) * pull * dt * 14;
+    }
+
+    // 准星限制在狙击镜内（兜底边界：软反弹 + 随机重定向）
+    const dxs = crossX - SCOPE_X, dys = crossY - SCOPE_Y;
+    const dr = Math.hypot(dxs, dys);
+    if (dr > SCOPE_R - 20){
+      // 拉回镜内
+      const ang = Math.atan2(dys, dxs);
+      crossX = SCOPE_X + Math.cos(ang) * (SCOPE_R - 20);
+      crossY = SCOPE_Y + Math.sin(ang) * (SCOPE_R - 20);
+      crossVX = -Math.cos(ang) * (SWAY_MIN + Math.random()*(SWAY_MAX-SWAY_MIN));
+      crossVY = -Math.sin(ang) * (SWAY_MIN + Math.random()*(SWAY_MAX-SWAY_MIN));
+      crossVX += (Math.random()-0.5) * 60;
+      crossVY += (Math.random()-0.5) * 60;
+    }
+
+    // 限时
+    if (now - roundStart > ROUND_LIMIT){
+      // 超时没扣扳机 → 脱靶
+      shotHit = false; shotX = crossX; shotY = crossY;
+      phase = "shoot"; shootAt = now;
+    }
+  }
+
+  // ============ 渲染 ============
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function drawBg(){
+    // 暗色战场远景（狙击手视角：模糊的远处战场）
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#2a3648"); g.addColorStop(.55,"#1e2938"); g.addColorStop(1,"#0f1620");
+    ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+    // 远景山/建筑剪影（模糊）
+    ctx.fillStyle="rgba(40,52,70,.7)";
+    ctx.beginPath(); ctx.moveTo(0,300); ctx.lineTo(140,240); ctx.lineTo(300,300); ctx.lineTo(480,255); ctx.lineTo(800,300); ctx.lineTo(800,CH); ctx.lineTo(0,CH); ctx.closePath(); ctx.fill();
+    ctx.fillStyle="rgba(30,40,56,.75)";
+    ctx.beginPath(); ctx.moveTo(0,340); ctx.lineTo(220,310); ctx.lineTo(520,345); ctx.lineTo(800,315); ctx.lineTo(800,CH); ctx.lineTo(0,CH); ctx.closePath(); ctx.fill();
+    // 地面
+    ctx.fillStyle="#141c28"; ctx.fillRect(0,370,CW,CH-370);
+  }
+
+  // 狙击镜（圆形视野 + 镜外遮罩 + 镜片反光/脏污 + 金属镜框 + 密位线）
+  function drawScope(){
+    // 镜外遮罩（暗黑，狙击镜之外看不到）
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0,0,CW,CH);
+    ctx.arc(SCOPE_X, SCOPE_Y, SCOPE_R, 0, Math.PI*2, true);
+    ctx.fillStyle="rgba(4,6,10,.94)"; ctx.fill();
+    ctx.restore();
+    // 镜片轻微暗角（内边缘渐暗）
+    const vig = ctx.createRadialGradient(SCOPE_X,SCOPE_Y,SCOPE_R*0.55,SCOPE_X,SCOPE_Y,SCOPE_R);
+    vig.addColorStop(0,"rgba(0,0,0,0)"); vig.addColorStop(1,"rgba(0,0,0,.35)");
+    ctx.fillStyle=vig;
+    ctx.beginPath(); ctx.arc(SCOPE_X,SCOPE_Y,SCOPE_R,0,7); ctx.fill();
+    // 镜片反光（左上斜向柔光）
+    ctx.save();
+    ctx.beginPath(); ctx.arc(SCOPE_X,SCOPE_Y,SCOPE_R,0,7); ctx.clip();
+    ctx.globalAlpha=0.08;
+    ctx.fillStyle="#bcd2ff";
+    ctx.beginPath(); ctx.moveTo(SCOPE_X-SCOPE_R*1.2, SCOPE_Y-SCOPE_R*0.9);
+    ctx.lineTo(SCOPE_X-SCOPE_R*0.2, SCOPE_Y-SCOPE_R*1.2);
+    ctx.lineTo(SCOPE_X+SCOPE_R*0.4, SCOPE_Y-SCOPE_R*0.1);
+    ctx.lineTo(SCOPE_X+SCOPE_R*0.1, SCOPE_Y+SCOPE_R*0.3);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.restore();
+    // 密位线（十字细刻度 + 刻度短线）
+    ctx.strokeStyle="rgba(255,255,255,.16)"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(SCOPE_X, SCOPE_Y-SCOPE_R+12); ctx.lineTo(SCOPE_X, SCOPE_Y+SCOPE_R-12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(SCOPE_X-SCOPE_R+12, SCOPE_Y); ctx.lineTo(SCOPE_X+SCOPE_R-12, SCOPE_Y); ctx.stroke();
+    // 刻度短线（mil-dot 参考）
+    ctx.strokeStyle="rgba(255,255,255,.10)"; ctx.lineWidth=1;
+    for (let i=-4;i<=4;i++){
+      if (i===0) continue;
+      ctx.beginPath(); ctx.moveTo(SCOPE_X+i*40-4, SCOPE_Y); ctx.lineTo(SCOPE_X+i*40+4, SCOPE_Y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(SCOPE_X, SCOPE_Y+i*40-4); ctx.lineTo(SCOPE_X, SCOPE_Y+i*40+4); ctx.stroke();
+    }
+    // 金属镜框（多层圆环质感）
+    ctx.strokeStyle="#20294a"; ctx.lineWidth=18; ctx.beginPath(); ctx.arc(SCOPE_X,SCOPE_Y,SCOPE_R+10,0,7); ctx.stroke();
+    ctx.strokeStyle="#3c4a72"; ctx.lineWidth=8; ctx.beginPath(); ctx.arc(SCOPE_X,SCOPE_Y,SCOPE_R+10,0,7); ctx.stroke();
+    ctx.strokeStyle="#11182a"; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(SCOPE_X,SCOPE_Y,SCOPE_R+18,0,7); ctx.stroke();
+  }
+
+  // 目标（远处静止的敌人/靶心：有微光、清晰轮廓）
+  function drawTarget(){
+    // 目标光晕
+    const glow = ctx.createRadialGradient(TARGET_X,TARGET_Y,6,TARGET_X,TARGET_Y,TARGET_R*2.2);
+    glow.addColorStop(0,"rgba(246,196,83,.20)"); glow.addColorStop(1,"rgba(246,196,83,0)");
+    ctx.fillStyle=glow;
+    ctx.beginPath(); ctx.arc(TARGET_X,TARGET_Y,TARGET_R*2.2,0,7); ctx.fill();
+    // 目标实体（径向渐变靶心）
+    const g = ctx.createRadialGradient(TARGET_X,TARGET_Y,4,TARGET_X,TARGET_Y,TARGET_R);
+    g.addColorStop(0,"#ffffff"); g.addColorStop(.4,"#f6c453"); g.addColorStop(.78,"#d35400"); g.addColorStop(1,"#8e2f1f");
+    ctx.fillStyle=g;
+    ctx.beginPath(); ctx.arc(TARGET_X, TARGET_Y, TARGET_R, 0, 7); ctx.fill();
+    ctx.strokeStyle="rgba(60,16,10,.8)"; ctx.lineWidth=2; ctx.stroke();
+    // 靶心（红心）
+    ctx.fillStyle="#c0392b"; ctx.beginPath(); ctx.arc(TARGET_X, TARGET_Y, TARGET_R*0.32, 0, 7); ctx.fill();
+    ctx.fillStyle="#7a1f16"; ctx.beginPath(); ctx.arc(TARGET_X, TARGET_Y, TARGET_R*0.13, 0, 7); ctx.fill();
+  }
+
+  // 准星（标准狙击镜十字准星：细十字线 + 中心小圈）
+  function drawCrosshair(){
+    if (phase === "miss" || phase === "hit") { drawShotMark(); return; }
+    ctx.save();
+    ctx.translate(crossX, crossY);
+    const dist = Math.hypot(crossX-TARGET_X, crossY-TARGET_Y);
+    const col = dist < HIT_R ? "#34d399" : "#ff5555";
+    ctx.strokeStyle=col; ctx.lineWidth=2;
+    const L = 22;   // 十字线半长
+    // 贯穿中心的细十字线（横竖各一条）
+    ctx.beginPath(); ctx.moveTo(-L,0); ctx.lineTo(L,0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-L); ctx.lineTo(0,L); ctx.stroke();
+    // 中心小圈（空心圆，狙击镜准星中心）
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0,0,5,0,Math.PI*2); ctx.stroke();
+    // 中心点
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(0,0,1.5,0,7); ctx.fill();
+    ctx.restore();
+    // 覆盖时的绿色提示圈
+    if (dist < HIT_R){
+      const a = 0.5 + 0.5*Math.sin(performance.now()/60);
+      ctx.strokeStyle=`rgba(52,211,153,${a})`; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(TARGET_X, TARGET_Y, TARGET_R+6, 0, 7); ctx.stroke();
+    }
+  }
+
+  // 射击弹点标记
+  function drawShotMark(){
+    ctx.fillStyle="rgba(255,255,255,.9)";
+    ctx.beginPath(); ctx.arc(shotX, shotY, 5, 0, 7); ctx.fill();
+    ctx.strokeStyle="rgba(255,80,80,.9)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(shotX, shotY, 10, 0, 7); ctx.stroke();
+  }
+
+  function render(){
+    const now = performance.now();
+    drawBg();
+    drawTarget();
+    drawScope();
+    drawCrosshair();
+    if (phase === "shoot"){
+      // 射击动画：后坐力闪光
+      const a = Math.max(0, 1-(now-shootAt)/400);
+      ctx.fillStyle=`rgba(255,240,180,${a*0.5})`; ctx.fillRect(0,0,CW,CH);
+    }
+    if (phase === "hit"){
+      // 命中：目标碎裂 + 命中光环
+      const a = Math.max(0, 1-(now-shootAt)/700);
+      ctx.strokeStyle="rgba(52,211,153,"+(a*0.9)+")"; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(TARGET_X, TARGET_Y, TARGET_R+10+a*30, 0, 7); ctx.stroke();
+      // 碎裂粒子（确定性伪随机，用 now 相位）
+      ctx.fillStyle=`rgba(246,196,83,${a})`;
+      for (let i=0;i<10;i++){
+        const ang = i/10*Math.PI*2 + now*0.002;
+        const d = (10 + a*40) * (0.6 + (i%3)*0.25);
+        ctx.beginPath(); ctx.arc(TARGET_X+Math.cos(ang)*d, TARGET_Y+Math.sin(ang)*d, 3*(1-a*0.5), 0, 7); ctx.fill();
+      }
+    }
+    if (phase === "miss"){
+      const a = Math.max(0, 1-(now-shootAt)/700);
+      ctx.fillStyle="rgba(255,60,60,"+(a*0.22)+")"; ctx.fillRect(0,0,CW,CH);
+      // 弹点弹孔（脱靶位置明确显示）
+      ctx.strokeStyle=`rgba(255,255,255,${0.9*a})`; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(shotX, shotY, 6+4*a, 0, 7); ctx.stroke();
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 42px Arial"; ctx.textAlign="center";
+      ctx.fillText("MISS 脱靶", CW/2, 120);
+    }
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  // ============ 输入 ============
+  window.addEventListener("keydown",(e)=>{
+    const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
+    if (kc === 32 || k==="j" || c==="KeyJ" || kc===74) e.preventDefault();
+    if (k==="j" || c==="KeyJ" || kc===74){
+      doShoot();
+      return;
+    }
+    if (e.code === "Space" && !e.repeat){
+      if (!introEl.classList.contains("hidden")) { startGame(); return; }
+      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    }
+  });
+  // 鼠标点击扣扳机
+  window.addEventListener("mousedown",(e)=>{
+    if (e.target === cv) doShoot();
+  });
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

@@ -105,7 +105,7 @@ MAX_PIXELS = 16384 * 28 * 28
 MAX_RATIO = 200
 
 # 定义一个函数来解析每个 action
-def parse_action(action_str):
+def parse_action(action_str, log_error=True):
     try:
         # 解析字符串为 AST 节点
         node = ast.parse(action_str, mode='eval')
@@ -148,13 +148,125 @@ def parse_action(action_str):
         }
 
     except Exception as e:
-        print(f"Failed to parse action '{action_str}': {e}")
+        if log_error:
+            print(f"Failed to parse action '{action_str}': {e}")
         return None
     
 def escape_single_quotes(text):
     # 匹配未转义的单引号（不匹配 \\'）
     pattern = r"(?<!\\)'"
     return re.sub(pattern, r"\\'", text)
+
+
+_ACTION_LINE_PATTERN = re.compile(
+    r"^[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\(",
+    re.MULTILINE,
+)
+_TYPE_ACTION_PATTERN = re.compile(
+    r"^\s*type\s*\(\s*content\s*=\s*(?P<quote>['\"])(?P<content>.*)"
+    r"(?P=quote)\s*\)\s*$",
+    re.DOTALL,
+)
+
+
+def _decode_action_content(content: str) -> str:
+    """Decode the escapes documented by the UI-TARS action prompt."""
+    decoded = []
+    index = 0
+    escapes = {
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "\\": "\\",
+        "'": "'",
+        '"': '"',
+    }
+    while index < len(content):
+        char = content[index]
+        if char == "\\" and index + 1 < len(content):
+            escaped = content[index + 1]
+            if escaped in escapes:
+                decoded.append(escapes[escaped])
+                index += 2
+                continue
+        decoded.append(char)
+        index += 1
+    return "".join(decoded)
+
+
+def _parse_action_expression(action_str: str, log_error: bool = True):
+    """Parse one model action, including non-Python multiline type content."""
+    type_match = _TYPE_ACTION_PATTERN.fullmatch(action_str)
+    if type_match is not None:
+        return {
+            "function": "type",
+            "args": {
+                "content": _decode_action_content(type_match.group("content")),
+            },
+        }
+
+    if action_str.lstrip().startswith("type"):
+        if log_error:
+            print(f"Failed to parse type action '{action_str}'")
+        return None
+
+    normalized = action_str.replace("\r\n", "\n").replace("\n", "\\n").lstrip()
+    return parse_action(normalized, log_error=log_error)
+
+
+def _split_action_calls(action_block: str) -> List[str]:
+    """Split complete action calls without splitting newlines inside type content."""
+    action_block = action_block.strip()
+    if not action_block:
+        raise ValueError("Action block is empty")
+
+    action_starts = list(_ACTION_LINE_PATTERN.finditer(action_block))
+    if not action_starts or action_starts[0].start() != 0:
+        raise ValueError(
+            f"Action block does not start with a function call: {action_block}"
+        )
+
+    actions = []
+    current_start = 0
+    for action_start in action_starts[1:]:
+        candidate = action_block[current_start:action_start.start()].strip()
+        if _parse_action_expression(candidate, log_error=False) is not None:
+            actions.append(candidate)
+            current_start = action_start.start()
+
+    final_action = action_block[current_start:].strip()
+    if _parse_action_expression(final_action, log_error=False) is None:
+        raise ValueError(f"Action can't parse: {final_action}")
+    actions.append(final_action)
+    return actions
+
+
+def _build_tk_clipboard_paste_code(text: str) -> str:
+    """Hold both X11 selections while the target consumes the paste."""
+    return (
+        "\nimport tkinter as _osworld_tk"
+        f"\n_osworld_clipboard_text = {text!r}"
+        "\n_osworld_clipboard_root = _osworld_tk.Tk()"
+        "\n_osworld_clipboard_root.withdraw()"
+        "\n_osworld_primary_holder = _osworld_tk.Text("
+        "\n    _osworld_clipboard_root, exportselection=True"
+        "\n)"
+        "\ntry:"
+        "\n    _osworld_primary_holder.insert('1.0', _osworld_clipboard_text)"
+        "\n    _osworld_primary_holder.tag_add('sel', '1.0', 'end-1c')"
+        "\n    _osworld_primary_holder.selection_own(selection='PRIMARY')"
+        "\n    _osworld_clipboard_root.clipboard_clear()"
+        "\n    _osworld_clipboard_root.clipboard_append(_osworld_clipboard_text)"
+        "\n    _osworld_clipboard_root.update()"
+        "\n    pyautogui.hotkey('shift', 'insert')"
+        "\n    _osworld_clipboard_deadline = time.monotonic() + 1.0"
+        "\n    while time.monotonic() < _osworld_clipboard_deadline:"
+        "\n        _osworld_clipboard_root.update()"
+        "\n        time.sleep(0.01)"
+        "\nfinally:"
+        "\n    _osworld_clipboard_root.destroy()"
+    )
+
 
 def round_by_factor(number: int, factor: int) -> int:
     """Returns the closest integer to 'number' that is divisible by 'factor'."""
@@ -221,47 +333,53 @@ def parse_action_to_structure_output(text, factor, origin_resized_height, origin
 
     # 正则表达式匹配 Action 字符串
     if text.startswith("Thought:"):
-        thought_pattern = r"Thought: (.+?)(?=\s*Action:|$)"
+        thought_pattern = r"Thought: (.+?)(?=^[ \t]*Action:|$)"
         thought_hint = "Thought: "
     elif text.startswith("Reflection:"):
-        thought_pattern = r"Reflection: (.+?)Action_Summary: (.+?)(?=\s*Action:|$)"
+        thought_pattern = r"Reflection: (.+?)Action_Summary: (.+?)(?=^[ \t]*Action:|$)"
         thought_hint = "Reflection: "
     elif text.startswith("Action_Summary:"):
-        thought_pattern = r"Action_Summary: (.+?)(?=\s*Action:|$)"
+        thought_pattern = r"Action_Summary: (.+?)(?=^[ \t]*Action:|$)"
         thought_hint = "Action_Summary: "
     else:
-        thought_pattern = r"Thought: (.+?)(?=\s*Action:|$)"
+        thought_pattern = r"Thought: (.+?)(?=^[ \t]*Action:|$)"
         thought_hint = "Thought: "
     reflection, thought = None, None
-    thought_match = re.search(thought_pattern, text, re.DOTALL)
+    thought_match = re.search(thought_pattern, text, re.DOTALL | re.MULTILINE)
     if thought_match:
         if len(thought_match.groups()) == 1:
             thought = thought_match.group(1).strip()
         elif len(thought_match.groups()) == 2:
             thought = thought_match.group(2).strip()
             reflection = thought_match.group(1).strip()
-    assert "Action:" in text
-    action_str = text.split("Action:")[-1]
+    action_markers = list(
+        re.finditer(
+            r"^[ \t]*Action:[ \t]*(?:\r?\n[ \t]*)?"
+            r"(?=[A-Za-z_][A-Za-z0-9_]*[ \t]*\()",
+            text,
+            re.MULTILINE,
+        )
+    )
+    assert action_markers, "No structured Action marker in model response"
+    all_action = None
+    parsed_actions = None
+    for action_marker in action_markers:
+        try:
+            candidate_actions = _split_action_calls(text[action_marker.end():])
+        except ValueError:
+            continue
+        candidate_parsed = [
+            _parse_action_expression(action, log_error=False)
+            for action in candidate_actions
+        ]
+        if all(candidate_parsed):
+            all_action = candidate_actions
+            parsed_actions = candidate_parsed
+            break
 
-    tmp_all_action = action_str.split("\n\n")
-    all_action = []
-    for action_str in tmp_all_action:
-        if "type(content" in action_str:
-            # 正则表达式匹配 content 中的字符串并转义单引号
-            def escape_quotes(match):
-                content = match.group(1)  # 获取 content 的值
-                return content
+    if all_action is None or parsed_actions is None:
+        raise ValueError("No parseable Action block in model response")
 
-            # 使用正则表达式进行替换
-            pattern = r"type\(content='(.*?)'\)"  # 匹配 type(content='...')
-            content = re.sub(pattern, escape_quotes, action_str)
-
-            # 处理字符串
-            action_str = escape_single_quotes(content)
-            action_str = "type(content='" + action_str + "')"
-        all_action.append(action_str)
-
-    parsed_actions = [parse_action(action.replace("\n","\\n").lstrip()) for action in all_action]
     actions = []
     for action_instance, raw_str in zip(parsed_actions, all_action):
         if action_instance == None:
@@ -416,22 +534,22 @@ def parsing_response_to_pyautogui_code(responses, image_height: int, image_width
         elif action_type == "type":
             # Parsing typing action using clipboard
             content = action_inputs.get("content", "")
-            content = escape_single_quotes(content)
             stripped_content = content
-            if content.endswith("\n") or content.endswith("\\n"):
-                stripped_content = stripped_content.rstrip("\\n").rstrip("\n")
+            submit = content.endswith("\n") or content.endswith("\\n")
+            if content.endswith("\n"):
+                stripped_content = content[:-1]
+            elif content.endswith("\\n"):
+                stripped_content = content[:-2]
             if content:
                 if input_swap:
-                    pyautogui_code += f"\nimport pyperclip"
-                    pyautogui_code += f"\npyperclip.copy('{stripped_content}')"
-                    pyautogui_code += f"\npyautogui.hotkey('ctrl', 'v')"
-                    pyautogui_code += f"\ntime.sleep(0.5)\n"
-                    if content.endswith("\n") or content.endswith("\\n"):
+                    pyautogui_code += _build_tk_clipboard_paste_code(stripped_content)
+                    pyautogui_code += "\n"
+                    if submit:
                         pyautogui_code += f"\npyautogui.press('enter')"
                 else:
-                    pyautogui_code += f"\npyautogui.write('{stripped_content}', interval=0.1)"
+                    pyautogui_code += f"\npyautogui.write({stripped_content!r}, interval=0.1)"
                     pyautogui_code += f"\ntime.sleep(0.5)\n"
-                    if content.endswith("\n") or content.endswith("\\n"):
+                    if submit:
                         pyautogui_code += f"\npyautogui.press('enter')"
 
         
@@ -671,7 +789,7 @@ class UITARSAgent:
         
         self.cur_callusr_count = 0
 
-    def reset(self, runtime_logger=None):
+    def reset(self, runtime_logger=None, vm_ip=None, **kwargs):
         self.thoughts = []
         self.actions = []
         self.observations = []
@@ -949,7 +1067,7 @@ class UITARSAgent:
 
         self.actions.append(actions)
 
-        if len(self.history_responses) >= self.max_trajectory_length:
+        if len(self.history_responses) > self.max_trajectory_length:
             # Default to FAIL if exceed max steps
             actions = ["FAIL"]
 

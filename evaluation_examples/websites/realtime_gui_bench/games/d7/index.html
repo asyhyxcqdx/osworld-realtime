@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drag the Gem 拖拽宝石</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #3a2c1c 0%, #14110a 58%);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#f0e8d8; user-select:none; overflow:hidden;
+  }
+  .status { font-size:22px; font-weight:700; min-height:30px; letter-spacing:.4px; }
+  .status.ready { color:#ffd166; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:grab;
+  }
+  canvas.dragging { cursor:grabbing; }
+  .hint { font-size:14px; color:#9a8c72; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#9a8c72; }
+  .toast { position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(38,32,20,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay { position:fixed; inset:0; background:rgba(10,8,4,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:620px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+  .intro-rule b { color:var(--title); }
+  .intro-start { margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200; }
+  .retryOverlay.hidden { display:none; }
+  .retry-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn { margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <div class="keys">Drag the gem into the chest before they vanish  在宝石和宝箱消失前，把宝石拖进宝箱</div>
+  <div class="hint" id="hint">Attempt 1 / 3 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Sealed! 封印成功！</div>
+      <div class="celeb-sub">The gem is sealed 宝石已封印</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Drag the Gem 拖拽宝石</div>
+      <div class="intro-rule">You are a <b>treasure hunter</b> in a dark mine. A <b>magic gem</b> and a <b>vanishing chest</b> materialize for only a moment — the gem's magic will scatter if it isn't sealed. <b>Drag the gem into the chest</b> with your mouse <b>before they vanish (1.5s)</b>.<br>你是幽暗矿洞里的<b>寻宝者</b>。一颗<b>魔法宝石</b>和一只<b>会消失的宝箱</b>只在瞬间显形——若不及时封印，宝石的魔力就会散失。在它们<b>消失（1.5 秒）前</b>，用鼠标<b>把宝石拖进宝箱</b>。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Vanished 消失了</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const LIFE_MS = 1500;      // 宝石+宝箱存在时长（窗口）
+  const GEM_R = 26, CHEST_R = 40;
+  const MIN_X = 120, MAX_X = 680, MIN_Y = 130, MAX_Y = 380;
+  const APPEAR_MS = 300;     // 出现淡入动画时长
+  const HIT_MS = 650;        // 封印动画时长（结算成功）
+  const MISS_MS = 650;       // 消散动画时长（结算失败）
+
+  const BENCH = { task:"drag_gem", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "waiting";   // waiting | out | hit | miss
+  let gemX = 200, gemY = 250, chestX = 600, chestY = 250;
+  let appearAt = 0, windowEnd = 0, appearTime = 0;
+  let dragging = false;
+  let settleLock = false;
+  let hitAt = 0, missAt = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, gemX: Math.round(gemX), gemY: Math.round(gemY), gemR: GEM_R,
+             chestX: Math.round(chestX), chestY: Math.round(chestY), chestR: CHEST_R, dragging,
+             attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status };
+  };
+
+  function pickPos(){
+    // 宝石 + 宝箱随机位置，保证初始距离足够（避免一出现就在一起）
+    let gx, gy, cx2, cy2, tries = 0;
+    do {
+      gx = MIN_X + Math.random()*(MAX_X-MIN_X);
+      gy = MIN_Y + Math.random()*(MAX_Y-MIN_Y);
+      cx2 = MIN_X + Math.random()*(MAX_X-MIN_X);
+      cy2 = MIN_Y + Math.random()*(MAX_Y-MIN_Y);
+      tries++;
+    } while (Math.hypot(gx-cx2, gy-cy2) < 200 && tries < 20);
+    return { gemX:gx, gemY:gy, chestX:cx2, chestY:cy2 };
+  }
+
+  function resetRound(){
+    phase = "waiting";
+    settleLock = false;
+    dragging = false; cv.classList.remove("dragging");
+    const p = pickPos(); gemX = p.gemX; gemY = p.gemY; chestX = p.chestX; chestY = p.chestY;
+    appearAt = performance.now() + 500 + Math.random()*800;   // 随机延迟：时机随机
+    setStatus("Get ready… 准备…","ready");
+  }
+  function out(now){ phase = "out"; windowEnd = now + LIFE_MS; appearTime = now; setStatus("Drag it! 拖进去！","action"); }
+
+  function hit(){
+    if (phase !== "out" || settleLock) return;
+    settleLock = true;
+    phase = "hit";
+    hitAt = performance.now();
+    dragging = false; cv.classList.remove("dragging");
+    setStatus("Sealed! 封印成功！","win");
+    // 结算延迟：先播「宝石融入宝箱 + 金光」动画，再 celebrate
+    setTimeout(()=>{
+      BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+      syncURL(); celebrate();
+    }, HIT_MS);
+  }
+  function miss(){
+    if (phase !== "out" || settleLock) return;
+    settleLock = true;
+    phase = "miss";
+    missAt = performance.now();
+    dragging = false; cv.classList.remove("dragging");
+    setStatus("Vanished 消失了","lose");
+    // 结算延迟：先播「宝石宝箱消散」动画，再安排下一轮/失败框
+    setTimeout(()=>{
+      BENCH.results.push(false);
+      BENCH.attempts += 1; setHint();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
+      } else {
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retrySub").textContent = "Vanished 消失了";
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }
+    }, MISS_MS);
+  }
+
+  function update(now){
+    if (phase === "waiting" && now >= appearAt) out(now);
+    else if (phase === "out" && now >= windowEnd) miss();
+  }
+
+  // ---- 拖拽 ----
+  function canvasPos(e){ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)*(cv.width/r.width), y:(e.clientY-r.top)*(cv.height/r.height)}; }
+  cv.addEventListener("mousedown",(e)=>{
+    if (phase !== "out") return;
+    const p = canvasPos(e);
+    if (Math.hypot(p.x-gemX, p.y-gemY) <= GEM_R + 8) { dragging = true; cv.classList.add("dragging"); }
+  });
+  window.addEventListener("mousemove",(e)=>{
+    if (!dragging || phase !== "out") return;
+    const p = canvasPos(e);
+    gemX = Math.max(GEM_R, Math.min(CW-GEM_R, p.x));
+    gemY = Math.max(GEM_R, Math.min(CH-GEM_R, p.y));
+    if (Math.hypot(gemX-chestX, gemY-chestY) <= CHEST_R) hit();
+  });
+  window.addEventListener("mouseup",()=>{ if (dragging){ dragging = false; cv.classList.remove("dragging"); } });
+
+  // ============ 渲染 ============
+  function drawBg(){
+    // 矿洞岩壁（深棕灰渐变）
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#221a12"); g.addColorStop(.6,"#2e2417"); g.addColorStop(1,"#1b140c");
+    ctx.fillStyle=g; ctx.fillRect(0,0,CW,CH);
+    // 岩壁斑块纹理（低 alpha）
+    ctx.fillStyle="rgba(255,255,255,.028)";
+    for (let i=0;i<16;i++){ ctx.beginPath(); ctx.arc((i*57+31)%CW, (i*97+53)%CH, 22+(i%3)*13, 0, 7); ctx.fill(); }
+    // 顶部钟乳石剪影
+    ctx.fillStyle="#15100a";
+    ctx.beginPath();
+    for (let i=0;i<6;i++){ const tx = i*140+30; ctx.moveTo(tx,0); ctx.lineTo(tx+18,60+(i%3)*26); ctx.lineTo(tx+42,0); }
+    ctx.closePath(); ctx.fill();
+    // 地面（矿洞地面）
+    ctx.fillStyle="#120d07"; ctx.fillRect(0,CH-64,CW,64);
+    ctx.fillStyle="#1d150c"; ctx.fillRect(0,CH-64,CW,3);
+    // 地面散落金币（宝藏堆氛围，低 alpha 小金点）
+    ctx.fillStyle="rgba(246,196,83,.16)";
+    [[60,CH-30],[150,CH-42],[400,CH-26],[560,CH-38],[720,CH-30],[260,CH-46],[630,CH-20]].forEach(p=>{ ctx.beginPath(); ctx.arc(p[0],p[1],4,0,7); ctx.fill(); });
+    // 左右火把暖光（柔和径向光晕）
+    function torch(tx, ty){
+      const halo = ctx.createRadialGradient(tx,ty,4,tx,ty,90);
+      halo.addColorStop(0,"rgba(255,170,60,.22)"); halo.addColorStop(1,"rgba(255,170,60,0)");
+      ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(tx,ty,90,0,7); ctx.fill();
+      // 火把柄
+      ctx.fillStyle="#3a2a18"; ctx.fillRect(tx-3, ty, 6, 46);
+      // 火焰（两层）
+      ctx.fillStyle="#ff9a3c";
+      ctx.beginPath(); ctx.moveTo(tx, ty-26); ctx.quadraticCurveTo(tx+12, ty-6, tx, ty+2); ctx.quadraticCurveTo(tx-12, ty-6, tx, ty-26); ctx.closePath(); ctx.fill();
+      ctx.fillStyle="#ffe08a";
+      ctx.beginPath(); ctx.moveTo(tx, ty-20); ctx.quadraticCurveTo(tx+7, ty-8, tx, ty+2); ctx.quadraticCurveTo(tx-7, ty-8, tx, ty-20); ctx.closePath(); ctx.fill();
+    }
+    torch(56, 70); torch(CW-56, 70);
+  }
+
+  // 宝石（六边形钻石 + 青蓝渐变 + 光晕 + 切面 + 高光）
+  function drawGem(x, y, r, alpha){
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const s = r;
+    // 光晕
+    const glow = ctx.createRadialGradient(x,y,2,x,y,s*2.1);
+    glow.addColorStop(0,"rgba(120,220,255,.30)"); glow.addColorStop(1,"rgba(120,220,255,0)");
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x,y,s*2.1,0,7); ctx.fill();
+    // 钻石主体（六边形，青蓝渐变）
+    ctx.beginPath();
+    ctx.moveTo(x, y-s); ctx.lineTo(x+s*0.85, y-s*0.3); ctx.lineTo(x+s*0.6, y+s*0.85);
+    ctx.lineTo(x-s*0.6, y+s*0.85); ctx.lineTo(x-s*0.85, y-s*0.3); ctx.closePath();
+    const gemG = ctx.createLinearGradient(x-s, y-s, x+s, y+s);
+    gemG.addColorStop(0,"#d6f7ff"); gemG.addColorStop(.45,"#6fd0f2"); gemG.addColorStop(1,"#2a7ab8");
+    ctx.fillStyle = gemG; ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.75)"; ctx.lineWidth = 1.5; ctx.stroke();
+    // 切面线（钻石感）
+    ctx.strokeStyle = "rgba(255,255,255,.30)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y-s); ctx.lineTo(x, y+s*0.85); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x-s*0.85, y-s*0.3); ctx.lineTo(x+s*0.6, y+s*0.85); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+s*0.85, y-s*0.3); ctx.lineTo(x-s*0.6, y+s*0.85); ctx.stroke();
+    // 高光点
+    ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.beginPath(); ctx.arc(x-s*0.2, y-s*0.35, s*0.16, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  // 宝箱（木箱 + 金边 + 锁扣 + 暖金光晕）
+  function drawChest(x, y, r, alpha){
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const w = r, h = r*0.72;
+    // 暖金光晕
+    const glow = ctx.createRadialGradient(x,y,2,x,y,w*1.9);
+    glow.addColorStop(0,"rgba(255,200,80,.26)"); glow.addColorStop(1,"rgba(255,200,80,0)");
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x,y,w*1.9,0,7); ctx.fill();
+    // 箱体（棕渐变）
+    const g = ctx.createLinearGradient(x-w, y-h, x+w, y+h);
+    g.addColorStop(0,"#a9753f"); g.addColorStop(1,"#6b4523");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x-w, y-h*0.4, w*2, h*1.4, 5); ctx.fill();
+    ctx.strokeStyle = "#4a2f18"; ctx.lineWidth = 2; ctx.stroke();
+    // 箱盖
+    ctx.fillStyle = "#bd8348"; ctx.beginPath(); ctx.roundRect(x-w, y-h*0.4, w*2, h*0.45, 5); ctx.fill();
+    // 金边 + 中缝
+    ctx.strokeStyle = "#e6b85c"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x-w, y-h*0.4); ctx.lineTo(x+w, y-h*0.4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y-h*0.4); ctx.lineTo(x, y+h*1.0); ctx.stroke();
+    // 锁扣
+    ctx.fillStyle = "#e6b85c"; ctx.beginPath(); ctx.roundRect(x-6, y-h*0.25, 12, 16, 3); ctx.fill();
+    ctx.restore();
+  }
+
+  function render(){
+    const now = performance.now();
+    drawBg();
+    if (phase === "out"){
+      // 出现淡入（easeOutCubic，300ms）
+      const tA = Math.min(1, (now - appearTime)/APPEAR_MS);
+      const grow = 0.3 + 0.7 * (1 - Math.pow(1-tA, 3));
+      drawChest(chestX, chestY, CHEST_R * grow, tA);
+      drawGem(gemX, gemY, GEM_R * grow, tA);
+    }
+    if (phase === "hit"){
+      // 封印动画：宝石缩小融入宝箱 + 宝箱金光扩散
+      const a = Math.min(1, (now - hitAt)/HIT_MS);
+      drawChest(chestX, chestY, CHEST_R, 1);
+      const gx2 = gemX + (chestX-gemX)*a;
+      const gy2 = gemY + (chestY-gemY)*a;
+      drawGem(gx2, gy2, GEM_R*(1-a*0.85), 1-a*0.5);
+      // 金光扩散环
+      ctx.strokeStyle="rgba(255,200,80,"+(0.8*(1-a))+")"; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(chestX, chestY, CHEST_R*(0.5+a*2.2), 0, 7); ctx.stroke();
+    }
+    if (phase === "miss"){
+      // 消散动画：宝石宝箱淡出 + 光点向上飘散
+      const a = Math.min(1, (now - missAt)/MISS_MS);
+      const alpha = 1-a;
+      drawChest(chestX, chestY, CHEST_R, alpha);
+      drawGem(gemX, gemY, GEM_R, alpha);
+      for (let i=0;i<6;i++){
+        const ang = i*Math.PI/3 + a*0.5;
+        const d = 20 + a*50;
+        ctx.fillStyle = "rgba(150,220,255,"+(0.5*(1-a))+")";
+        ctx.beginPath(); ctx.arc(chestX+Math.cos(ang)*d, chestY+Math.sin(ang)*d-a*40, 2.5*(1-a), 0, 7); ctx.fill();
+      }
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 阻止空格/方向键/Tab 触发页面滚动、刷新、焦点切换；空格触发 Start/Next（phase 隔离）
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode||e.which||0;
+    if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
+    if (e.code === "Space" && !e.repeat){
+      if (!introEl.classList.contains("hidden")) { startGame(); return; }
+      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    }
+  });
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

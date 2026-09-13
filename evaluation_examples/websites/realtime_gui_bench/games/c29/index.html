@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fruit Slice 切水果</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; cursor:crosshair; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Slice the fruit 切开水果</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">Drag</span> slice through 拖动划过</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Sliced! 切中了！</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Fruit Slice 切水果</div>
+      <div class="intro-rule">A ninja in training: a <b>watermelon</b> launches up and flies in an arc. Drag your blade <b>through</b> it mid-flight to slice it in half — miss it and it splatters on the ground.<br>忍者修炼中：一颗<b>西瓜</b>抛向空中、沿抛物线飞行。在它飞过时<b>拖动刀刃划过</b>它、一刀切成两半——切不中它就会摔碎在地上。<br><br>Drag to slice 拖动划切</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Drag through the flying fruit 划过飞行的水果</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+
+  /* ================================================================
+   * Fruit Slice（切水果 / 划线切飞行西瓜）硬编码可复现
+   *   西瓜从 (250,430) 抛出，vx=260 / vy=-720 / G=1500，抛物线飞行约 1s
+   *   到 (510,460) 落地。玩家须观察飞行轨迹、在西瓜飞过时拖动刀刃
+   *   划过它（线段与西瓜圆相交判定）。
+   *   飞行轨迹硬编码可复现 + 划线时机藏在飞行运动中（须观察飞行
+   *   速度才知何时何地划过）→ 组合补丁（视频 + anticipation）解决。
+   * ================================================================ */
+  const FRUIT_X0 = 250, FRUIT_Y0 = 430;
+  const FRUIT_VX = 260, FRUIT_VY = -720, G = 1500;
+  const FRUIT_R = 42;   // 西瓜半径（canvas 绘制，碰撞圆）
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"slice", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "flying";      // flying | resolve | miss | over
+  let fruitX = FRUIT_X0, fruitY = FRUIT_Y0, fruitVx = FRUIT_VX, fruitVy = FRUIT_VY;
+  let resolveType = "sliced", resolveStart = 0, missAt = 0;
+  let slicing = false, sliceStart = {x:0,y:0}, prevMouse = null, currMouse = null;
+  let halfL = null, halfR = null;   // 两半西瓜（切中后分离）
+  let particles = [];               // 汁液 / 果肉碎片粒子
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, fruitX:Math.round(fruitX), fruitY:Math.round(fruitY), fruitVx:+fruitVx.toFixed(0), fruitVy:+fruitVy.toFixed(0),
+             r:FRUIT_R, slicing, resolveType,
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "flying"; fruitX = FRUIT_X0; fruitY = FRUIT_Y0; fruitVx = FRUIT_VX; fruitVy = FRUIT_VY;
+    resolveType = "sliced"; slicing = false; prevMouse = null; currMouse = null;
+    halfL = null; halfR = null; particles = [];
+    setStatus("Slice the fruit 切开水果","");
+  }
+
+  // 线段与圆相交判定（刀刃划过水果，比「鼠标停在圆内」更鲁棒，快速划过也能命中）
+  function segmentIntersectsCircle(x1,y1,x2,y2,cx,cy,r){
+    const dx = x2-x1, dy = y2-y1;
+    const fx = x1-cx, fy = y1-cy;
+    const a = dx*dx + dy*dy;
+    if (a < 1e-6) return (fx*fx + fy*fy) <= r*r;
+    const b = 2*(fx*dx + fy*dy);
+    const c = fx*fx + fy*fy - r*r;
+    let disc = b*b - 4*a*c;
+    if (disc < 0) return false;
+    disc = Math.sqrt(disc);
+    const t1 = (-b - disc)/(2*a), t2 = (-b + disc)/(2*a);
+    return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+  }
+
+  function spawnSlice(){
+    // 两半西瓜（左右分离更快 + 旋转 + 下落，分离感更强）
+    halfL = { x:fruitX, y:fruitY, vx:-125, vy:-95, vr:-4.6, rot:0 };
+    halfR = { x:fruitX, y:fruitY, vx:125, vy:-95, vr:4.6, rot:0 };
+    spawnJuice(fruitX, fruitY, 30);
+    // 果肉碎块（切面喷出）
+    for (let i=0;i<7;i++){
+      const a = Math.random()*Math.PI*2, sp = 1 + Math.random()*2.8;
+      particles.push({ x:fruitX, y:fruitY, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 1.5, life:1, size:5+Math.random()*5, c:"#ff6a52" });
+    }
+  }
+  function spawnSmash(){
+    // 摔碎：红色汁液 + 果肉碎片
+    for (let i=0;i<24;i++){
+      const a = Math.random()*Math.PI*2, sp = 1 + Math.random()*3.5;
+      particles.push({ x:fruitX, y:fruitY, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 1.5, life:1, size:2+Math.random()*3, c:"#ff5a4a" });
+    }
+    for (let i=0;i<8;i++){
+      const a = Math.random()*Math.PI*2, sp = 0.8 + Math.random()*2;
+      particles.push({ x:fruitX, y:fruitY, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 2, life:1, size:5+Math.random()*5, c:"#ff7a5a" });
+    }
+  }
+  function spawnJuice(cx, cy, n){
+    for (let i=0;i<n;i++){
+      const a = Math.random()*Math.PI*2, sp = 1 + Math.random()*3;
+      particles.push({ x:cx, y:cy, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp - 1, life:1, size:2+Math.random()*3, c: Math.random()<0.7 ? "#ff5a4a" : "#ff8a6a" });
+    }
+  }
+
+  function doSlice(mx, my){
+    resolveType = "sliced";
+    phase = "resolve"; resolveStart = performance.now();
+    spawnSlice();
+    setStatus("Sliced! 切中了！","action");
+  }
+
+  function onHit(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Sliced! 切中了！","win"); syncURL(); celebrate();
+  }
+  function onMiss(){
+    if (phase === "over") return;
+    phase = "miss"; missAt = performance.now();
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    setStatus("Missed 未切中","lose"); showToast("Missed! 未切中！");
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      setTimeout(()=>{ phase="over"; BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); }, 550);
+      return;
+    }
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt, now){
+    if (phase === "flying"){
+      fruitVy += G * dt;
+      fruitX += fruitVx * dt;
+      fruitY += fruitVy * dt;
+      if (fruitY > 465 && fruitVy > 0){
+        resolveType = "smashed";
+        phase = "resolve"; resolveStart = now;
+        spawnSmash();
+        setStatus("Missed 未切中","lose");
+      }
+      return;
+    }
+    if (phase === "resolve"){
+      // 两半西瓜分离 + 下落 + 旋转
+      if (halfL){ halfL.x += halfL.vx*dt; halfL.y += halfL.vy*dt; halfL.vy += G*dt; halfL.rot += halfL.vr*dt; }
+      if (halfR){ halfR.x += halfR.vx*dt; halfR.y += halfR.vy*dt; halfR.vy += G*dt; halfR.rot += halfR.vr*dt; }
+      if (now - resolveStart >= 600){
+        if (resolveType === "sliced") onHit();
+        else onMiss();
+      }
+    }
+    // 粒子持续衰减
+    for (const p of particles){ p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 0.05; p.life -= 0.03; }
+    particles = particles.filter(p => p.life > 0);
+  }
+
+  // ---- 渲染 ----
+  function drawBg(){
+    // 黄昏天空渐变
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#f7c873"); g.addColorStop(.5,"#f2a65a"); g.addColorStop(1,"#e07a4a");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+    // 太阳
+    const sun = ctx.createRadialGradient(650,90,8,650,90,70);
+    sun.addColorStop(0,"rgba(255,240,200,.9)"); sun.addColorStop(1,"rgba(255,240,200,0)");
+    ctx.fillStyle = sun; ctx.fillRect(600,40,100,100);
+    // 云彩
+    ctx.fillStyle = "rgba(255,244,225,.5)";
+    const clouds = [[120,70,1],[320,110,.8],[520,60,1.1]];
+    for (const [cx,cy,s] of clouds){
+      ctx.beginPath();
+      ctx.arc(cx,cy,16*s,0,7); ctx.arc(cx+22*s,cy-9*s,20*s,0,7); ctx.arc(cx+48*s,cy,15*s,0,7); ctx.arc(cx+24*s,cy+5*s,17*s,0,7);
+      ctx.fill();
+    }
+    // 远山剪影
+    ctx.fillStyle = "rgba(180,110,70,.35)";
+    ctx.beginPath(); ctx.moveTo(0,360); ctx.quadraticCurveTo(200,290,400,350); ctx.quadraticCurveTo(600,300,800,350); ctx.lineTo(800,420); ctx.lineTo(0,420); ctx.closePath(); ctx.fill();
+    // 木质地面
+    const wood = ctx.createLinearGradient(0,380,0,460);
+    wood.addColorStop(0,"#8a5a3a"); wood.addColorStop(1,"#5f3a22");
+    ctx.fillStyle = wood; ctx.fillRect(0,400,800,60);
+    ctx.strokeStyle = "rgba(0,0,0,.18)"; ctx.lineWidth = 1.5;
+    for (let x=0; x<800; x+=60){ ctx.beginPath(); ctx.moveTo(x,400); ctx.lineTo(x,460); ctx.stroke(); }
+    // 木板横纹
+    ctx.strokeStyle = "rgba(0,0,0,.12)"; ctx.lineWidth = 1;
+    for (let y=415; y<460; y+=22){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(800,y); ctx.stroke(); }
+    // 木纹节疤
+    ctx.strokeStyle = "rgba(0,0,0,.14)"; ctx.lineWidth = 1.5;
+    for (const [kx,ky] of [[90,432],[330,418],[560,436]]){
+      ctx.beginPath(); ctx.ellipse(kx,ky,9,5,0,0,7); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(kx,ky,4,2.5,0,0,7); ctx.stroke();
+    }
+    // 樱花枝（左上角装饰）
+    drawSakura();
+  }
+  function drawSakura(){
+    ctx.strokeStyle = "#5a3a2a"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(-10,20); ctx.quadraticCurveTo(70,55,140,40); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(40,42); ctx.quadraticCurveTo(55,75,80,80); ctx.stroke();
+    const clusters = [[30,32],[70,46],[110,40],[55,62]];
+    for (const [sx,sy] of clusters){
+      ctx.fillStyle = "rgba(255,183,197,.9)";
+      for (let i=0;i<5;i++){
+        const a = i*1.256, d = 3+Math.random()*4;
+        ctx.beginPath(); ctx.arc(sx+Math.cos(a)*d, sy+Math.sin(a)*d, 2.5, 0, 7); ctx.fill();
+      }
+    }
+  }
+  // 完整西瓜（绿皮条纹 + 高光）
+  function drawWatermelon(cx, cy, r){
+    const g = ctx.createRadialGradient(cx-r*0.35, cy-r*0.35, r*0.12, cx, cy, r);
+    g.addColorStop(0,"#8fd45e"); g.addColorStop(.55,"#54b23c"); g.addColorStop(1,"#2f8f30");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+    // 深绿条纹
+    ctx.strokeStyle = "#1f6d24"; ctx.lineWidth = 3.5; ctx.lineCap = "round";
+    for (let i=-2;i<=2;i++){
+      ctx.beginPath();
+      ctx.arc(cx, cy, r*0.86, Math.PI*0.25 + i*0.55, Math.PI*0.95 + i*0.55);
+      ctx.stroke();
+    }
+    // 高光
+    ctx.fillStyle = "rgba(255,255,255,.3)";
+    ctx.beginPath(); ctx.ellipse(cx - r*0.38, cy - r*0.42, r*0.28, r*0.16, -0.5, 0, 7); ctx.fill();
+  }
+  // 半西瓜（切中后两半，果肉朝切割面、绿皮在弧面）
+  function drawHalf(h, isLeft){
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate(h.rot);
+    // 果肉（半圆面）
+    const gr = ctx.createLinearGradient(0,-FRUIT_R,0,FRUIT_R);
+    gr.addColorStop(0,"#ff6a52"); gr.addColorStop(1,"#e8443a");
+    ctx.fillStyle = gr;
+    ctx.beginPath();
+    if (isLeft) ctx.arc(0,0,FRUIT_R, -Math.PI/2, Math.PI/2, false);
+    else ctx.arc(0,0,FRUIT_R, Math.PI/2, -Math.PI/2, false);
+    ctx.closePath(); ctx.fill();
+    // 果肉浅层（瓜瓤内浅色）
+    ctx.fillStyle = "rgba(255,160,140,.5)";
+    ctx.beginPath();
+    if (isLeft) ctx.arc(0,0,FRUIT_R*0.72, -Math.PI/2, Math.PI/2, false);
+    else ctx.arc(0,0,FRUIT_R*0.72, Math.PI/2, -Math.PI/2, false);
+    ctx.closePath(); ctx.fill();
+    // 黑籽
+    ctx.fillStyle = "#2a1a0a";
+    const seeds = isLeft ? [[-14,8],[-20,20],[-8,24]] : [[14,8],[20,20],[8,24]];
+    for (const [sx,sy] of seeds){ ctx.beginPath(); ctx.ellipse(sx, sy, 3, 1.8, isLeft?-0.4:0.4, 0, 7); ctx.fill(); }
+    // 绿皮弧边
+    ctx.strokeStyle = "#2f8f30"; ctx.lineWidth = 4;
+    ctx.beginPath();
+    if (isLeft) ctx.arc(0,0,FRUIT_R-2, -Math.PI/2, Math.PI/2, false);
+    else ctx.arc(0,0,FRUIT_R-2, Math.PI/2, -Math.PI/2, false);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // 汁液 / 果肉粒子
+  function drawParticles(){
+    for (const p of particles){
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.c;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size*p.life+0.5, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  // 刀光（沿鼠标划线轨迹）
+  function drawBlade(){
+    if (!slicing || !currMouse) return;
+    const dx = currMouse.x - sliceStart.x, dy = currMouse.y - sliceStart.y;
+    if (dx*dx + dy*dy < 16) return;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.shadowColor = "rgba(255,255,255,.95)"; ctx.shadowBlur = 18;
+    ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(sliceStart.x, sliceStart.y); ctx.lineTo(currMouse.x, currMouse.y); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "rgba(255,240,160,.55)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(sliceStart.x, sliceStart.y); ctx.lineTo(currMouse.x, currMouse.y); ctx.stroke();
+    ctx.restore();
+  }
+
+  function render(now){
+    drawBg();
+    // 水果：flying 完整西瓜；resolve sliced 两半
+    if (phase === "flying" || phase === "resolve"){
+      if (halfL){ drawHalf(halfL, true); drawHalf(halfR, false); }
+      else if (phase === "flying") drawWatermelon(fruitX, fruitY, FRUIT_R);
+      else drawWatermelon(fruitX, fruitY, FRUIT_R);
+    }
+    drawParticles();
+    drawBlade();
+    if (phase === "miss"){
+      const a = Math.max(0,1-(now-missAt)/700);
+      ctx.fillStyle="rgba(255,40,40,"+(a*0.3)+")"; ctx.fillRect(0,0,800,460);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 42px Arial"; ctx.textAlign="center";
+      ctx.fillText("MISS 未切中", 400, 140);
+    }
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt, now);
+    render(now);
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 鼠标划线：mousedown 起点，mousemove 检测线段划过水果
+  function canvasPos(e){ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)*(cv.width/r.width), y:(e.clientY-r.top)*(cv.height/r.height)}; }
+  cv.addEventListener("mousedown",(e)=>{
+    if (phase !== "flying") return;
+    slicing = true;
+    sliceStart = canvasPos(e); prevMouse = sliceStart; currMouse = sliceStart;
+  });
+  window.addEventListener("mousemove",(e)=>{
+    if (!slicing || phase !== "flying") return;
+    const p = canvasPos(e);
+    if (prevMouse && segmentIntersectsCircle(prevMouse.x, prevMouse.y, p.x, p.y, fruitX, fruitY, FRUIT_R)){
+      slicing = false; currMouse = p;
+      doSlice(p.x, p.y);
+      return;
+    }
+    prevMouse = p; currMouse = p;
+  });
+  window.addEventListener("mouseup",()=>{ slicing = false; });
+
+  // 空格触发 Start/Next（游戏内无键盘操作，划线是唯一动作）
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const isSpace = k===" "||c==="Space"||kc===32;
+    if (isSpace){
+      e.preventDefault();
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+    }
+  });
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

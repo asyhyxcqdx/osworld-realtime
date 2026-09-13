@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Recovery 随机起身处决</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  }
+  .status { font-size:24px; font-weight:700; min-height:32px; letter-spacing:.4px; text-align:center; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:640px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="400"></canvas>
+  <div class="keys"><span class="key">Space</span> Execute when it stands 起身瞬间按空格处决</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Executed! 处决成功！</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">It lunged at you 它反扑了你</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Random Recovery 随机起身处决</div>
+      <div class="intro-rule">In a torchlit dungeon, you've struck down an <b>undead guard</b>. It lies still for a <b>random time</b> — but you never know when it will lurch back up.<br>Watch it rise, and <b>press SPACE to execute it the instant it stands fully upright</b>. Strike too early (while it's still down or rising) and you'll waste your blow.<br>幽暗地牢中，你击倒了一个<b>不死守卫</b>。它倒地躺一段<b>随机时间</b>——但你永远不知道它何时突然起身。<br>看着它起身，<b>在它完全站直的瞬间按空格处决</b>。按早了（它还躺着或正在起身）会落空。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Wrong timing! 时机不对！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const W = 800, H = 400;
+  const EXEC_WINDOW = 130;   // 处决窗口 ms（完全站直后 130ms 内按空格）
+  const RISE_MS = 260;       // 起身过渡动画时长 ms（倒地 → 站立 连续 easing，解决 0 帧起身）
+  const GROUND_Y = 330;      // 地面线
+  const ENEMY_X = W/2;       // 敌人脚底锚点 x
+  const BODY_L = 78;         // 脚 → 脖子 长度
+  const HEAD_R = 18;         // 头半径
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+  const retryEl = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+
+  const BENCH = { task:"random_recovery", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  // phase：down(倒地随机时长) | rising(起身过渡动画) | window(完全站直后的处决窗口) | hit | miss
+  let phase = "down";
+  let downDuration = 1600;
+  let downTime = 0;
+  let riseAt = 0;         // 进入 rising 的时刻
+  let windowStart = 0;    // 完全站直（window 开始）的时刻
+  let windowUntil = 0;
+  let missAt = 0;
+  let hitAt = 0;
+  let started = false;
+
+  window.__dbg = function(){
+    return { phase, downTime: Math.round(downTime), downDuration: Math.round(downDuration),
+             riseAt: Math.round(riseAt), windowStart: Math.round(windowStart), windowUntil: Math.round(windowUntil),
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function resetRound(){
+    phase = "down";
+    downTime = 0;
+    downDuration = 700 + Math.random()*1800;   // ★ 随机倒地时长 0.7~2.5s，每次 retry 重新掷
+    riseAt = 0; windowStart = 0; windowUntil = 0;
+    setStatus("Waiting… 等待起身…","");
+  }
+
+  function startRise(){          // 倒地结束 → 进入起身动画
+    phase = "rising";
+    riseAt = performance.now();
+    setStatus("It rises! 它起身了！","action");
+  }
+
+  function standUp(){            // 起身动画完成 → 敌人完全站直，进入处决窗口
+    phase = "window";
+    windowStart = performance.now();
+    windowUntil = windowStart + EXEC_WINDOW;
+    setStatus("Execute! 处决！","action");
+  }
+
+  function execHit(){
+    phase = "hit";
+    hitAt = performance.now();
+    BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Executed! 处决成功！","win"); syncURL(); celebrate();
+  }
+  function execMiss(){
+    phase = "miss";
+    missAt = performance.now();
+    BENCH.results.push("miss");
+    BENCH.attempts += 1; setHint();
+    setStatus("Wrong timing! 时机不对！","lose"); syncURL();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      setTimeout(()=>{ BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show"); }, 700);
+      return;
+    }
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryEl.classList.remove("hidden");
+    }, 700);
+  }
+
+  function doExecute(){
+    if (phase === "window") execHit();
+    else if (phase === "down" || phase === "rising") execMiss();   // 按早（还躺着/还在起身）→ miss，只给一次机会
+    // hit / miss 结算中忽略
+  }
+
+  function update(dt){
+    if (phase === "down") {
+      downTime += dt;
+      if (downTime >= downDuration) startRise();
+    } else if (phase === "rising") {
+      if (performance.now() - riseAt >= RISE_MS) standUp();
+    } else if (phase === "window") {
+      if (performance.now() > windowUntil) execMiss();   // 超时没按 → miss
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawBack(){
+    // 幽暗地牢：深蓝黑渐变 + 火把暖光 + 石砖地面
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#101322"); g.addColorStop(0.55,"#1a2136"); g.addColorStop(1,"#252c40");
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+    // 火把暖光（左右两盏）
+    let fg = ctx.createRadialGradient(120, 200, 6, 120, 200, 110);
+    fg.addColorStop(0,"rgba(246,150,60,.34)"); fg.addColorStop(1,"rgba(246,150,60,0)");
+    ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(120, 200, 110, 0, Math.PI*2); ctx.fill();
+    fg = ctx.createRadialGradient(680, 190, 6, 680, 190, 120);
+    fg.addColorStop(0,"rgba(246,150,60,.28)"); fg.addColorStop(1,"rgba(246,150,60,0)");
+    ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(680, 190, 120, 0, Math.PI*2); ctx.fill();
+    // 火把本体（墙上的铁架 + 火焰）
+    ctx.fillStyle = "#3a2c1e"; ctx.fillRect(112, 180, 16, 40);
+    ctx.fillStyle = "#c8a060"; ctx.fillRect(108, 176, 24, 5);
+    ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.ellipse(120, 172, 9, 15, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#ff8c42"; ctx.beginPath(); ctx.ellipse(120, 176, 5, 10, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#3a2c1e"; ctx.fillRect(672, 170, 16, 40);
+    ctx.fillStyle = "#c8a060"; ctx.fillRect(668, 166, 24, 5);
+    ctx.fillStyle = "#ffd166"; ctx.beginPath(); ctx.ellipse(680, 162, 9, 15, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#ff8c42"; ctx.beginPath(); ctx.ellipse(680, 166, 5, 10, 0, 0, Math.PI*2); ctx.fill();
+    // 石砖墙（上半部阴影砖缝）
+    ctx.strokeStyle = "rgba(0,0,0,.14)"; ctx.lineWidth = 2;
+    for (let i=0;i<8;i++){ ctx.beginPath(); ctx.moveTo(i*100, 0); ctx.lineTo(i*100, GROUND_Y); ctx.stroke(); }
+    for (let j=0;j<4;j++){ ctx.beginPath(); ctx.moveTo(0, j*82); ctx.lineTo(W, j*82); ctx.stroke(); }
+    // 地面石砖
+    ctx.fillStyle = "#333a50"; ctx.fillRect(0, GROUND_Y, W, H-GROUND_Y);
+    ctx.fillStyle = "#2a3042"; ctx.fillRect(0, GROUND_Y, W, 5);
+    ctx.strokeStyle = "rgba(0,0,0,.28)"; ctx.lineWidth = 2;
+    for (let i=0;i<W;i+=80){ ctx.beginPath(); ctx.moveTo(i, GROUND_Y); ctx.lineTo(i, H); ctx.stroke(); }
+    for (let j=0;j<2;j++){ ctx.beginPath(); ctx.moveTo(0, GROUND_Y+18+j*26); ctx.lineTo(W, GROUND_Y+18+j*26); ctx.stroke(); }
+  }
+
+  // 敌人 = 不死守卫（僵尸）：灰绿身体绕脚底旋转，从「水平躺地」连续 easeOut 到「直立」，红色发光眼睛
+  function enemyPose(){
+    if (phase === "down") return 0;
+    if (phase === "rising") return 1 - Math.pow(1 - Math.min(1, (performance.now()-riseAt)/RISE_MS), 3);  // easeOutCubic
+    return 1;   // window / hit / miss（已完全站立）
+  }
+
+  function drawEnemy(){
+    const cx = ENEMY_X, gy = GROUND_Y;
+    const prog = enemyPose();
+    // 倒地时轻微呼吸起伏（身体绕脚底微幅摆动）
+    let breathe = 0;
+    if (phase === "down") breathe = Math.sin(performance.now()/260) * 0.030;
+    const ang = prog * Math.PI/2 + breathe;          // 0°(水平躺) → 90°(直立)
+    const ux = Math.cos(ang), uy = -Math.sin(ang);    // 脚 → 头 方向
+    const px = -uy, py = ux;                          // 垂直（身体两侧）方向
+    const nX = cx + BODY_L*ux, nY = gy + BODY_L*uy;                 // 脖子
+    const hX = cx + (BODY_L + HEAD_R*0.6)*ux, hY = gy + (BODY_L + HEAD_R*0.6)*uy;  // 头中心
+
+    // 倒地尘土/压痕
+    if (phase === "down") {
+      ctx.fillStyle = "rgba(0,0,0,.26)";
+      ctx.beginPath(); ctx.ellipse(cx + BODY_L*0.52, gy + 4, BODY_L*0.62, 9, 0, 0, Math.PI*2); ctx.fill();
+    }
+
+    // 苏醒光晕（暗红；window/hit 更亮，暗示「它要动了」）
+    const glowA = (phase === "window" || phase === "hit") ? 0.22 : 0.10;
+    const gg = ctx.createRadialGradient(hX, hY, 4, hX, hY, 50);
+    gg.addColorStop(0, `rgba(255,80,70,${glowA})`);
+    gg.addColorStop(1, "rgba(255,80,70,0)");
+    ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(hX, hY, 50, 0, Math.PI*2); ctx.fill();
+
+    // 手臂：两条平行身体、朝头方向伸（躺平时贴地伸直，直立时僵尸上举），随身体旋转
+    const sh = 0.55;
+    const sX = cx + BODY_L*sh*ux, sY = gy + BODY_L*sh*uy;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#4a6b3a"; ctx.lineWidth = 9;
+    for (const s of [-1, 1]) {
+      const ax0 = sX + px*s*13, ay0 = sY + py*s*13;
+      ctx.beginPath(); ctx.moveTo(ax0, ay0); ctx.lineTo(ax0 + ux*28, ay0 + uy*28); ctx.stroke();
+    }
+
+    // 腿（脚部一段深色）
+    ctx.strokeStyle = "#3c4e30"; ctx.lineWidth = 13;
+    ctx.beginPath(); ctx.moveTo(cx, gy); ctx.lineTo(cx + BODY_L*0.16*ux, gy + BODY_L*0.16*uy); ctx.stroke();
+
+    // 身体躯干（灰绿渐变粗胶囊，脚 → 脖子）
+    const bg = ctx.createLinearGradient(cx, gy, nX, nY);
+    bg.addColorStop(0, "#546d43"); bg.addColorStop(1, "#7c9a5e");
+    ctx.strokeStyle = bg; ctx.lineWidth = 26; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(cx, gy); ctx.lineTo(nX, nY); ctx.stroke();
+    // 破布缠绕（身体中段深灰紫斑块 + 褶痕）
+    ctx.strokeStyle = "rgba(58,53,80,.78)"; ctx.lineWidth = 22;
+    ctx.beginPath(); ctx.moveTo(cx + BODY_L*0.40*ux, gy + BODY_L*0.40*uy); ctx.lineTo(cx + BODY_L*0.62*ux, gy + BODY_L*0.62*uy); ctx.stroke();
+    ctx.strokeStyle = "rgba(30,26,42,.55)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx + BODY_L*0.40*ux, gy + BODY_L*0.40*uy); ctx.lineTo(cx + BODY_L*0.62*ux, gy + BODY_L*0.62*uy); ctx.stroke();
+
+    // 头（灰绿渐变圆 + 轮廓）
+    const hg = ctx.createRadialGradient(hX - 5, hY - 5, 3, hX, hY, HEAD_R);
+    hg.addColorStop(0, "#92b078"); hg.addColorStop(1, "#5c7a4a");
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(hX, hY, HEAD_R, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#2f3d26"; ctx.lineWidth = 2; ctx.stroke();
+
+    // 眼睛（红色发光，朝头外侧；window/hit 更亮）
+    const eyeOff = HEAD_R*0.45;
+    const eyeBaseX = hX + ux*eyeOff, eyeBaseY = hY + uy*eyeOff;
+    const eyeA = (phase === "window" || phase === "hit") ? 1 : 0.72;
+    for (const s of [-1, 1]) {
+      const ex = eyeBaseX + px*s*6, ey = eyeBaseY + py*s*6;
+      ctx.fillStyle = `rgba(255,70,60,${eyeA})`;
+      ctx.beginPath(); ctx.arc(ex, ey, 3.3, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "#2a0d0d";
+      ctx.beginPath(); ctx.arc(ex, ey, 1.5, 0, Math.PI*2); ctx.fill();
+    }
+    // 嘴（伤口裂缝，朝头外侧）
+    const mX = hX + ux*HEAD_R*0.95, mY = hY + uy*HEAD_R*0.95;
+    ctx.strokeStyle = "#2f3d26"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(mX + px*5, mY + py*5); ctx.lineTo(mX - px*5, mY - py*5);
+    ctx.stroke();
+  }
+
+  function render(){
+    drawBack(); drawEnemy();
+    const now = performance.now();
+    if (phase === "window") {
+      // 处决窗口提示光圈（随窗口缩窄而收缩）
+      const a = Math.max(0, 1 - (now - windowStart)/EXEC_WINDOW);
+      ctx.strokeStyle = `rgba(246,196,83,${0.35 + a*0.65})`; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(ENEMY_X, GROUND_Y - 45, 50 + a*22, 0, Math.PI*2); ctx.stroke();
+    }
+    if (phase === "hit") {
+      // 处决斩击：金色光圈扩散 + 斜劈剑光
+      const a = Math.max(0, 1 - (now - hitAt)/480);
+      ctx.strokeStyle = `rgba(246,196,83,${a})`; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(ENEMY_X, GROUND_Y - 45, 28 + a*42, 0, Math.PI*2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,232,150,${a})`; ctx.lineWidth = 8; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(170 - a*70, 30); ctx.lineTo(ENEMY_X + 20, GROUND_Y - 40); ctx.stroke();
+    }
+    if (phase === "miss") {
+      // 错过：敌人起身反扑，红屏 + MISS 文字
+      const a = Math.max(0, 1 - (now - missAt)/820);
+      ctx.fillStyle = `rgba(255,60,60,${a*0.30})`; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = `rgba(255,255,255,${a})`; ctx.font = "700 46px Arial"; ctx.textAlign = "center";
+      ctx.fillText("MISS 未命中", W/2, 140);
+    }
+  }
+
+  let lastT = 0;
+  function frame(t){
+    if (!started) { requestAnimationFrame(frame); return; }
+    const dt = Math.min((t - lastT) || 0, 100); lastT = t;
+    if (dt > 0) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 输入：空格触发 Start/Next（phase 隔离）；游戏内空格 = 处决
+  addEventListener("keydown", (e)=>{
+    const isSpace = e.code === "Space" || e.key === " " || e.keyCode === 32;
+    if (!isSpace) return;
+    e.preventDefault();
+    if (!introEl.classList.contains("hidden")) { startGame(); return; }
+    if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    if (e.repeat) return;
+    doExecute();
+  });
+
+  setHint(); syncURL();
+
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  第 1 / "+MAX_ATTEMPTS+" 次");
+    requestAnimationFrame(frame);
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+
+  startBtn.addEventListener("click", startGame);
+  nextBtn.addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

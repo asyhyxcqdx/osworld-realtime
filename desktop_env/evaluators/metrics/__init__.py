@@ -109,6 +109,12 @@ from .gimp import (
 from .libreoffice import check_libre_locale
 from .others import compare_epub, compare_epub_semantic, check_mp3_meta
 from .pdf import check_pdf_pages
+from .realtime_gui import (
+    humanbenchmark_aim_percentile,
+    humanbenchmark_reaction_time_percentile,
+    realtime_gui_bench_result,
+    score_ratio_to_threshold,
+)
 from .slides import (
     check_presenter_console_disable,
     check_image_stretch_and_center,

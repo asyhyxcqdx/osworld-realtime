@@ -31,6 +31,12 @@
     <br/>
 </p>
 
+> **Realtime GUI project:** This fork adds a 69-game real-time benchmark and
+> four controlled GUI-agent variants. Start with the
+> [Realtime GUI Project Guide](REALTIME_GUI_PROJECT.md) for the benchmark
+> layout, agent matrix, scoring rules, runtime architecture, and contributor
+> workflow.
+
 
 ## 📢 Updates
 - 2025-07-28: Introducing **OSWorld-Verified**! We have made major updates, fixed several issues reported by the community, with more support for AWS (can reduce evaluation time to within 1 hour through parallelization!), and making the benchmark signals more effective. Check out more in the [report](https://xlang.ai/blog/osworld-verified). We have run new model results in the latest version and updated them on the [official website](https://os-world.github.io/). Please compare your OSWorld results with the new benchmark results when running the latest version.

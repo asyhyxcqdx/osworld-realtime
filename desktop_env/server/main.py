@@ -71,6 +71,22 @@ TIMEOUT = 1800  # seconds
 logger = app.logger
 recording_process = None  # fixme: this is a temporary solution for recording, need to be changed to support multiple-process
 recording_path = "/tmp/recording.mp4"
+recording_log_path = "/tmp/recording_ffmpeg.log"
+recording_log_file = None
+
+
+def _close_recording_log_file():
+    global recording_log_file
+    if recording_log_file is not None:
+        recording_log_file.close()
+        recording_log_file = None
+
+
+def _read_recording_log():
+    if not os.path.exists(recording_log_path):
+        return ""
+    with open(recording_log_path, "r", encoding="utf-8", errors="replace") as log_file:
+        return log_file.read()
 
 
 @app.route('/setup/execute', methods=['POST'])
@@ -1499,17 +1515,24 @@ def close_window():
 
 @app.route('/start_recording', methods=['POST'])
 def start_recording():
-    global recording_process
+    global recording_process, recording_log_file
     if recording_process and recording_process.poll() is None:
         return jsonify({'status': 'error', 'message': 'Recording is already in progress.'}), 400
 
-    # Clean up previous recording if it exists
-    if os.path.exists(recording_path):
+    _close_recording_log_file()
+
+    # Clean up artifacts from the previous recording.
+    for stale_path in (recording_path, recording_log_path):
+        if not os.path.exists(stale_path):
+            continue
         try:
-            os.remove(recording_path)
+            os.remove(stale_path)
         except OSError as e:
-            logger.error(f"Error removing old recording file: {e}")
-            return jsonify({'status': 'error', 'message': f'Failed to remove old recording file: {e}'}), 500
+            logger.error(f"Error removing old recording artifact {stale_path}: {e}")
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to remove old recording artifact {stale_path}: {e}'
+            }), 500
 
     d = display.Display()
     try:
@@ -1520,19 +1543,28 @@ def start_recording():
 
     start_command = f"ffmpeg -y -f x11grab -draw_mouse 1 -s {screen_width}x{screen_height} -i :0.0 -c:v libx264 -r 30 {recording_path}"
 
-    # Use stderr=PIPE to capture potential errors from ffmpeg
-    recording_process = subprocess.Popen(shlex.split(start_command),
-                                         stdout=subprocess.DEVNULL,
-                                         stderr=subprocess.PIPE,
-                                         text=True  # To get stderr as string
-                                         )
+    # FFmpeg writes progress and diagnostics to stderr for the entire recording.
+    # Writing that stream to an unread PIPE can eventually block FFmpeg when the
+    # pipe buffer fills. Keep the complete output in a file instead.
+    recording_log_file = open(recording_log_path, "w", encoding="utf-8")
+    try:
+        recording_process = subprocess.Popen(
+            shlex.split(start_command),
+            stdout=subprocess.DEVNULL,
+            stderr=recording_log_file,
+        )
+    except Exception:
+        _close_recording_log_file()
+        raise
 
     # Wait a couple of seconds to see if ffmpeg starts successfully
     try:
         # Wait for 2 seconds. If ffmpeg exits within this time, it's an error.
         recording_process.wait(timeout=2)
         # If wait() returns, it means the process has terminated.
-        error_output = recording_process.stderr.read()
+        recording_process = None
+        _close_recording_log_file()
+        error_output = _read_recording_log()
         return jsonify({
             'status': 'error',
             'message': f'Failed to start recording. ffmpeg terminated unexpectedly. Error: {error_output}'
@@ -1548,26 +1580,32 @@ def end_recording():
 
     if not recording_process or recording_process.poll() is not None:
         recording_process = None  # Clean up stale process object
-        return jsonify({'status': 'error', 'message': 'No recording in progress to stop.'}), 400
+        _close_recording_log_file()
+        error_output = _read_recording_log()
+        return jsonify({
+            'status': 'error',
+            'message': f'No recording in progress to stop. FFmpeg log: {error_output}'
+        }), 400
 
-    error_output = ""
     try:
         # Send SIGINT for a graceful shutdown, allowing ffmpeg to finalize the file.
         recording_process.send_signal(signal.SIGINT)
-        # Wait for ffmpeg to terminate. communicate() gets output and waits.
-        _, error_output = recording_process.communicate(timeout=15)
+        recording_process.wait(timeout=15)
     except subprocess.TimeoutExpired:
         logger.error("ffmpeg did not respond to SIGINT, killing the process.")
         recording_process.kill()
-        # After killing, communicate to get any remaining output.
-        _, error_output = recording_process.communicate()
+        recording_process.wait()
         recording_process = None
+        _close_recording_log_file()
+        error_output = _read_recording_log()
         return jsonify({
             'status': 'error',
             'message': f'Recording process was unresponsive and had to be killed. Stderr: {error_output}'
         }), 500
 
     recording_process = None  # Clear the process from global state
+    _close_recording_log_file()
+    error_output = _read_recording_log()
 
     # Check if the recording file was created and is not empty.
     if os.path.exists(recording_path) and os.path.getsize(recording_path) > 0:
@@ -1792,6 +1830,13 @@ def run_bash_script():
             os.unlink(tmp_file_path)
         except:
             pass
+
+try:
+    from .realtime import register_realtime
+except ImportError:
+    from realtime import register_realtime
+
+register_realtime(app, capture_screen_with_cursor, pyautogui)
 
 if __name__ == '__main__':
     app.run(debug=True, host="0.0.0.0")

@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Claw Grab</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{background:var(--bg);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6;user-select:none;overflow:hidden;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;}
+  .status{font-size:24px;font-weight:800;min-height:32px;letter-spacing:.4px;text-align:center;}
+  .status.alert{color:#ffd166;}
+  .status.action{font-size:30px;font-weight:800;color:var(--gold);text-shadow:0 0 14px rgba(246,196,83,.55);letter-spacing:.5px;}
+  .status.danger{font-size:30px;font-weight:800;color:#ff5c5c;text-shadow:0 0 16px rgba(255,80,80,.6);letter-spacing:.5px;}
+  .status.win{color:var(--ok1);} .status.lose{color:var(--fail1);}
+  canvas{border-radius:16px;box-shadow:0 16px 44px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.08);display:block;}
+  .hint{font-size:14px;color:#9aa3c7;letter-spacing:.5px;}
+  .tip{font-size:13px;color:#9aa3c7;letter-spacing:.4px;}
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.6;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Get ready… 准备…</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="tip">Press SPACE to fire the claw when it points at the treasure  爪子转到宝物正上方时按空格伸出抓取</div>
+  <div class="hint" id="hint">Attempt 0 / 3 尝试 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功！</div>
+      <div class="celeb-sub">Rescued the treasure 成功救回宝物</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Random Claw Grab 随机勾爪救援</div>
+      <div class="intro-rule">A <b>time bomb</b> sits next to the treasure! A claw spins <b>retracted</b> at a <b>randomly changing speed</b>. Press <b>SPACE</b> when it points at the treasure to extend, grab it, and <b>pull it back before the bomb explodes</b>.<br>宝物旁有个<b>定时炸弹</b>！一个爪子<b>缩着</b>以<b>随机变化的速度</b>旋转，等它转到<b>宝物正上方时按空格</b>伸出抓住，并在<b>炸弹爆炸前</b>把宝物收回来。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
+      <div class="retry-sub" id="retrySub">Boom! The treasure was destroyed. 宝物被炸没了！</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const W = 800, H = 460;
+
+  // 勾爪几何
+  const PIVOT_X = 400, PIVOT_Y = 110;    // 旋转中心（顶部吊点）
+  const ARM_RETRACT = 36;                 // 缩着时爪子长度（收拢小团）
+  const ARM_EXTEND = 268;                 // 伸出后爪子长度（伸到目标物）
+  const TARGET_X = 400, TARGET_Y = 388;   // 目标物（宝物）位置：正下方地面
+  const TARGET_ANG = Math.atan2(TARGET_Y - PIVOT_Y, TARGET_X - PIVOT_X); // ≈ π/2
+  const GRAB_WIN_ANG = 0.18;              // 目标角 ±0.18 rad（约 ±10°）的下抓窗口
+
+  const BOMB_TIME = 5000;                 // 炸弹倒计时 5s（玩家须在规定时间内救回宝物）
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  const BENCH = { task:"random_claw_grab", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+"  尝试 "+BENCH.attempts+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  // 状态机：swing(缩着旋转) | extend(爪子伸出) | retract(爪子收回) | collect(收获动画) | explode(炸弹爆炸) | hit(成功)
+  let phase = "swing";
+  let ang = 0;                        // 爪子当前角度（弧度，绕旋转中心）
+  let angV = 2.0;                     // 角速度 rad/s（随机变化）
+  let armLen = ARM_RETRACT;           // 当前爪子长度（缩=36 / 伸=268）
+  let roundStart = 0;                 // 本轮开始时刻
+  let phaseT = 0;                     // 当前阶段动画耗时 ms
+  let lastT = performance.now();
+  let roundWarned = false;
+  let missLock = false;
+  let grabbed = false;                // 已经抓住宝物
+
+  window.__dbg = function(){ return { phase, ang:+ang.toFixed(3), angV:+angV.toFixed(3), armLen:+armLen.toFixed(0), timeLeft:+Math.max(0, BOMB_TIME-(performance.now()-roundStart)).toFixed(0), attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status }; };
+
+  function resetRound(){
+    phase = "swing";
+    ang = Math.random() * Math.PI * 2;               // 随机起始角
+    // ★ 随机旋转速度：每次 try 初始转速随机不同（1.2~3.5 rad/s）
+    angV = 1.2 + Math.random() * 2.3;
+    armLen = ARM_RETRACT;
+    roundStart = performance.now();
+    phaseT = 0;
+    roundWarned = false; missLock = false; grabbed = false;
+    setStatus("Grab it! 抓取！","action");
+  }
+
+  function startExtend(){
+    phase = "extend";
+    phaseT = 0;
+    setStatus("Extending… 伸爪…","");
+  }
+  function extendDone(){
+    // 伸到最长：若已伸到目标物处则抓住；否则（没对准）抓空
+    // 判定在 extend 过程中 armLen 到达目标距离时是否角度仍对准
+    phase = "retract";
+    phaseT = 0;
+    if (grabbed) setStatus("Pulling back… 收爪…","");
+    else setStatus("Missed… 抓空…","");
+  }
+  function retractDone(){
+    if (grabbed) {
+      // 抓住宝物成功收回 → 收获动画
+      phase = "collect";
+      phaseT = 0;
+      setStatus("Rescued! 获救了！","action");
+    } else {
+      // 抓空 → 炸弹爆炸（失败）
+      explode();
+    }
+  }
+  function collectDone(){
+    phase = "hit";
+    BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Rescued! 获救了！","win"); syncURL(); celebrate();
+  }
+  function explode(){
+    if (missLock) return;
+    missLock = true;
+    phase = "explode";
+    phaseT = 0;
+    setStatus("BOOM! 爆炸！","danger");
+    const doSettle = () => {
+      BENCH.results.push("miss");
+      BENCH.attempts += 1; setHint(); syncURL();
+      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+        BENCH.status = "failed"; syncURL();
+        failOverlay.classList.add("show");
+      } else {
+        document.getElementById("retrySub").textContent = "Boom! The treasure was destroyed. 宝物被炸没了！";
+        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        document.getElementById("retryOverlay").classList.remove("hidden");
+      }
+    };
+    setTimeout(()=>{ if (phase === "explode") doSettle(); }, 1200);
+  }
+
+  function doGrab(){
+    if (phase === "swing") {
+      if (Math.abs(ang - TARGET_ANG) < GRAB_WIN_ANG) startExtend();
+      else explode();   // 没对准就伸爪 → 抓空 → 炸弹爆炸
+    }
+  }
+
+  function update(dt){
+    const dtS = dt/1000;
+    const now = performance.now();
+
+    if (phase === "swing") {
+      // ★ 随机旋转速度：角速度每帧随机扰动（加速/减速），持续随机、不可预判
+      angV += (Math.random()-0.5) * 1.4;
+      const sign = angV >= 0 ? 1 : -1;
+      angV = sign * Math.max(1.0, Math.min(4.0, Math.abs(angV)));
+      ang += angV * dtS;
+      ang = ((ang % (Math.PI*2)) + Math.PI*2) % (Math.PI*2);
+      const timeLeft = BOMB_TIME - (now - roundStart);
+      if (!roundWarned && timeLeft < 2000) {
+        roundWarned = true;
+        setStatus("DANGER! 炸弹快爆了！","danger");
+      }
+      if (timeLeft <= 0) explode();   // 炸弹倒计时归零 → 爆炸
+    } else if (phase === "extend") {
+      // 爪子沿锁定角度伸出；伸到目标物距离处抓住
+      phaseT += dt;
+      const p = Math.min(1, phaseT/450);            // 450ms 伸出
+      armLen = ARM_RETRACT + (ARM_EXTEND - ARM_RETRACT) * easeOutCubic(p);
+      // 伸到目标物高度时判定抓取（进入 extend 时角度已对准，此处确认）
+      if (!grabbed && armLen >= (TARGET_Y - PIVOT_Y - 24)) {
+        grabbed = true;
+      }
+      if (p >= 1) extendDone();
+    } else if (phase === "retract") {
+      phaseT += dt;
+      const p = Math.min(1, phaseT/420);            // 420ms 收回
+      armLen = ARM_EXTEND - (ARM_EXTEND - ARM_RETRACT) * easeOutCubic(p);
+      if (p >= 1) retractDone();
+    } else if (phase === "collect") {
+      phaseT += dt;
+      if (phaseT >= 700) collectDone();             // 收获动画 700ms
+    } else if (phase === "explode") {
+      phaseT += dt;
+    }
+  }
+  function easeOutCubic(t){ return 1 - Math.pow(1 - t, 3); }
+
+  // ---- 渲染 ----
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function clawTip(){ // 爪子当前末端（长度沿 ang 方向延伸）
+    // extend/retract 阶段角度锁定为抓取时的目标角附近；swing 阶段随当前角
+    let a = ang;
+    if (phase === "extend" || phase === "retract") a = TARGET_ANG;   // 伸出/收回锁定在目标角方向
+    const tx = PIVOT_X + Math.cos(a) * armLen;
+    const ty = PIVOT_Y + Math.sin(a) * armLen;
+    return { x: tx, y: ty, a: a };
+  }
+
+  function drawBack(){
+    const now = performance.now();
+    // 洞窟场景
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#1c1820"); g.addColorStop(0.6,"#2a2326"); g.addColorStop(1,"#171214");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // 顶部吊臂
+    ctx.fillStyle="#4a3a34"; ctx.fillRect(310,92,180,12);
+    ctx.fillStyle="#5a4632"; ctx.fillRect(310,92,180,4);
+    // 地面
+    ctx.fillStyle="#2e2620"; ctx.fillRect(0,408,W,H-408);
+    ctx.fillStyle="#3a2f26"; ctx.fillRect(0,408,W,4);
+    ctx.fillStyle="rgba(0,0,0,.2)"; ctx.fillRect(0,420,W,40);
+    // 安全区（左下方，宝物要勾回这里）
+    const safeX = 120, safeY = 398;
+    ctx.fillStyle="#163b2e"; rr(safeX-42, safeY-26, 84, 52, 10); ctx.fill();
+    ctx.strokeStyle="#2e8b6a"; ctx.lineWidth=3; rr(safeX-42, safeY-26, 84, 52, 10); ctx.stroke();
+    ctx.fillStyle="rgba(255,255,255,.85)"; ctx.font="700 13px Arial"; ctx.textAlign="center";
+    ctx.fillText("SAFE 安全区", safeX, safeY+6);
+  }
+
+  function drawBomb(){
+    const now = performance.now();
+    const timeLeft = Math.max(0, BOMB_TIME - (now - roundStart));
+    // 炸弹在目标物右侧
+    const bx = TARGET_X + 90, by = TARGET_Y - 14;
+    // 炸弹主体（圆球形）
+    const gg = ctx.createLinearGradient(bx-16,by-20,bx+16,by+16);
+    gg.addColorStop(0,"#3a3630"); gg.addColorStop(1,"#1e1c1a");
+    ctx.fillStyle=gg; ctx.beginPath(); ctx.arc(bx,by,18,0,7); ctx.fill();
+    ctx.strokeStyle="#0e0d0c"; ctx.lineWidth=2; ctx.stroke();
+    // 引线 + 火花
+    ctx.strokeStyle="#8a6d3a"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(bx+14,by-12); ctx.lineTo(bx+24,by-22); ctx.stroke();
+    const spark = (Math.floor(now/80)%2===0);
+    ctx.fillStyle = spark ? "#ffb020" : "#ff5c20";
+    ctx.beginPath(); ctx.arc(bx+25,by-24,4,0,7); ctx.fill();
+    ctx.fillStyle = spark ? "rgba(255,176,32,.6)" : "rgba(255,92,32,.6)";
+    ctx.beginPath(); ctx.arc(bx+25,by-24,8,0,7); ctx.fill();
+    // 倒计时数字（醒目）
+    const secs = (timeLeft/1000).toFixed(1);
+    ctx.fillStyle = timeLeft < 2000 ? "#ff5c5c" : "#ffd166";
+    ctx.font = "800 22px Arial"; ctx.textAlign="center";
+    ctx.fillText(secs, bx, by-36);
+    ctx.font = "700 10px Arial";
+    ctx.fillText("s", bx+18, by-36);
+    // 紧张红光（快爆时）
+    if (timeLeft < 2000) {
+      const pulse = 0.5 + 0.5*Math.sin(now/90);
+      ctx.fillStyle=`rgba(255,60,50,${0.10 + pulse*0.18})`;
+      ctx.fillRect(0,0,W,H);
+    }
+  }
+
+  function drawTreasure(atTarget){
+    // 宝物（宝石），atTarget=true 时在目标物位置，false 时在安全区
+    const tx = atTarget ? TARGET_X : 120;
+    const ty = atTarget ? TARGET_Y : 395;
+    const gg = ctx.createLinearGradient(tx-20,ty-20,tx+20,ty+20);
+    gg.addColorStop(0,"#ffe9a0"); gg.addColorStop(.5,"#f6c453"); gg.addColorStop(1,"#d99a2b");
+    ctx.fillStyle=gg;
+    ctx.save(); ctx.translate(tx,ty);
+    ctx.beginPath();
+    for (let i=0;i<10;i++){ const a=i/10*Math.PI*2; const r=i%2===0?22:10; const px=Math.cos(a)*r, py=Math.sin(a)*r; i===0?ctx.moveTo(px,py):ctx.lineTo(px,py); }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle="#b97e16"; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle="rgba(255,255,255,.5)"; ctx.beginPath(); ctx.arc(-5,-6,4.5,0,7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawClaw(){
+    const tip = clawTip();
+    const a = tip.a;
+    // 吊线（从旋转中心到爪子末端）
+    ctx.strokeStyle="#9a8570"; ctx.lineWidth=5; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(PIVOT_X, PIVOT_Y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+    ctx.strokeStyle="rgba(255,255,255,.16)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(PIVOT_X, PIVOT_Y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+    // 旋转中心转轴
+    ctx.fillStyle="#4a3a34"; ctx.beginPath(); ctx.arc(PIVOT_X,PIVOT_Y,11,0,7); ctx.fill();
+    ctx.fillStyle="#6b584e"; ctx.beginPath(); ctx.arc(PIVOT_X,PIVOT_Y,6,0,7); ctx.fill();
+    // 爪子（三齿，缩着时收拢、伸出时张开）
+    const openFactor = (armLen - ARM_RETRACT) / (ARM_EXTEND - ARM_RETRACT);   // 0=收拢 1=张开
+    ctx.save();
+    ctx.translate(tip.x, tip.y);
+    ctx.rotate(a - Math.PI/2);   // 让爪口朝下（沿伸出方向）
+    const open = 0.3 + openFactor * 0.7;   // 张开程度
+    ctx.fillStyle="#c9a86a"; ctx.strokeStyle="#8a6d3a"; ctx.lineWidth=2;
+    // 左齿
+    ctx.beginPath(); ctx.moveTo(-10*open,0); ctx.lineTo(-22*open, 20); ctx.lineTo(-6, 26); ctx.lineTo(-4,0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 右齿
+    ctx.beginPath(); ctx.moveTo(10*open,0); ctx.lineTo(22*open, 20); ctx.lineTo(6, 26); ctx.lineTo(4,0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 中齿
+    ctx.beginPath(); ctx.moveTo(-5*open,0); ctx.lineTo(-4, 24); ctx.lineTo(4, 24); ctx.lineTo(5*open,0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 爪柄
+    ctx.fillStyle="#9a7d55"; ctx.fillRect(-8,-8,16,14);
+    ctx.restore();
+  }
+
+  function render(){
+    const now = performance.now();
+    // 屏幕震动（快爆/爆炸时）
+    const justAboutToBoom = phase === "swing" && (BOMB_TIME - (now-roundStart)) < 2000;
+    const shake = justAboutToBoom ? 3 : (phase === "explode" ? 4 : 0);
+    ctx.save();
+    if (shake > 0) ctx.translate((Math.random()-0.5)*shake*2, (Math.random()-0.5)*shake*2);
+
+    drawBack();
+    // 宝物：collect/retract 阶段抓在爪子里（不画在目标位），explode 阶段被炸没（不画），其余画在目标位
+    if (phase === "explode") {
+      // 宝物被炸没，不画（或画残影）
+    } else if (phase === "collect" || (phase === "retract" && grabbed) || phase === "hit") {
+      // 宝物被抓走（进入安全区），在安全区画
+      drawTreasure(false);
+    } else {
+      drawTreasure(true);
+    }
+    drawBomb();
+    drawClaw();
+
+    ctx.restore();
+
+    // 阶段特效
+    if (phase === "swing") {
+      if (Math.abs(ang - TARGET_ANG) < GRAB_WIN_ANG) {
+        const a = 0.6 + 0.4*Math.sin(now/60);
+        ctx.strokeStyle=`rgba(52,211,153,${a})`; ctx.lineWidth=6;
+        const tx = PIVOT_X + Math.cos(ang)*armLen, ty = PIVOT_Y + Math.sin(ang)*armLen;
+        ctx.beginPath(); ctx.arc(tx, ty, 26, 0, 7); ctx.stroke();
+      }
+    }
+    if (phase === "extend") {
+      // 伸出轨迹提示
+      ctx.strokeStyle="rgba(246,196,83,.5)"; ctx.lineWidth=3; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(PIVOT_X, PIVOT_Y);
+      ctx.lineTo(PIVOT_X + Math.cos(TARGET_ANG)*ARM_EXTEND, PIVOT_Y + Math.sin(TARGET_ANG)*ARM_EXTEND);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (phase === "collect") {
+      const p = Math.min(1, phaseT/700);
+      ctx.strokeStyle=`rgba(52,211,153,${0.5+0.5*p})`; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(120, 395, 26+p*14, 0, 7); ctx.stroke();
+    }
+    if (phase === "explode") {
+      const p = Math.min(1, phaseT/1200);
+      // 炸弹在宝物处爆炸
+      const r = 20 + p*150;
+      const grd = ctx.createRadialGradient(TARGET_X+90,TARGET_Y-14,8,TARGET_X+90,TARGET_Y-14,r);
+      grd.addColorStop(0,`rgba(255,240,200,${1-p})`); grd.addColorStop(.5,`rgba(255,140,60,${0.8*(1-p)})`); grd.addColorStop(1,"rgba(255,60,40,0)");
+      ctx.fillStyle=grd; ctx.beginPath(); ctx.arc(TARGET_X+90,TARGET_Y-14,r,0,7); ctx.fill();
+      ctx.fillStyle=`rgba(255,80,60,${(1-p)*0.4})`; ctx.fillRect(0,0,W,H);
+      // 宝物被炸没的碎片
+      ctx.fillStyle=`rgba(246,196,83,${1-p})`;
+      for (let i=0;i<8;i++){ const a=i/8*Math.PI*2; const d=p*60; ctx.fillRect(TARGET_X+Math.cos(a)*d-2, TARGET_Y+Math.sin(a)*d-2, 4, 4); }
+    }
+    if (phase === "hit") {
+      const a = Math.max(0, 1-(performance.now()-hitAt)/500);
+      ctx.strokeStyle="rgba(52,211,153,"+a+")"; ctx.lineWidth=6;
+      ctx.beginPath(); ctx.arc(120, 395, 40+a*20, 0, 7); ctx.stroke();
+    }
+  }
+  let hitAt = 0;
+  function frame(now){
+    const dt = now - lastT; lastT = now;
+    if (dt > 0 && dt < 100) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // 空格键统一处理（按覆盖层状态隔离）
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode||e.which||0;
+    if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
+    if (e.code !== "Space" || e.repeat) return;
+    if (!introEl.classList.contains("hidden")) { startGame(); return; }
+    if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    doGrab();   // 游戏进行中：空格 = 伸出抓取
+  });
+
+  function celebrate(){ hitAt = performance.now(); overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  setHint(); syncURL();
+
+  const introEl = document.getElementById("intro");
+  const retryEl = document.getElementById("retryOverlay");
+  let frameStarted = false;
+
+  function startGame(){
+    introEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
+    if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
+  }
+  function nextRound(){
+    retryEl.classList.add("hidden");
+    resetRound();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  }
+
+  document.getElementById("introStart").addEventListener("click", startGame);
+  document.getElementById("nextBtn").addEventListener("click", nextRound);
+})();
+</script>
+</body>
+</html>

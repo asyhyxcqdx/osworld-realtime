@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbit Station 卫星停泊</title>
+<style>
+  :root { --bg1:#0a1220; --ok:#34d399; --bad:#ff5c7a; --warn:#f6c453; --gold:#f6c453; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #1c2a44 0%, var(--bg1) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; color:#e6eefc; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.reveal { color:var(--gold); } .status.yours { color:#9db0cd; }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .reveal-btn {
+    padding:13px 34px; border-radius:30px; border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(150deg,#2c5a8a 0%,#1c3f66 100%); color:#fff;
+    font-size:16px; font-weight:700; letter-spacing:.6px; cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,0,0,.35); transition:transform .15s, opacity .2s;
+  }
+  .reveal-btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .reveal-btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#798ba8; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(14,22,36,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(6,12,22,.68); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  .intro {
+    position:fixed; inset:0; background:rgba(6,12,22,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:540px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.6; }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,#2c5a8a 0%,#1c3f66 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3);
+    transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the satellite orbit, then tap the bay it docks at · 看卫星绕行，点它停靠的泊位</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <button class="reveal-btn" id="revealBtn">Start 开始 (Space)</button>
+  <div class="hint" id="hint">Attempt 0 / 3 · 第 0 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">You tracked the satellite to the right bay · 你正确跟踪了卫星的泊位</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts · 尝试次数用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Orbit Station · 太空防御拦截</div>
+      <div class="intro-rule">
+        你是太空防御系统，一颗敌卫星沿环形轨道绕行、企图潜入空间站。 You are the space defense; an enemy satellite orbits the ring, trying to infiltrate the station.<br>
+        它绕行后停靠进 6 个泊位之一，停靠瞬间泊位灯灭、卫星隐身。 It docks into one of six bays, then the lights go out and it turns invisible.<br>
+        你要盯住它的绕行，判断它停靠进哪个泊位，然后发射激光摧毁它。 Track its orbit, then lock the bay it hid in and fire your laser to destroy it.<br>
+        点出卫星停靠的泊位 = 发射激光攻击那里。 Tapping a bay = firing your laser at it.
+      </div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  // 叙事：太空防御拦截。玩家是太空防御系统，敌卫星沿环形停泊轨道连续绕行（角运动），
+  // 停进 6 个泊位之一后「泊位灯灭 + 卫星隐身」（信息消失自然原因 = 泊位灯灭、卫星隐身）。
+  // 玩家跟踪绕行、判断停靠泊位，点泊位 = 发射激光攻击（给激光命中 + 击毁爆炸动画）。
+  // 与 a17「圆盘整体旋转 + 指针猜色」不同：本游戏是「卫星沿固定圆环滑动 + 猜停靠泊位」（球动、轨道定）。
+  // IEW 有限（停靠泊位只在绕行动画期间暴露）+ AVW=∞（作答发射激光无时限）。
+  // 判定 = 纯碰撞点击泊位；表现与判定同源（ballIdx / slotXY(ballIdx)）。
+  const CW = 800, CH = 460;
+  const MAX_ATTEMPTS = 3;
+  const CX = 400, CY = 280, RADIUS = 145, BALL_R = 18;
+  const SLOT_N = 6;
+  const SHOW_MS = 800, SLIDE_MS = 360, FADE_MS = 380, MOVES_N_MIN = 4, MOVES_N_MAX = 6;
+  const ATTACK_MS = 750;   // 激光攻击动画时长（激光命中 + 爆炸充分消散）
+
+  const BENCH = { task:"orbit", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";
+  let ballIdx = 0, dir = 1, steps = 0;
+  let ballAngle = 0;
+  let moveIdx = 0, moveStart = 0, phaseStart = 0;
+  let fade = 0;
+  // 攻击动画状态
+  let attackBay = -1;          // 玩家点击攻击的泊位 index
+  let attackHit = false;       // 是否命中（点击 == 停靠泊位）
+  let laserProgress = 0;       // 激光发射进度 0~1
+  let burstParticles = [];     // 爆炸碎裂粒子
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ const s = slotXY(ballIdx); return { phase, ballIdx, ballX: s.x, ballY: s.y, dir, steps, attempts: BENCH.attempts, passed: BENCH.passed }; };
+
+  function slotXY(i){
+    const a = (i * 360/SLOT_N - 90) * Math.PI/180;
+    return { x: CX + RADIUS*Math.cos(a), y: CY + RADIUS*Math.sin(a) };
+  }
+
+  function onStart(){
+    if (phase !== "idle") return;
+    ballIdx = Math.floor(Math.random()*SLOT_N);
+    dir = Math.random() < 0.5 ? 1 : -1;
+    steps = MOVES_N_MIN + Math.floor(Math.random()*(MOVES_N_MAX - MOVES_N_MIN + 1));
+    moveIdx = 0;
+    ballAngle = ballIdx * (360/SLOT_N);
+    fade = 0;
+    phase = "show"; phaseStart = performance.now();
+    revealBtn.disabled = true;
+    setStatus("Watch the satellite… 看卫星","reveal");
+    syncURL();
+  }
+
+  function update(now){
+    if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "move"; moveStart = now; setStatus("Track the orbit… 跟踪绕行","reveal"); }
+    }
+    else if (phase === "move"){
+      const t = (now - moveStart) / SLIDE_MS;
+      const from = ballIdx * (360/SLOT_N);
+      const to = (ballIdx + dir) * (360/SLOT_N);
+      if (t >= 1){
+        ballIdx = (ballIdx + dir + SLOT_N) % SLOT_N;
+        ballAngle = ballIdx * (360/SLOT_N);
+        moveIdx++;
+        if (moveIdx < steps){ moveStart = now; }
+        else { phase = "fade"; phaseStart = now; setStatus("The bay lights go out… 泊位灯熄灭","reveal"); }
+      } else {
+        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+        ballAngle = from + (to - from) * e;
+      }
+    }
+    else if (phase === "fade"){
+      const t = Math.min(1, (now - phaseStart) / FADE_MS);
+      fade = t;
+      if (now - phaseStart >= FADE_MS){ phase = "answer"; setStatus("Lock the bay and fire your laser · 锁定泊位并发射激光","action"); }
+    }
+    else if (phase === "attack"){
+      const t = Math.min(1, (now - phaseStart) / ATTACK_MS);
+      laserProgress = t;
+      // 更新爆炸粒子
+      burstParticles.forEach(p=>{ p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life += 1; });
+      burstParticles = burstParticles.filter(p => p.life < 45);
+      if (now - phaseStart >= ATTACK_MS){
+        if (attackHit){
+          phase = "done";
+          BENCH.passed = true; BENCH.status = "passed";
+          setStatus("Enemy satellite destroyed! 敌卫星已摧毁","win"); syncURL(); celebrate();
+        } else {
+          // 未命中：激光击中空泊位，计一次 attempt
+          phase = "idle";   // 先脱离 attack，避免下一帧重复触发 nextAttempt
+          setStatus("Miss! 未命中","lose");
+          burstParticles = [];
+          nextAttempt();
+        }
+      }
+    }
+  }
+
+  function drawBackground(){
+    const g = ctx.createRadialGradient(400, 200, 40, 400, 200, 560);
+    g.addColorStop(0,"#1c3050"); g.addColorStop(0.55,"#0f1c33"); g.addColorStop(1,"#070e1c");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    for (let i=0;i<60;i++){
+      const sx = (i*137 + 53) % CW, sy = (i*97 + 31) % CH;
+      ctx.fillStyle = "rgba(255,255,255," + (0.15 + (i%4)*0.1).toFixed(2) + ")";
+      ctx.beginPath(); ctx.arc(sx, sy, i%3===0 ? 1.6 : 0.9, 0, 7); ctx.fill();
+    }
+    const hub = ctx.createRadialGradient(CX-6, CY-6, 4, CX, CY, 34);
+    hub.addColorStop(0,"#cfe0f2"); hub.addColorStop(0.5,"#6a7f9e"); hub.addColorStop(1,"#2c3850");
+    ctx.fillStyle = hub; ctx.beginPath(); ctx.arc(CX, CY, 30, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.25)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(CX, CY, 40, 0, 7); ctx.stroke();
+    ctx.strokeStyle = "rgba(150,190,230,.20)"; ctx.lineWidth = 1.5; ctx.setLineDash([4,5]);
+    ctx.beginPath(); ctx.arc(CX, CY, RADIUS, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+    for (let i=0;i<SLOT_N;i++){
+      const p = slotXY(i);
+      const lit = (1 - fade);
+      const rr = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, BALL_R+10);
+      rr.addColorStop(0, `rgba(120,170,220,${(0.10 + 0.30*lit).toFixed(3)})`);
+      rr.addColorStop(1, "rgba(120,170,220,0)");
+      ctx.fillStyle = rr; ctx.beginPath(); ctx.arc(p.x, p.y, BALL_R+10, 0, 7); ctx.fill();
+      ctx.fillStyle = `rgb(${Math.round(14 + (32-14)*lit)},${Math.round(22 + (46-22)*lit)},${Math.round(34 + (66-34)*lit)})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, BALL_R + 4, 0, 7); ctx.fill();
+      ctx.strokeStyle = `rgba(255,255,255,${(0.2 + 0.4*lit).toFixed(3)})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, BALL_R + 4, 0, 7); ctx.stroke();
+    }
+  }
+
+  function drawSatellite(){
+    const a = (ballAngle - 90) * Math.PI/180;
+    const x = CX + RADIUS*Math.cos(a), y = CY + RADIUS*Math.sin(a);
+    const rad = BALL_R * (1 - fade*0.85);
+    if (rad < 1.5) return;
+    ctx.save();
+    const glow = (1 - fade);
+    if (glow > 0.01){
+      const gl = ctx.createRadialGradient(x, y, 2, x, y, rad*2.2);
+      gl.addColorStop(0, `rgba(160,220,255,${(0.35*glow).toFixed(3)})`);
+      gl.addColorStop(1, "rgba(160,220,255,0)");
+      ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(x, y, rad*2.2, 0, 7); ctx.fill();
+    }
+    const bg = ctx.createRadialGradient(x - rad*0.4, y - rad*0.45, 1, x, y, rad);
+    bg.addColorStop(0,"#eaf4ff"); bg.addColorStop(0.5,"#8fb0d4"); bg.addColorStop(1,"#3a5578");
+    ctx.fillStyle = bg;
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, 7); ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,.8)";
+    ctx.beginPath(); ctx.ellipse(x - rad*0.38, y - rad*0.4, rad*0.22, rad*0.15, -0.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    if (phase === "show" || phase === "move" || phase === "fade") drawSatellite();
+    if (phase === "attack"){ drawLaser(); drawBurst(); }
+  }
+
+  function render(){
+    drawBackground();
+    if (phase === "show" || phase === "move" || phase === "fade") drawSatellite();
+    drawTurret();   // 防御炮台主体（所有阶段常驻）
+    if (phase === "attack"){ drawLaser(); drawBurst(); }
+  }
+
+  // 防御炮台主体（顶部中央，炮塔基座 + 旋转炮塔 + 长炮管 + 发射口）
+  const TURRET_X = 400, MUZZLE_Y = 58;
+  function muzzlePos(){
+    if (phase === "attack"){
+      const p = slotXY(attackBay);
+      const dx = (p.x - TURRET_X) * 0.22;
+      return { x: TURRET_X + dx, y: MUZZLE_Y };
+    }
+    return { x: TURRET_X, y: MUZZLE_Y };
+  }
+  function drawTurret(){
+    ctx.save();
+    // 顶部横梁装甲（底座，横跨中央一段，金属渐变 + 铆钉）
+    const beamG = ctx.createLinearGradient(0, 0, 0, 16);
+    beamG.addColorStop(0,"#3a4a62"); beamG.addColorStop(1,"#22304a");
+    ctx.fillStyle = beamG;
+    ctx.beginPath(); ctx.roundRect(TURRET_X - 42, 0, 84, 16, 4); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(TURRET_X - 42, 0, 84, 16, 4); ctx.stroke();
+    // 铆钉
+    ctx.fillStyle = "#8a9cb8";
+    for (const rx of [-36, -18, 0, 18, 36]){
+      ctx.beginPath(); ctx.arc(TURRET_X + rx, 8, 2.2, 0, 7); ctx.fill();
+    }
+    // 旋转炮塔（圆形装甲炮塔，金属渐变 + 高光 + 装甲板刻线）
+    const turretG = ctx.createRadialGradient(TURRET_X - 8, 20, 3, TURRET_X, 24, 26);
+    turretG.addColorStop(0,"#d8e6f4"); turretG.addColorStop(0.45,"#7a90ac"); turretG.addColorStop(1,"#33445e");
+    ctx.fillStyle = turretG;
+    ctx.beginPath(); ctx.arc(TURRET_X, 24, 22, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.32)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(TURRET_X, 24, 22, 0, 7); ctx.stroke();
+    // 炮塔装甲板刻线（水平缝）
+    ctx.strokeStyle = "rgba(20,30,46,.5)"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(TURRET_X - 20, 24); ctx.lineTo(TURRET_X + 20, 24); ctx.stroke();
+    // 炮塔指示灯
+    ctx.fillStyle = "#ff5a5a";
+    ctx.beginPath(); ctx.arc(TURRET_X - 13, 17, 3.2, 0, 7); ctx.fill();
+    ctx.fillStyle = "#8affc0";
+    ctx.beginPath(); ctx.arc(TURRET_X + 13, 17, 3.2, 0, 7); ctx.fill();
+    // 长炮管（从炮塔向下，明显金属炮管 + 加强箍）
+    const mz = muzzlePos();
+    const barrelG = ctx.createLinearGradient(TURRET_X - 12, 0, TURRET_X + 12, 0);
+    barrelG.addColorStop(0,"#22304a"); barrelG.addColorStop(0.5,"#9fb2cc"); barrelG.addColorStop(1,"#22304a");
+    ctx.fillStyle = barrelG;
+    ctx.beginPath();
+    ctx.moveTo(mz.x - 10, 12);
+    ctx.lineTo(mz.x + 10, 12);
+    ctx.lineTo(mz.x + 14, mz.y);
+    ctx.lineTo(mz.x - 14, mz.y);
+    ctx.closePath(); ctx.fill();
+    // 炮管加强箍
+    ctx.fillStyle = "#4a5f80";
+    ctx.fillRect(mz.x - 12, mz.y - 18, 24, 4);
+    // 炮口柱头（发射口外扩）
+    ctx.fillStyle = "#33445e";
+    ctx.beginPath(); ctx.arc(mz.x, mz.y, 13, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.4)"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(mz.x, mz.y, 13, 0, 7); ctx.stroke();
+    // 发射口深口
+    ctx.fillStyle = "#101826";
+    ctx.beginPath(); ctx.arc(mz.x, mz.y, 8, 0, 7); ctx.fill();
+    ctx.fillStyle = "#050a12";
+    ctx.beginPath(); ctx.arc(mz.x, mz.y, 4.5, 0, 7); ctx.fill();
+    // 炮管高光
+    ctx.strokeStyle = "rgba(255,255,255,.28)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(mz.x - 5, 16); ctx.lineTo(mz.x - 5, mz.y - 12); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawLaser(){
+    // 激光从炮管发射口射出到被攻击的泊位
+    const p = slotXY(attackBay);
+    const mz = muzzlePos();
+    const srcX = mz.x, srcY = mz.y;   // 炮管口
+    const proj = Math.min(1, laserProgress);
+    const tipX = srcX + (p.x - srcX)*proj;
+    const tipY = srcY + (p.y - srcY)*proj;
+    ctx.save();
+    // 激光束（亮白核心 + 红色外焰）
+    const lg = ctx.createLinearGradient(srcX, srcY, p.x, p.y);
+    lg.addColorStop(0,"rgba(255,120,120,.0)");
+    lg.addColorStop(0.7,"rgba(255,80,80,.9)");
+    lg.addColorStop(1,"rgba(255,220,160,.95)");
+    ctx.strokeStyle = lg;
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(srcX, srcY); ctx.lineTo(tipX, tipY); ctx.stroke();
+    // 核心亮线
+    ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(srcX, srcY); ctx.lineTo(tipX, tipY); ctx.stroke();
+    // 激光头光团
+    const head = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, 14);
+    head.addColorStop(0,"rgba(255,255,240,.9)"); head.addColorStop(1,"rgba(255,120,120,0)");
+    ctx.fillStyle = head; ctx.beginPath(); ctx.arc(tipX, tipY, 14, 0, 7); ctx.fill();
+    // 炮口发射闪光
+    const mzGlow = ctx.createRadialGradient(srcX, srcY, 1, srcX, srcY, 16);
+    mzGlow.addColorStop(0,"rgba(255,255,240,.9)"); mzGlow.addColorStop(1,"rgba(255,120,120,0)");
+    ctx.fillStyle = mzGlow; ctx.beginPath(); ctx.arc(srcX, srcY, 16, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBurst(){
+    // 命中时：中心闪光爆发 + 爆炸碎裂粒子
+    if (attackHit && laserProgress >= 0.85){
+      const s = slotXY(attackBay);
+      const flash = ctx.createRadialGradient(s.x, s.y, 2, s.x, s.y, 40);
+      const k = Math.min(1, (laserProgress - 0.85) / 0.15);
+      flash.addColorStop(0, `rgba(255,240,200,${(0.9*(1-k)).toFixed(3)})`);
+      flash.addColorStop(1, "rgba(255,120,60,0)");
+      ctx.fillStyle = flash; ctx.beginPath(); ctx.arc(s.x, s.y, 40, 0, 7); ctx.fill();
+    }
+    for (const p of burstParticles){
+      const alpha = Math.max(0, 1 - p.life/45);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let clicked = -1;
+    for (let i=0;i<SLOT_N;i++){
+      const s = slotXY(i);
+      if (Math.hypot(p.x - s.x, p.y - s.y) < BALL_R + 14) clicked = i;
+    }
+    if (clicked === -1) return;
+    // 发射激光攻击该泊位（播攻击动画后再结算）
+    attackBay = clicked;
+    attackHit = (clicked === ballIdx);
+    laserProgress = 0;
+    burstParticles = [];
+    if (attackHit){
+      // 命中：在停靠泊位生成爆炸碎裂粒子（卫星被摧毁）
+      const s = slotXY(ballIdx);
+      const colors = ["#ffd76e","#ff9e6e","#fff2c0","#8fb0d4","#ff7a6e"];
+      for (let i=0;i<34;i++){
+        const ang = Math.random()*Math.PI*2, sp = 1.8 + Math.random()*4.5;
+        burstParticles.push({ x:s.x, y:s.y, vx:Math.cos(ang)*sp, vy:Math.sin(ang)*sp - 1, r:2+Math.random()*4, life:0, color:colors[i%colors.length] });
+      }
+    }
+    BENCH.results.push(attackHit);
+    phase = "attack"; phaseStart = performance.now();
+    setStatus(attackHit ? "Direct hit! 命中！" : "Firing… 发射中","reveal");
+    syncURL();
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function startRound(){
+    ballIdx = 0; dir = 1; steps = 0; phase = "idle"; ballAngle = 0; fade = 0;
+    attackBay = -1; attackHit = false; laserProgress = 0; burstParticles = [];
+    revealBtn.disabled = false;
+    setStatus("Watch the satellite orbit, then tap the bay it docks at · 看卫星绕行，点它停靠的泊位","");
+    syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  revealBtn.addEventListener("click", onStart);
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    startRound();
+  });
+
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && retryEl.classList.contains("show")){ e.preventDefault(); retryEl.classList.remove("show"); startRound(); }
+    else if (phase === "idle"){ e.preventDefault(); onStart(); }
+  });
+
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

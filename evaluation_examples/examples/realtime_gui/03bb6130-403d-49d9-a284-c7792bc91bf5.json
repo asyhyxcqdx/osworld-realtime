@@ -1,0 +1,96 @@
+{
+  "id": "03bb6130-403d-49d9-a284-c7792bc91bf5",
+  "snapshot": "chrome",
+  "instruction": "请仅使用鼠标完成当前的 Introduction EZ Lv.2 音乐节奏游戏。点击画面中的“点按以开始”进入游戏。音符会不断向移动的判定线靠近；当音符与判定线重合时，请在音符所在位置完成相应操作：短音符单击，带有长条尾部的音符按住鼠标直至尾部结束，需要滑动的音符按住鼠标并拖动。操作的位置和时机越准确，获得的分数越高。请完成整首歌曲。进入最终成绩页面后，立即结束任务，不要重新开始，也不要使用键盘操作游戏。",
+  "source": "https://mihoyo.wiki/Phigros/whilePlaying/index.html?play=introduction&l=ez&c=official",
+  "config": [
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "google-chrome",
+          "--remote-debugging-port=1337"
+        ]
+      }
+    },
+    {
+      "type": "launch",
+      "parameters": {
+        "command": [
+          "socat",
+          "tcp-listen:9222,fork",
+          "tcp:localhost:1337"
+        ]
+      }
+    },
+    {
+      "type": "chrome_open_tabs",
+      "parameters": {
+        "urls_to_open": [
+          "https://mihoyo.wiki/Phigros/whilePlaying/index.html?play=introduction&l=ez&c=official"
+        ]
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 35
+      }
+    },
+    {
+      "type": "chrome_inject_js",
+      "parameters": {
+        "js": "localStorage.removeItem('phi'); localStorage.setItem('input-offset', '0'); localStorage.setItem('select-scale-ratio', '5'); localStorage.setItem('select-global-alpha', '1'); localStorage.setItem('highLight', 'true'); localStorage.setItem('hitSong', 'true'); localStorage.setItem('autoFullscreen', 'true'); localStorage.setItem('lineColor', 'true'); localStorage.setItem('hyperMode', 'false'); localStorage.setItem('imageBlur', 'true'); localStorage.setItem('feedback', 'false'); localStorage.setItem('showPoint', 'false'); localStorage.removeItem('osworld_keyboard_attempts'); location.reload();",
+        "wait_for_load": true,
+        "timeout": 60
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 35
+      }
+    },
+    {
+      "type": "chrome_inject_js",
+      "parameters": {
+        "js": "for (const eventType of ['keydown', 'keypress', 'keyup']) { window.addEventListener(eventType, (event) => { event.preventDefault(); event.stopImmediatePropagation(); }, true); }",
+        "wait_for_load": true,
+        "timeout": 60
+      }
+    },
+    {
+      "type": "activate_window",
+      "parameters": {
+        "window_name": "Google Chrome",
+        "strict": false
+      }
+    },
+    {
+      "type": "sleep",
+      "parameters": {
+        "seconds": 2
+      }
+    }
+  ],
+  "trajectory": "trajectories/",
+  "related_apps": [
+    "chrome"
+  ],
+  "evaluator": {
+    "func": "score_ratio_to_threshold",
+    "result": {
+      "type": "active_tab_url_parse",
+      "parse_keys": [
+        "score"
+      ]
+    },
+    "options": {
+      "threshold": 1000000,
+      "result_key": "score"
+    }
+  },
+  "proxy": true,
+  "fixed_ip": false,
+  "possibility_of_env_change": "medium"
+}

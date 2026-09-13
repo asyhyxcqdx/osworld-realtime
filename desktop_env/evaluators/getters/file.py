@@ -1,14 +1,82 @@
 import os
+import io
 import logging
+import time
 import uuid
+import zipfile
 import shutil
 from typing import Dict, List, Set
 from typing import Optional, Any, Union
 from datetime import datetime
+from urllib.parse import urlsplit, urlunsplit
 import requests
 import pandas as pd
 
 logger = logging.getLogger("desktopenv.getter.file")
+
+_ZIP_DOCUMENT_EXTENSIONS = frozenset({
+    ".docx",
+    ".odp",
+    ".ods",
+    ".odt",
+    ".pptx",
+    ".xlsx",
+})
+_VM_FILE_FETCH_ATTEMPTS = 3
+_VM_FILE_FETCH_RETRY_INTERVAL = 1
+
+
+def _is_complete_document(file_data: bytes, path: str) -> bool:
+    """Reject Office/OpenDocument snapshots captured while an app is saving."""
+    if os.path.splitext(path)[1].lower() not in _ZIP_DOCUMENT_EXTENSIONS:
+        return True
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(file_data)) as archive:
+            archive.infolist()
+        return True
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+
+def _fetch_complete_vm_file(env, path: str) -> Optional[bytes]:
+    for attempt in range(1, _VM_FILE_FETCH_ATTEMPTS + 1):
+        file_data = env.controller.get_file(path)
+        if file_data is None:
+            return None
+        if _is_complete_document(file_data, path):
+            return file_data
+
+        logger.warning(
+            "Fetched an incomplete archive from VM: %s (attempt %d/%d)",
+            path,
+            attempt,
+            _VM_FILE_FETCH_ATTEMPTS,
+        )
+        if attempt < _VM_FILE_FETCH_ATTEMPTS:
+            time.sleep(_VM_FILE_FETCH_RETRY_INTERVAL)
+
+    logger.error(
+        "Failed to fetch a complete archive from VM after %d attempts: %s",
+        _VM_FILE_FETCH_ATTEMPTS,
+        path,
+    )
+    return None
+
+
+def _resolve_huggingface_url(url: str) -> str:
+    endpoint = os.getenv("HF_ENDPOINT", "").strip()
+    source = urlsplit(url)
+    target = urlsplit(endpoint)
+    if source.hostname not in {"huggingface.co", "www.huggingface.co"}:
+        return url
+    if not target.scheme or not target.netloc:
+        return url
+
+    target_path = f"{target.path.rstrip('/')}{source.path}"
+    return urlunsplit(
+        (target.scheme, target.netloc, target_path, source.query, source.fragment)
+    )
 
 
 def get_content_from_vm_file(env, config: Dict[str, Any]) -> Any:
@@ -77,8 +145,8 @@ def get_cloud_file(env, config: Dict[str, Any]) -> Union[str, List[str]]:
             #return _path
             continue
 
-        url = p
-        response = requests.get(url, stream=True)
+        url = _resolve_huggingface_url(p)
+        response = requests.get(url, stream=True, timeout=300)
         response.raise_for_status()
 
         # Atomic write: stream into a temp file then rename, so a concurrent
@@ -133,7 +201,7 @@ def get_vm_file(env, config: Dict[str, Any]) -> Union[Optional[str], List[Option
 
         try:
             # Try to get file from VM
-            file = env.controller.get_file(p)
+            file = _fetch_complete_vm_file(env, p)
             if file is None:
                 logger.warning(f"Failed to get file from VM: {p}")
                 if i in gives:

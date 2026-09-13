@@ -1,5 +1,7 @@
 import json
+import base64
 import logging
+import os
 import random
 from typing import Any, Dict, Optional
 import time
@@ -9,6 +11,13 @@ import requests
 from desktop_env.actions import KEYBOARD_KEYS
 
 logger = logging.getLogger("desktopenv.pycontroller")
+
+
+class SequenceExecutionError(RuntimeError):
+    """A failed sequence may have executed a prefix; never replay it automatically."""
+    def __init__(self, message, details):
+        super().__init__(message)
+        self.details = details
 
 PYAUTOGUI_INPUT_PATCH = """
 import platform as _osworld_platform
@@ -102,6 +111,12 @@ class PythonController:
         """
         Gets a screenshot from the server. With the cursor. None -> no screenshot or unexpected error.
         """
+
+        if getattr(self, "realtime_session", None):
+            data = self._realtime_request("GET", "/observation")
+            self.last_observation_time = data["task_time_s"]
+            self.last_capture_interval = (data["capture_started_s"], data["capture_finished_s"])
+            return base64.b64decode(data["image"], validate=True)
 
         for attempt_idx in range(self.retry_times):
             try:
@@ -330,6 +345,8 @@ class PythonController:
         elif action_type == "CLICK":
             if parameters == {} or None:
                 self.execute_python_command("pyautogui.click()")
+            elif set(parameters) == {"num_clicks"}:
+                self.execute_python_command(f"pyautogui.click(clicks={parameters['num_clicks']})")
             elif "button" in parameters and "x" in parameters and "y" in parameters:
                 button = parameters["button"]
                 x = parameters["x"]
@@ -434,7 +451,7 @@ class PythonController:
             key = parameters["key"]
             if key.lower() not in KEYBOARD_KEYS:
                 raise Exception(f"Key must be one of {KEYBOARD_KEYS}")
-            self.execute_python_command(f"pyautogui.press('{key}')")
+            self.execute_python_command(f"pyautogui.press({key!r})")
 
         elif action_type == "KEY_DOWN":
             if "key" not in parameters:
@@ -442,7 +459,7 @@ class PythonController:
             key = parameters["key"]
             if key.lower() not in KEYBOARD_KEYS:
                 raise Exception(f"Key must be one of {KEYBOARD_KEYS}")
-            self.execute_python_command(f"pyautogui.keyDown('{key}')")
+            self.execute_python_command(f"pyautogui.keyDown({key!r})")
 
         elif action_type == "KEY_UP":
             if "key" not in parameters:
@@ -450,7 +467,7 @@ class PythonController:
             key = parameters["key"]
             if key.lower() not in KEYBOARD_KEYS:
                 raise Exception(f"Key must be one of {KEYBOARD_KEYS}")
-            self.execute_python_command(f"pyautogui.keyUp('{key}')")
+            self.execute_python_command(f"pyautogui.keyUp({key!r})")
 
         elif action_type == "HOTKEY":
             if "keys" not in parameters:
@@ -462,14 +479,71 @@ class PythonController:
                 if key.lower() not in KEYBOARD_KEYS:
                     raise Exception(f"Key must be one of {KEYBOARD_KEYS}")
 
-            keys_para_rep = "', '".join(keys)
-            self.execute_python_command(f"pyautogui.hotkey('{keys_para_rep}')")
+            self.execute_python_command(f"pyautogui.hotkey(*{keys!r})")
 
         elif action_type in ['WAIT', 'FAIL', 'DONE']:
             pass
 
         else:
             raise Exception(f"Unknown action type: {action_type}")
+
+    def _realtime_request(self, method, path, payload=None, timeout=60):
+        payload = dict(payload or {})
+        if getattr(self, "realtime_session", None):
+            payload["session_id"] = self.realtime_session
+        response = requests.request(method, self.http_server + "/realtime" + path,
+                                    **({"params": payload} if method == "GET" else {"json": payload}),
+                                    timeout=timeout)
+        # Never automatically replay a sequence after a transport error: it may
+        # already have executed on the VM.
+        if not response.ok:
+            if path == "/sequence":
+                try:
+                    details = response.json()
+                except ValueError:
+                    details = {"status": "unknown", "actions": []}
+                raise SequenceExecutionError(f"VM sequence failed ({response.status_code})", details)
+            raise RuntimeError(f"Realtime endpoint {path} failed ({response.status_code}): {response.text[:500]}")
+        return response.json()
+
+    def start_realtime_recording(self, fragment_ms=100):
+        response = requests.get(self.http_server + "/realtime/capabilities", timeout=10)
+        if response.status_code != 200:
+            raise RuntimeError("VM server needs the realtime extension; run scripts/python/install_realtime_server.py first")
+        self.realtime_session = None
+        data = self._realtime_request("POST", "/start", {"fragment_ms": fragment_ms})
+        self.realtime_session = data["session_id"]
+        return data
+
+    def get_frames(self, times_s):
+        return self._realtime_request("POST", "/frames", {"times_s": times_s}, timeout=180)
+
+    def execute_sequence(self, actions, pause=0):
+        from mm_agents.realtime_protocol import validate_action
+        # Reuse the official action compiler, including random MOVE_TO duration.
+        collector = object.__new__(PythonController)
+        groups = []
+        for action in actions:
+            validate_action(action)
+            commands = []
+            collector.execute_python_command = lambda code: commands.append(PYAUTOGUI_PKGS_PREFIX.format(command=code))
+            collector.execute_action(action)
+            groups.append({"action": action, "commands": commands})
+        return self._realtime_request("POST", "/sequence", {"groups": groups, "pause": pause}, timeout=300)
+
+    def end_realtime_recording(self, directory):
+        self._realtime_request("POST", "/stop")
+        os.makedirs(directory, exist_ok=True)
+        for name in ("recording.mp4", "recording_ffmpeg.log", "recording_index.json"):
+            with requests.get(self.http_server + "/realtime/artifact/" + name,
+                              params={"session_id": self.realtime_session}, stream=True, timeout=120) as response:
+                response.raise_for_status()
+                temporary = os.path.join(directory, name + ".tmp")
+                with open(temporary, "wb") as output:
+                    for chunk in response.iter_content(1024 * 1024):
+                        output.write(chunk)
+                os.replace(temporary, os.path.join(directory, name))
+        self.realtime_session = None
 
     # Record video
     def start_recording(self):
@@ -507,6 +581,33 @@ class PythonController:
                         for chunk in response.iter_content(chunk_size=8192):
                             if chunk:
                                 f.write(chunk)
+
+                    # Preserve the FFmpeg progress and diagnostics next to the
+                    # downloaded MP4. Older VM images do not expose this file,
+                    # so a missing log must not turn a valid recording into an
+                    # evaluation failure.
+                    try:
+                        log_response = requests.post(
+                            self.http_server + "/file",
+                            data={"file_path": "/tmp/recording_ffmpeg.log"},
+                            timeout=30,
+                        )
+                        if log_response.status_code == 200:
+                            log_dest = os.path.join(
+                                os.path.dirname(dest), "recording_ffmpeg.log"
+                            )
+                            with open(log_dest, "wb") as log_file:
+                                log_file.write(log_response.content)
+                            logger.info("Recording diagnostics saved to %s", log_dest)
+                        else:
+                            logger.warning(
+                                "FFmpeg recording log was unavailable. Status code: %d",
+                                log_response.status_code,
+                            )
+                    except Exception as log_error:
+                        logger.warning(
+                            "Could not download FFmpeg recording log: %s", log_error
+                        )
                     return
                 else:
                     logger.error("Failed to stop recording. Status code: %d", response.status_code)

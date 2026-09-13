@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neon Lucky Wheel 霓虹幸运转盘</title>
+<style>
+  :root { --bg1:#171028; --ok:#34d399; --bad:#ff5c7a; --warn:#f6c453; --gold:#f6c453; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2c1d4a 0%, var(--bg1) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; color:#f0eaff; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.reveal { color:var(--gold); } .status.yours { color:#b3a8cf; }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block;
+  }
+  .palette { display:flex; gap:12px; }
+  .swatch {
+    width:52px; height:52px; border-radius:50%; cursor:pointer;
+    border:3px solid rgba(255,255,255,.18); transition:transform .12s;
+    box-shadow:0 4px 12px rgba(0,0,0,.3);
+  }
+  .swatch:hover { transform:translateY(-3px); }
+  .swatch:active { transform:scale(.9); }
+  .reveal-btn {
+    padding:13px 34px; border-radius:30px; border:1px solid rgba(255,255,255,.16);
+    background:linear-gradient(150deg,#7c3f9e 0%,#5c2c7a 100%); color:#fff;
+    font-size:16px; font-weight:700; letter-spacing:.6px; cursor:pointer;
+    box-shadow:0 10px 24px rgba(0,0,0,.35); transition:transform .15s, opacity .2s;
+  }
+  .reveal-btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .reveal-btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#958aa6; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,20,44,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(14,8,24,.68); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:15px; color:#6b7280; margin-top:6px; }
+  .intro {
+    position:fixed; inset:0; background:rgba(14,8,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:540px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.6; }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,#7c3f9e 0%,#5c2c7a 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3);
+    transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the wheel spin, then tap the color under the pointer · 看转盘旋转，点指针指向的颜色</div>
+  <canvas id="cv" width="800" height="420"></canvas>
+  <button class="reveal-btn" id="revealBtn">Spin 旋转 (Space)</button>
+  <div class="palette" id="palette"></div>
+  <div class="hint" id="hint">Attempt 0 / 3 · 第 0 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">You tracked the wheel correctly · 你正确跟踪了转盘</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts · 尝试次数用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Neon Lucky Wheel · 霓虹幸运转盘</div>
+      <div class="intro-rule">
+        一个游乐场的霓虹幸运转盘在旋转，指针固定在顶部。 A neon lucky wheel spins while a pointer stays fixed at the top.<br>
+        你要盯着转盘的旋转，看它停下时指针指向哪个颜色扇区。 Track the spin to see which colored sector ends up under the pointer.<br>
+        转盘停下后霓虹灯熄灭，所有颜色都变暗。 When it stops the neon lights go out and all the colors dim.<br>
+        从下方调色板点出指针指向的颜色。 Tap the color the pointer was pointing at from the palette below.
+      </div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  // 叙事：游乐场霓虹幸运转盘。6 色霓虹扇区绕圆盘，顶部固定指针。
+  // 转盘连续旋转（角运动），玩家跟踪旋转、判断停下时指针指向的颜色扇区。
+  // 旋转停止后「霓虹灯熄灭」——所有扇区颜色渐暗变灰（信息消失自然原因 = 转盘灯灭），
+  // 玩家必须靠跟踪旋转过程记住指针最终指向的颜色，从调色板作答。
+  // 与 a12/a14/a23/a15「跟踪目标在位置间移动/换位」机制不同：本游戏是「整体旋转 + 指针参考系 + 猜颜色」。
+  const CW = 800, CH = 420;
+  const MAX_ATTEMPTS = 3;
+  const CX = 400, CY = 230, RADIUS = 150;
+  const COLORS = ["#ef4444", "#22c55e", "#3b82f6", "#eab308", "#a855f7", "#f97316"];
+  const SLOT_N = 6;
+  const SHOW_MS = 700, SPIN_MS = 480, FADE_MS = 380, STEPS_MIN = 3, STEPS_MAX = 5;
+
+  const BENCH = { task:"spinner", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const palette = document.getElementById("palette");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";        // idle | show | spin | fade | answer | done
+  let rotAngle = 0, dir = 1, steps = 0, targetIdx = 0;
+  let moveIdx = 0, moveStart = 0, phaseStart = 0;
+  let fade = 0;              // 灯灭进度 0(霓虹亮)~1(全暗灰)
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, targetIdx, dir, steps, attempts: BENCH.attempts, passed: BENCH.passed }; };
+
+  function buildPalette(){
+    palette.innerHTML = "";
+    COLORS.forEach((c,i)=>{
+      const b = document.createElement("button");
+      b.className = "swatch"; b.style.background = c; b.setAttribute("data-color", i);
+      b.addEventListener("click", ()=>onSwatch(i));
+      palette.appendChild(b);
+    });
+  }
+
+  function onSpin(){
+    if (phase !== "idle") return;
+    dir = Math.random() < 0.5 ? 1 : -1;
+    steps = STEPS_MIN + Math.floor(Math.random()*(STEPS_MAX - STEPS_MIN + 1));
+    moveIdx = 0;
+    rotAngle = 0;
+    fade = 0;
+    phase = "show"; phaseStart = performance.now();
+    revealBtn.disabled = true;
+    setStatus("Watch the wheel… 看转盘","reveal");
+    syncURL();
+  }
+
+  function update(now){
+    if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "spin"; moveStart = now; setStatus("Track the wheel… 跟踪转盘","reveal"); }
+    }
+    else if (phase === "spin"){
+      const t = (now - moveStart) / SPIN_MS;
+      const from = moveIdx * 60 * dir;
+      const to = (moveIdx + 1) * 60 * dir;
+      if (t >= 1){
+        rotAngle = to;
+        moveIdx++;
+        if (moveIdx < steps){ moveStart = now; }
+        else {
+          // 停下时指针（顶部）指向的扇区 index
+          targetIdx = Math.floor((((30 - rotAngle) % 360) + 360) % 360 / 60);
+          phase = "fade"; phaseStart = now;
+          setStatus("The lights go out… 霓虹灯熄灭","reveal");
+        }
+      } else {
+        const e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;   // easeInOut 旋转
+        rotAngle = from + (to - from) * e;
+      }
+    }
+    else if (phase === "fade"){
+      const t = Math.min(1, (now - phaseStart) / FADE_MS);
+      fade = t;   // 灯灭渐暗（linear → 所有扇区变灰）
+      if (now - phaseStart >= FADE_MS){ phase = "answer"; setStatus("Tap the color the pointer was on · 点指针指向的颜色","action"); }
+    }
+  }
+
+  // ===== 绘制 =====
+  function drawBackground(){
+    // 嘉年华夜幕：深紫径向渐变 + 舞台聚光 + 灯泡串
+    const g = ctx.createRadialGradient(400, 180, 30, 400, 220, 560);
+    g.addColorStop(0,"#3a2560"); g.addColorStop(0.55,"#241543"); g.addColorStop(1,"#0e0818");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 舞台聚光锥（从顶部洒下）
+    const spot = ctx.createRadialGradient(400, 0, 10, 400, 160, 280);
+    spot.addColorStop(0,"rgba(255,230,180,.16)"); spot.addColorStop(1,"rgba(255,230,180,0)");
+    ctx.fillStyle = spot;
+    ctx.beginPath(); ctx.moveTo(400,0); ctx.lineTo(140,CH); ctx.lineTo(660,CH); ctx.closePath(); ctx.fill();
+    // 灯泡串（顶部装饰弧，多色发光）
+    const bulbCols = ["#ffd76e","#7cd0ff","#ff8fb0","#9dffb8","#e6a5ff"];
+    for (let i=0;i<14;i++){
+      const bx = 40 + i*55, by = 26 + Math.sin(i*0.85)*9;
+      const c = bulbCols[i % bulbCols.length];
+      // 光晕
+      const halo = ctx.createRadialGradient(bx, by, 1, bx, by, 12);
+      halo.addColorStop(0, c); halo.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(bx, by, 12, 0, 7); ctx.fill();
+      // 灯泡本体
+      ctx.fillStyle = c;
+      ctx.beginPath(); ctx.arc(bx, by, 4.5, 0, 7); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.85)";
+      ctx.beginPath(); ctx.arc(bx-1.5, by-1.5, 1.6, 0, 7); ctx.fill();
+    }
+    // 灯泡串线
+    ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i=0;i<14;i++){ const bx = 40 + i*55, by = 26 + Math.sin(i*0.85)*9; if(i===0) ctx.moveTo(bx,by); else ctx.lineTo(bx,by); }
+    ctx.stroke();
+  }
+
+  function sectorColor(i){
+    // 灯灭时扇区从霓虹色渐变成暗灰（所有扇区统一暗灰，保证无泄露）
+    const c = COLORS[i];
+    const grayAmt = fade;
+    const n = parseInt(c.slice(1), 16);
+    const r = ((n>>16)&255), gg = ((n>>8)&255), b = (n&255);
+    const gr = 0x4a, gg2 = 0x4a, gb = 0x54;   // 暗灰
+    const nr = Math.round(r + (gr - r)*grayAmt);
+    const ng = Math.round(gg + (gg2 - gg)*grayAmt);
+    const nb = Math.round(b + (gb - b)*grayAmt);
+    return `rgb(${nr},${ng},${nb})`;
+  }
+
+  function drawWheel(){
+    const glow = (1 - fade);   // 霓虹亮度（灯灭后归零）
+    for (let i=0;i<SLOT_N;i++){
+      const a0 = (i*60 + rotAngle - 120) * Math.PI/180;
+      const a1 = ((i+1)*60 + rotAngle - 120) * Math.PI/180;
+      const midA = (a0 + a1) / 2;
+      ctx.beginPath(); ctx.moveTo(CX, CY);
+      ctx.arc(CX, CY, RADIUS, a0, a1);
+      ctx.closePath();
+      // 扇形径向渐变（圆心到边缘：亮 → 略深），灯灭时整体衰减
+      const c = sectorColor(i);
+      ctx.fillStyle = c; ctx.fill();
+      // 外缘霓虹发光描边（灯亮时强、灯灭时衰减）
+      if (glow > 0.01){
+        ctx.save();
+        ctx.strokeStyle = `rgba(255,255,255,${(0.55*glow).toFixed(3)})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(CX, CY, RADIUS, a0, a1); ctx.stroke();
+        // 发光外扩
+        ctx.strokeStyle = c;
+        ctx.lineWidth = 7; ctx.globalAlpha = 0.30 * glow;
+        ctx.beginPath(); ctx.arc(CX, CY, RADIUS + 1, a0, a1); ctx.stroke();
+        ctx.restore();
+      }
+      // 扇区分隔线（深色细线）
+      ctx.strokeStyle = "rgba(0,0,0,.4)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(CX + Math.cos(a0)*RADIUS, CY + Math.sin(a0)*RADIUS); ctx.stroke();
+    }
+    // 转盘外圈（金属装饰环 + 霓虹光环）
+    ctx.strokeStyle = "rgba(0,0,0,.35)"; ctx.lineWidth = 12;
+    ctx.beginPath(); ctx.arc(CX, CY, RADIUS + 8, 0, 7); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,255,255,${(0.28 + 0.3*glow).toFixed(3)})`; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(CX, CY, RADIUS, 0, 7); ctx.stroke();
+    // 轴心金属圆
+    const hub = ctx.createRadialGradient(CX-4, CY-4, 2, CX, CY, 18);
+    hub.addColorStop(0,"#f0e8d8"); hub.addColorStop(0.55,"#9a8a64"); hub.addColorStop(1,"#4a3d28");
+    ctx.fillStyle = hub; ctx.beginPath(); ctx.arc(CX, CY, 16, 0, 7); ctx.fill();
+    // 轴心高光
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    ctx.beginPath(); ctx.ellipse(CX-4, CY-5, 4, 2.8, -0.6, 0, 7); ctx.fill();
+  }
+
+  function drawPointer(){
+    // 顶部固定指针（红色指示箭头 + 底座）
+    const tipY = CY - RADIUS + 6;
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,.4)"; ctx.shadowBlur = 4;
+    ctx.fillStyle = "#ff5c5c";
+    ctx.beginPath(); ctx.moveTo(CX, tipY); ctx.lineTo(CX - 16, tipY - 26); ctx.lineTo(CX + 16, tipY - 26); ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#e8eaf6"; ctx.beginPath(); ctx.arc(CX, tipY - 30, 9, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function render(){
+    drawBackground();
+    drawWheel();   // 轮盘始终画（show/spin 霓虹亮，fade 渐暗，answer 全暗灰）
+    drawPointer();
+  }
+
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function onSwatch(i){
+    if (phase !== "answer") return;
+    const ok = i === targetIdx;
+    BENCH.results.push(ok);
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success! 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Wrong color 选错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  }
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function startRound(){
+    rotAngle = 0; dir = 1; steps = 0; targetIdx = 0; fade = 0; phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Watch the wheel spin, then tap the color under the pointer · 看转盘旋转，点指针指向的颜色","");
+    syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  revealBtn.addEventListener("click", onSpin);
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  buildPalette();
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    startRound();
+  });
+
+  // 空格触发 Start/Next（弹层显示时；进游戏后空格无动作，不误触）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && retryEl.classList.contains("show")){ e.preventDefault(); retryEl.classList.remove("show"); startRound(); }
+    else if (phase === "idle"){ e.preventDefault(); onSpin(); }
+  });
+
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

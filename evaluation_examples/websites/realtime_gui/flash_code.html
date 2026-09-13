@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>闪烁验证码</title>
+<style>
+  :root {
+    --background: #0b1220;
+    --card: #101a30;
+    --border: #23314f;
+    --text: #e8eefb;
+    --muted: #93a5c4;
+    --accent: #5b8cff;
+    --success: #34d399;
+    --failure: #f87171;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(1200px 700px at 50% -10%, #152344, var(--background));
+    color: var(--text);
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  main {
+    width: min(780px, 94vw);
+    padding: 36px 42px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
+  }
+
+  h1 { margin-bottom: 8px; text-align: center; font-size: 28px; }
+  .stage {
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    text-align: center;
+  }
+  .hidden { display: none !important; }
+  .description { font-size: 17px; line-height: 1.9; }
+  .hint { color: var(--muted); font-size: 15px; }
+  .button {
+    padding: 12px 32px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    font-size: 17px;
+    font-weight: 600;
+  }
+  .button:hover { filter: brightness(1.12); }
+  .button.secondary {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+  }
+  .countdown { color: #cfe0ff; font-size: 110px; font-weight: 800; line-height: 1; }
+  #flashCanvas { border: 1px solid var(--border); border-radius: 12px; }
+  .progress {
+    width: min(430px, 82%);
+    height: 6px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: #1d2a47;
+  }
+  .progress span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #5b8cff, #9f7bff);
+  }
+  #answerInput {
+    width: min(360px, 82%);
+    padding: 12px 16px 12px 20px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    outline: none;
+    background: #0d1526;
+    color: var(--text);
+    font-family: Consolas, Menlo, "Courier New", monospace;
+    font-size: 24px;
+    letter-spacing: .25em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+  #answerInput:focus { border-color: var(--accent); }
+  #result {
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  #result[data-status="success"] {
+    border: 1px solid rgba(52, 211, 153, .4);
+    background: rgba(52, 211, 153, .1);
+    color: var(--success);
+  }
+  #result[data-status="fail"] {
+    border: 1px solid rgba(248, 113, 113, .4);
+    background: rgba(248, 113, 113, .1);
+    color: var(--failure);
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>闪烁验证码</h1>
+
+  <section class="stage" id="stageIntro">
+    <p class="description">
+      点击“开始任务”后，屏幕上会短暂显示一串 8 位验证码。<br />
+      请记住验证码，并在它消失后完整输入到输入框中。<br />
+      每次尝试只显示一次验证码，提交答案没有时间限制。
+    </p>
+    <button class="button" id="startButton">开始任务</button>
+  </section>
+
+  <section class="stage hidden" id="stageCountdown">
+    <div class="countdown" id="countdown">3</div>
+    <p class="hint">准备，验证码即将出现……</p>
+  </section>
+
+  <section class="stage hidden" id="stageFlash">
+    <p class="hint">请记住下面的验证码</p>
+    <canvas id="flashCanvas" width="520" height="150" role="img" aria-label="验证码显示区域"></canvas>
+    <div class="progress"><span id="progressBar"></span></div>
+  </section>
+
+  <section class="stage hidden" id="stageAnswer">
+    <p class="description">验证码已消失。请输入你看到的验证码：</p>
+    <input id="answerInput" autocomplete="off" spellcheck="false" placeholder="--------" />
+    <button class="button" id="submitButton">提交答案</button>
+    <p class="hint">没有时间限制，请确认完整后再提交。</p>
+  </section>
+
+  <section class="stage hidden" id="stageDone">
+    <div id="result"></div>
+    <button class="button secondary" id="retryButton">再来一次</button>
+  </section>
+
+  <!-- OSWorld evaluator reads these fields; they are not task instructions. -->
+  <span id="benchmark-status" hidden>idle</span>
+  <span id="benchmark-attempts" hidden>0</span>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const config = {
+    codeLength: 8,
+    charset: "23456789ABCDEFGHJKMNPQRSTUVWXYZ",
+    countdownSeconds: 3,
+    displayDurationMs: 2500,
+  };
+
+  const element = (id) => document.getElementById(id);
+  const stages = {
+    intro: element("stageIntro"),
+    countdown: element("stageCountdown"),
+    flash: element("stageFlash"),
+    answer: element("stageAnswer"),
+    done: element("stageDone"),
+  };
+
+  const seed = new URLSearchParams(location.search).get("seed") || `seed-${Date.now()}`;
+  const attemptStorageKey = "flash-code.attempts";
+  let attempts = readAttempts();
+  let currentCode = "";
+
+  function readAttempts() {
+    try {
+      return Number.parseInt(sessionStorage.getItem(attemptStorageKey) || "0", 10) || 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function writeAttempts() {
+    try {
+      sessionStorage.setItem(attemptStorageKey, String(attempts));
+    } catch (_) {
+      // The current page can still run if browser storage is unavailable.
+    }
+    element("benchmark-attempts").textContent = String(attempts);
+  }
+
+  function setStatus(status) {
+    element("benchmark-status").textContent = status;
+  }
+
+  function showStage(name) {
+    for (const [stageName, stageElement] of Object.entries(stages)) {
+      stageElement.classList.toggle("hidden", stageName !== name);
+    }
+  }
+
+  function xmur3(value) {
+    let hash = 1779033703 ^ value.length;
+    for (let i = 0; i < value.length; i += 1) {
+      hash = Math.imul(hash ^ value.charCodeAt(i), 3432918353);
+      hash = (hash << 13) | (hash >>> 19);
+    }
+    return () => {
+      hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
+      hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
+      return (hash ^= hash >>> 16) >>> 0;
+    };
+  }
+
+  function mulberry32(initialValue) {
+    let value = initialValue;
+    return () => {
+      value |= 0;
+      value = (value + 0x6d2b79f5) | 0;
+      let mixed = Math.imul(value ^ (value >>> 15), 1 | value);
+      mixed = (mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed)) ^ mixed;
+      return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function makeCode(attemptNumber) {
+    const random = mulberry32(xmur3(`${seed}::${attemptNumber}`)());
+    let code = "";
+    for (let i = 0; i < config.codeLength; i += 1) {
+      code += config.charset[Math.floor(random() * config.charset.length)];
+    }
+    return code;
+  }
+
+  function drawCode(code) {
+    const canvas = element("flashCanvas");
+    const pixelRatio = window.devicePixelRatio || 1;
+    const width = 520;
+    const height = 150;
+    canvas.width = width * pixelRatio;
+    canvas.height = height * pixelRatio;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const context = canvas.getContext("2d");
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.fillStyle = "#0d1526";
+    context.fillRect(0, 0, width, height);
+    context.font = "700 72px Consolas, Menlo, 'Courier New', monospace";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+
+    const step = width / code.length;
+    for (let index = 0; index < code.length; index += 1) {
+      context.fillStyle = "#e8eefb";
+      context.fillText(code[index], step * index + step / 2, height / 2);
+    }
+  }
+
+  function animateProgress(duration) {
+    const progressBar = element("progressBar");
+    const startedAt = performance.now();
+    const update = (now) => {
+      const remaining = Math.max(0, 1 - (now - startedAt) / duration);
+      progressBar.style.width = `${(remaining * 100).toFixed(2)}%`;
+      if (remaining > 0) requestAnimationFrame(update);
+    };
+    requestAnimationFrame(update);
+  }
+
+  const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+  async function startTask() {
+    attempts += 1;
+    writeAttempts();
+    setStatus("running");
+    currentCode = makeCode(attempts);
+
+    const result = element("result");
+    result.textContent = "";
+    result.removeAttribute("data-status");
+    element("answerInput").value = "";
+
+    showStage("countdown");
+    for (let value = config.countdownSeconds; value >= 1; value -= 1) {
+      element("countdown").textContent = String(value);
+      await sleep(1000);
+    }
+
+    drawCode(currentCode);
+    showStage("flash");
+    animateProgress(config.displayDurationMs);
+    await sleep(config.displayDurationMs);
+
+    showStage("answer");
+    element("answerInput").focus();
+  }
+
+  function submitAnswer() {
+    const submitted = element("answerInput").value.trim().toUpperCase();
+    const correct = submitted === currentCode;
+    const result = element("result");
+
+    result.textContent = correct
+      ? "提交正确！"
+      : `答案错误。正确答案是 ${currentCode}。`;
+    result.dataset.status = correct ? "success" : "fail";
+    setStatus(correct ? "success" : "fail");
+    showStage("done");
+  }
+
+  element("startButton").addEventListener("click", startTask);
+  element("submitButton").addEventListener("click", submitAnswer);
+  element("retryButton").addEventListener("click", startTask);
+  element("answerInput").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") submitAnswer();
+  });
+
+  element("answerInput").maxLength = config.codeLength;
+  writeAttempts();
+  setStatus("idle");
+  document.body.dataset.ready = "1";
+})();
+</script>
+</body>
+</html>

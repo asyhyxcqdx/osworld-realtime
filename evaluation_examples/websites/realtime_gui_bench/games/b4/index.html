@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>正午鸣钟 Clock Face</title>
+<style>
+  :root {
+    --sky1:#2a4a7f; --sky2:#6db3e6; --sky3:#c9e4f5;
+    --stone1:#8a7a63; --stone2:#6b5d4a;
+    --dial1:#f4ead6; --dial2:#e7d6b4;
+    --brass1:#e6c27a; --brass2:#b8903f;
+    --ok:#34d399; --bad:#ff5c7a; --gold:#ffd166;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: linear-gradient(180deg, var(--sky3) 0%, var(--sky2) 40%, #8fb7d9 56%, #7a9fc4 56.5%, #4a6d99 100%);
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    color:#1f2937; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  }
+
+  /* ===== 顶部 HUD ===== */
+  .status {
+    font-size:21px; font-weight:800; letter-spacing:.4px; min-height:28px; text-align:center;
+    background:rgba(20,27,45,.82); color:#fff; padding:7px 22px; border-radius:22px;
+    box-shadow:0 6px 18px rgba(0,0,0,.25); z-index:30;
+  }
+  .status.idle { color:#c7cde8; } .status.armed { color:var(--gold); }
+  .status.win { color:var(--ok); } .status.lose { color:var(--bad); }
+  .status.action { font-size:23px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.5); }
+  .period-note {
+    font-size:14px; font-weight:600; color:#fff;
+    background:rgba(20,27,45,.72); padding:5px 18px; border-radius:18px; letter-spacing:.3px; box-shadow:0 4px 12px rgba(0,0,0,.2); z-index:30;
+  }
+  .period-note b { color:#ffd166; font-weight:800; }
+
+  /* ===== 场景：钟楼 ===== */
+  .stage { position:relative; width:540px; height:470px; display:flex; align-items:center; justify-content:center; }
+  /* 塔身石块（钟面后方，上下露出形成"钟楼"） */
+  .tower {
+    position:absolute; left:50%; bottom:11.7%; transform:translateX(-50%);
+    width:240px; height:360px;
+    background:linear-gradient(180deg, #8a7a63 0%, #7a6d58 100%);
+    border-radius:14px 14px 0 0;
+    box-shadow:inset 0 2px 0 rgba(255,255,255,.28);
+  }
+  .tower::before {
+    content:""; position:absolute; inset:0;
+    background:repeating-linear-gradient(180deg, rgba(0,0,0,.06) 0 26px, transparent 26px 52px),
+                repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 26px, transparent 26px 52px);
+    border-radius:inherit;
+  }
+  /* 尖顶（三段式钟楼顶：尖顶 + 圆顶座） */
+  .spire {
+    position:absolute; left:50%; bottom:68%; transform:translateX(-50%);
+    width:0; height:0;
+    border-left:96px solid transparent; border-right:96px solid transparent;
+    border-bottom:150px solid #5a4d3c;
+    filter:drop-shadow(0 8px 14px rgba(0,0,0,.3));
+    z-index:0;
+  }
+  .spire::after {
+    content:""; position:absolute; left:50%; top:100%; transform:translateX(-50%);
+    width:150px; height:34px; border-radius:10px;
+    background:linear-gradient(180deg,#6a5c49,#544838);
+  }
+
+  /* 表盘（有质感的钟面，嵌在钟孔内） */
+  #dial {
+    width:330px; height:330px;
+    position:relative; z-index:5; cursor:pointer;
+  }
+
+  .hint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); font-size:13px; color:#1f2937; letter-spacing:.5px; background:rgba(255,255,255,.72); padding:4px 16px; border-radius:16px; z-index:30; }
+
+  /* ===== 按钮 ===== */
+  .btn {
+    padding:15px 40px; font-size:21px; font-weight:800; letter-spacing:1px;
+    border:none; border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,#4c7dff 0%,#3355d8 100%);
+    box-shadow:0 12px 30px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .12s, box-shadow .12s, opacity .2s; z-index:30;
+  }
+  .btn:active { transform:translateY(2px) scale(.98); }
+  .btn:disabled { opacity:.35; cursor:default; }
+  .btn-sub { font-size:13px; font-weight:600; opacity:.85; display:block; letter-spacing:0; }
+
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 52px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 16px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,#34d399,#0ea371); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,#f87171,#dc2626); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .celeb-sub { font-size:14px; color:#6b7280; margin-top:6px; }
+  #confetti { position:fixed; inset:0; pointer-events:none; z-index:110; }
+  .intro { position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+  .intro.hidden { display:none; }
+  .intro-box { background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center; max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .intro-title { font-size:28px; font-weight:800; color:#1f2937; }
+  .intro-rule { font-size:16px; color:#4b5563; margin-top:14px; line-height:1.65; }
+  .intro-rule b { color:#1f2937; }
+  .intro-start { margin-top:24px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,#4c5baa 0%,#3a4684 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+  .intro-start:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">开始 / Press Start</div>
+
+  <div class="stage">
+    <div class="spire"></div>
+    <div class="tower"></div>
+
+    <svg id="dial" width="380" height="380" viewBox="0 0 380 380">
+      <defs>
+        <radialGradient id="dialFace" cx="50%" cy="42%" r="62%">
+          <stop offset="0%" stop-color="#fbf3e0"/>
+          <stop offset="55%" stop-color="#f4ead6"/>
+          <stop offset="100%" stop-color="#d9c7a2"/>
+        </radialGradient>
+        <radialGradient id="glassShine" cx="34%" cy="28%" r="55%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity=".42"/>
+          <stop offset="42%" stop-color="#ffffff" stop-opacity=".12"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="hub" cx="50%" cy="45%" r="60%">
+          <stop offset="0%" stop-color="#f0d9a2"/>
+          <stop offset="100%" stop-color="#b8903f"/>
+        </radialGradient>
+        <linearGradient id="brass" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#e6c27a"/>
+          <stop offset="100%" stop-color="#a87f2e"/>
+        </linearGradient>
+      </defs>
+
+      <!-- 外圈铜框 -->
+      <circle cx="190" cy="190" r="182" fill="none" stroke="url(#brass)" stroke-width="16"/>
+      <circle cx="190" cy="190" r="174" fill="none" stroke="#3a3125" stroke-width="2"/>
+      <!-- 钟面 -->
+      <circle cx="190" cy="190" r="170" fill="url(#dialFace)"/>
+
+      <!-- 60 分钟刻度（细） -->
+      <g id="minTicks" stroke="#8a7a63" stroke-width="2"></g>
+
+      <!-- 12 点目标刻度（金色，凸起钟钮） -->
+      <circle cx="190" cy="32" r="17" fill="url(#brass)" stroke="#fff" stroke-width="2.5"/>
+      <circle cx="190" cy="30" r="6" fill="#fff" opacity=".55"/>
+      <text x="190" y="108" text-anchor="middle" fill="#7a5a12" font-size="34" font-weight="800" font-family="Georgia, 'Times New Roman', serif">12</text>
+
+      <!-- 3 / 6 / 9 点干扰刻度（灰） -->
+      <circle cx="348" cy="190" r="12" fill="#9a9385" stroke="#7c755f" stroke-width="1.5"/>
+      <text x="308" y="200" text-anchor="middle" fill="#9a9385" font-size="26" font-weight="700" font-family="Georgia, serif">3</text>
+      <circle cx="190" cy="348" r="12" fill="#9a9385" stroke="#7c755f" stroke-width="1.5"/>
+      <text x="190" y="316" text-anchor="middle" fill="#9a9385" font-size="26" font-weight="700" font-family="Georgia, serif">6</text>
+      <circle cx="32" cy="190" r="12" fill="#9a9385" stroke="#7c755f" stroke-width="1.5"/>
+      <text x="72" y="200" text-anchor="middle" fill="#9a9385" font-size="26" font-weight="700" font-family="Georgia, serif">9</text>
+
+      <!-- 秒针（红色，初始画水平向右 = 3 点方向） -->
+      <line id="hand" x1="190" y1="190" x2="336" y2="190" stroke="#d64545" stroke-width="6" stroke-linecap="round"/>
+      <circle id="handTip" cx="336" cy="190" r="7" fill="#d64545"/>
+
+      <!-- 中心轴 -->
+      <circle cx="190" cy="190" r="12" fill="url(#hub)" stroke="#8a6d28" stroke-width="2"/>
+      <circle cx="190" cy="190" r="4" fill="#5d4a1c"/>
+
+      <!-- 玻璃高光 -->
+      <circle cx="190" cy="190" r="170" fill="url(#glassShine)"/>
+    </svg>
+  </div>
+
+  <div class="period-note">秒针 6 秒一圈（60°/秒），点 Start 后从 3 点开始走 &middot; hand sweeps <b>6s per revolution</b> (60&deg;/s) after you press Start &mdash; 指向金色 12 点时点击 (&plusmn;10&deg;) / click at the <b>GOLD 12</b> (&plusmn;10&deg;)</div>
+
+  <button class="btn" id="startBtn">Start 开始<span class="btn-sub">(Space)</span></button>
+  <div class="hint" id="hint">Attempt 1 / 3 &middot; 尝试 1 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">敲钟成功！Success!</div>
+      <div class="celeb-sub">Hand hit 12 o'clock &middot; 秒针正好指向 12 点</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">失败 Failed</div>
+      <div class="celeb-sub">Out of attempts &middot; 尝试次数用尽</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 &middot; 尝试 2 / 3</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">正午鸣钟 Clock Tower</div>
+      <div class="intro-rule">你是钟楼管理员，每天正午 12 点整要为全镇敲响大钟。<br>You are the bell keeper: every day at noon you must ring the bell the instant the second hand strikes <b>12</b>.<br><br>秒针静止在 3 点位置。<b>点 Start 后秒针才开始走</b>，以恒定速度转动 <b>6 秒一圈</b>（60°/秒）。表盘有四个刻度：<b>12 点是金色</b>（目标），3 / 6 / 9 点是灰色（干扰）。<br>The hand rests at 3 o'clock. <b>It starts moving only after you press Start</b>, sweeping at <b>6s per revolution</b> (60&deg;/s). Four ticks: <b>12 is GOLD</b> (target), 3/6/9 are gray (distractors).<br><br>当秒针指向金色 12 点时点击表盘敲钟——须在到达 12 点<b>前后 167ms</b> 内（&plusmn;10&deg;）。早了晚了都不算正点。<br>Click the dial when the hand points at the <b>GOLD 12</b> — within <b>167ms before or after</b> it reaches 12 (&plusmn;10&deg;).</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const PERIOD_MS = 6000;          // 6s per revolution (周期明确标注)
+  const ANG_SPEED = 360 / PERIOD_MS; // 0.06 deg/ms = 60 deg/s
+  const TARGET_DEG = 270;          // 12 o'clock = top = 270° (angle 0° = 3 o'clock)
+  const HALF_WINDOW_DEG = 10;      // ±10°
+  const MISS_MS = PERIOD_MS;       // arm 后转满一圈（6s）未点击 → miss
+
+  const BENCH = { task:"clockface", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn");
+  const dial=document.getElementById("dial");
+  const hand=document.getElementById("hand"), handTip=document.getElementById("handTip");
+  const toast=document.getElementById("toast"), overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+  const confettiCv=document.getElementById("confetti");
+
+  // 秒针角度：arm 后匀速旋转（复用 b37 模式：idle 静止，arm 后从 armNow 计 elapsed）
+  // 初始静止在 0°（3 点方向）；点 Start 后从 0° 顺时转 60°/s，转到 12 点（270°）需 4.5s
+  function getAngle(){
+    if(phase!=="armed") return angleLocked;      // idle/done 静止在锁定角度
+    const elapsed=(performance.now()-armNow)%PERIOD_MS;
+    return elapsed/PERIOD_MS*360;
+  }
+
+  // 60 分钟刻度（细）——一次性生成
+  (function buildMinTicks(){
+    const g=document.getElementById("minTicks");
+    let s="";
+    for(let i=0;i<60;i++){
+      const a=i*6*Math.PI/180;
+      const x1=190+Math.sin(a)*157, y1=190-Math.cos(a)*157;
+      const x2=190+Math.sin(a)*166, y2=190-Math.cos(a)*166;
+      s+='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'"/>';
+    }
+    g.innerHTML=s;
+  })();
+
+  let phase="idle", armNow=0, missTimer=null, raf=null, angleLocked=0, lastT=0;
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1500); }
+
+  // 秒针 rAF：只在 armed 阶段更新旋转（复用 b37 模式：idle/done 静止，armed 才转）
+  function setHand(angle){
+    hand.setAttribute("transform","rotate("+angle+" 190 190)");
+    handTip.setAttribute("transform","rotate("+angle+" 190 190)");
+  }
+  function frame(now){
+    lastT=now;
+    if(phase==="armed"){ setHand(getAngle()); raf=requestAnimationFrame(frame); }
+  }
+
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false;
+    angleLocked=0; setHand(0);   // 秒针静止在 3 点（0°），等 Start
+    setStatus("开始 / Press Start","idle"); syncURL();
+  }
+  function arm(){
+    phase="armed"; startBtn.disabled=true;
+    armNow=performance.now(); lastT=armNow;
+    angleLocked=0;
+    setStatus("When the hand points at 12, click! 秒针指向 12 点时点击!","action"); syncURL();
+    cancelAnimationFrame(raf); raf=requestAnimationFrame(frame);
+    missTimer=setTimeout(()=>{ if(phase==="armed") miss(); }, MISS_MS+60);
+  }
+  function onDial(){
+    if(phase!=="armed") return;
+    clearTimeout(missTimer);
+    const angle=getAngle();
+    const diff=((angle-TARGET_DEG)%360+360)%360;
+    const absDiff=Math.min(diff,360-diff);
+    phase="done";
+    cancelAnimationFrame(raf);
+    angleLocked=angle; setHand(angle);   // 结算：秒针停在点击处
+    if(absDiff<=HALF_WINDOW_DEG){
+      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      setStatus("Success 成功","win"); syncURL();
+      // 结算延迟：先播鸣钟后果动画，再弹 win 框
+      setTimeout(()=>{ overlay.classList.add("show"); launchConfetti(); }, 350);
+    } else {
+      failOne();
+    }
+  }
+  function miss(){
+    clearTimeout(missTimer);
+    if(phase!=="armed") return;
+    phase="done";
+    cancelAnimationFrame(raf);
+    angleLocked=getAngle(); setHand(angleLocked);
+    failOne();
+  }
+  function failOne(){
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    setStatus("Missed 脱靶","lose");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){
+      BENCH.status="failed"; syncURL();
+      setTimeout(()=>failOverlay.classList.add("show"), 300);
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + " · 尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const ctx=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 空格触发 Start/Next（phase 隔离）
+  function onSpaceKey(){
+    const introEl=document.getElementById("intro");
+    const retryEl=document.getElementById("retryOverlay");
+    if(introEl && !introEl.classList.contains("hidden")){ document.getElementById("introStart").click(); return; }
+    if(retryEl.classList.contains("show")){ document.getElementById("nextBtn").click(); return; }
+    if(phase==="idle"){ startBtn.click(); return; }
+  }
+  document.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" "){ e.preventDefault(); onSpaceKey(); }
+  });
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+  dial.addEventListener("click",onDial);
+  document.getElementById("introStart").addEventListener("click",()=>{
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" · 尝试 1 / "+MAX_ATTEMPTS);
+  });
+  document.getElementById("nextBtn").addEventListener("click",()=>{
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+  });
+
+  window.__dbg = function(){
+    const angle=getAngle();
+    const deltaDeg=(TARGET_DEG-angle+360)%360;   // 到 12 点还需转的角度
+    const remainingMs=deltaDeg/ANG_SPEED;         // 到 12 点剩余毫秒
+    const diff=((angle-TARGET_DEG)%360+360)%360;
+    const absDiff=Math.min(diff,360-diff);
+    return {
+      phase, angle, remainingMs, targetDeg:TARGET_DEG,
+      halfWindowDeg:HALF_WINDOW_DEG, windowMs:2*HALF_WINDOW_DEG/ANG_SPEED,
+      angSpeedDegPerSec:ANG_SPEED*1000, periodMs:PERIOD_MS,
+      inWindow:absDiff<=HALF_WINDOW_DEG,
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status
+    };
+  };
+
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drift Exit 漂移出弯</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .btn{padding:18px 44px;font-size:24px;font-weight:800;letter-spacing:1px;border:none;
+    border-radius:16px;cursor:pointer;color:#fff;background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4),inset 0 1px 0 rgba(255,255,255,.25);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:600px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Drift ... release at the exit 漂移…对准出弯松键</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">J</span> Release drift 松开漂移出弯</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Clean exit 完美出弯</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Drift Exit 漂移出弯</div>
+      <div class="intro-rule">The car drifts through the corner while its nose keeps turning. Release <b>J</b> at the moment the nose lines up with the exit arrow to regain grip and accelerate out.<br>赛车在弯道中漂移，车头持续转动。在<b>车头对准出弯方向箭头的瞬间</b>按 J 松键恢复抓地、加速出弯。<br><br>Press J when the nose points at the exit arrow 车头对准箭头时按 J</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Release J when the nose points at the exit 车头对准出口时按 J</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+
+  /* ================================================================
+   * 漂移出弯物理（硬编码可复现）
+   *   赛车沿弯道向右滑行（有位移），同时车头朝向角 θ 匀速旋转：
+   *     车头 θ(t) = THETA_START + OMEGA·t，从 -90°（朝上，车身横滑）转到 0°（朝右，出弯对准）。
+   *     车位置沿水平直线从 SLIDE_X0 滑到 SLIDE_X1（向右滑行，漂移中车身打横）。
+   *   出弯方向 θ_target = 0°（正右方，箭头标注）。
+   *   松键窗口：±200ms → 角度窗口 ±30°。按 J 时 |θ - θ_target| ≤ 30° → 成功出弯。
+   *   车头朝向持续变化、单截图看不出何时对准出口，须观察漂移运动把握 → c 类。
+   * ================================================================ */
+  const THETA_START = -Math.PI / 2; // 入弯车头朝向 -90°（朝上，漂移横滑）
+  const OMEGA = (Math.PI / 2) / 0.6; // 角速度 = 90°÷0.6s（车头从朝上转到朝右）
+  const THETA_TARGET = 0;            // 出弯方向 0°（正右方）
+  const WINDOW_MS = 200;             // 松键窗口 ±200ms
+  const WINDOW_RAD = WINDOW_MS / 1000 * OMEGA;  // 角度窗口 ±30° = ±0.5236 rad
+  const SLIDE_X0 = 150, SLIDE_X1 = 450; // 车滑行起点/终点 x
+  const CAR_Y = 250;                 // 车 y（固定水平滑行）
+  const SLIDE_DURATION = 0.6;        // 滑行时长（= 车头转过 90° 的时长）
+  const SIZE = 60;                   // 赛车尺寸
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"drift_exit", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "drift";   // drift(漂移滑行+车头转动) | exit(成功出弯) | spin(按J时机错加速滑出) | stall(超时漂移失控) | over
+  let t = 0;             // 漂移经过时间
+  let theta = THETA_START;  // 车头朝向角
+  let carX = SLIDE_X0;      // 车位置 x
+  let carY = CAR_Y;         // 车位置 y
+  let carSpeed = 0;         // 车速度大小（出弯/失控阶段用，沿车头方向）
+  let releasedAt = null;  // 松键时刻的车头角
+  let settleT = 0;
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status); }catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, t:+t.toFixed(3), thetaDeg:+((theta*180/Math.PI).toFixed(1)),
+             carX:Math.round(carX), targetDeg:0, windowMs:WINDOW_MS, releasedDeg:(releasedAt===null?null:+((releasedAt*180/Math.PI).toFixed(1))),
+             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "drift"; t = 0; theta = THETA_START; carX = SLIDE_X0; carY = CAR_Y; carSpeed = 0; releasedAt = null; settleT = 0;
+    setStatus("Drift ... release at the exit 漂移…对准出弯松键","");
+  }
+
+  function pressExit(){
+    if (phase !== "drift" || releasedAt !== null) return;
+    releasedAt = theta;
+    carSpeed = 500;  // 恢复抓地，从漂移滑行速度起步
+    // 判定：车头是否对准出弯方向
+    if (Math.abs(releasedAt - THETA_TARGET) <= WINDOW_RAD) {
+      phase = "exit"; settleT = 0;
+      setStatus("Clean exit! 完美出弯！","action");
+    } else {
+      phase = "spin"; settleT = 0;
+      setStatus("Out of control! 方向错失控！","lose");
+    }
+  }
+
+  function win(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Clean exit! 完美出弯！","win"); syncURL(); celebrate();
+  }
+  function fail(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      BENCH.status = "failed"; setStatus("Failed 失败","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    setStatus("Failed 失败","lose");
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt){
+    if (phase === "over") return;
+
+    if (phase === "drift") {
+      t += dt;
+      // 车头从 -90°（朝上）匀速转到 0°（朝右，出弯）
+      theta = THETA_START + OMEGA * t;
+      // 车沿水平直线向右滑行（漂移中车身打横横向滑动）
+      carX = SLIDE_X0 + (SLIDE_X1 - SLIDE_X0) * (t / SLIDE_DURATION);
+      carX = Math.min(carX, SLIDE_X1);
+      // 漂移过头：车头转过出弯方向（0°）后继续转到明显偏离（≥30°）仍未松键 → 超时漂移失控
+      if (theta >= THETA_TARGET + Math.PI / 6) {
+        phase = "stall"; settleT = 0; carSpeed = 400;
+        setStatus("Over-drift! 漂移过头失控！","lose");
+      }
+    } else if (phase === "exit") {
+      // 完美出弯：车头锁定对准出弯（0°），恢复抓地加速沿右方冲出
+      settleT += dt;
+      theta = THETA_TARGET;            // 车头对准出弯方向
+      carSpeed += 1600 * dt;           // 恢复抓地加速
+      carX += carSpeed * Math.cos(theta) * dt;
+      carY += carSpeed * Math.sin(theta) * dt;  // θ=0 时 carY 不变，沿右冲
+      if (settleT >= 0.6) { win(); }
+    } else if (phase === "spin") {
+      // 按 J 时机错（松早/晚）：松键恢复抓地，但车头锁在错误方向，沿错误方向加速滑出
+      settleT += dt;
+      theta = releasedAt;              // 车头锁在错误方向
+      carSpeed += 1200 * dt;           // 恢复抓地加速，但方向错
+      carX += carSpeed * Math.cos(theta) * dt;
+      carY += carSpeed * Math.sin(theta) * dt;  // 沿错误方向滑出（y 分量侧滑）
+      if (settleT >= 0.6) { fail(); }
+    } else if (phase === "stall") {
+      // 超时失败（没松漂移键）：车继续漂移失控——车头继续旋转 + 车身横向侧滑滑出（不恢复抓地加速）
+      settleT += dt;
+      theta += OMEGA * dt;             // 车头继续旋转（漂移没停）
+      carX += carSpeed * dt;           // 车继续横向侧滑（保持漂移滑行速度，不加速）
+      if (settleT >= 0.6) { fail(); }
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#1a2230"); g.addColorStop(.5,"#263142"); g.addColorStop(1,"#334050");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+  }
+  // 赛道（弯道路面）
+  function drawTrack(){
+    // 赛道底盘（深色路面，覆盖车滑行区域）
+    ctx.fillStyle="#3a3f4a"; ctx.fillRect(0, 200, 800, 120);
+    // 路面纹理横线
+    ctx.strokeStyle="rgba(255,255,255,.08)"; ctx.lineWidth=2;
+    for (let y=210; y<320; y+=20){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(800,y); ctx.stroke(); }
+    // 赛道中线（虚线）
+    ctx.strokeStyle="rgba(255,255,255,.5)"; ctx.lineWidth=4;
+    ctx.setLineDash([20,16]);
+    ctx.beginPath(); ctx.moveTo(0, CAR_Y); ctx.lineTo(800, CAR_Y); ctx.stroke();
+    ctx.setLineDash([]);
+    // 路缘（上下边界）
+    ctx.fillStyle="#8a4a2a"; ctx.fillRect(0, 196, 800, 6);
+    ctx.fillStyle="#8a4a2a"; ctx.fillRect(0, 318, 800, 6);
+  }
+  // 出弯方向箭头（明确指向正右方）
+  function drawExitArrow(){
+    const ax = 660, ay = CAR_Y;
+    ctx.save();
+    // 大箭头（指向右）
+    ctx.strokeStyle="#34d399"; ctx.lineWidth=6;
+    ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(ax-70, ay); ctx.lineTo(ax+30, ay); ctx.stroke();
+    // 箭头三角（大）
+    ctx.fillStyle="#34d399";
+    ctx.beginPath();
+    ctx.moveTo(ax+30, ay-22); ctx.lineTo(ax+62, ay); ctx.lineTo(ax+30, ay+22); ctx.closePath(); ctx.fill();
+    // 发光
+    ctx.shadowColor="#34d399"; ctx.shadowBlur=12;
+    ctx.beginPath(); ctx.arc(ax-70, ay, 6, 0, 7); ctx.fill();
+    ctx.restore();
+    // 标注
+    ctx.fillStyle="#34d399"; ctx.font="bold 16px sans-serif"; ctx.textAlign="center";
+    ctx.fillText("EXIT 出弯 →", ax-20, ay-30);
+  }
+  // 赛车（canvas 简约赛车：尖头前灯 + 平尾尾灯，前后辨识清晰，rotate 表现朝向）
+  function drawCar(){
+    ctx.save();
+    ctx.translate(carX, carY);
+    ctx.rotate(theta);
+    // 漂移痕迹（轮胎印，滑行时留下）
+    if (phase === "drift") {
+      ctx.strokeStyle="rgba(30,30,36,.7)"; ctx.lineWidth=4;
+      ctx.beginPath(); ctx.arc(0,0,30,-1.4,1.4); ctx.stroke();
+    }
+    // 车身（圆角矩形，车头向右 = +x）
+    const bg = ctx.createLinearGradient(-SIZE/2,0,SIZE/2,0);
+    bg.addColorStop(0,"#d03828"); bg.addColorStop(1,"#e0503a");
+    ctx.fillStyle="#5a1408"; rr(-SIZE/2-3, -SIZE/4-3, SIZE+6, SIZE/2+6, 8); ctx.fill();  // 轮廓
+    ctx.fillStyle=bg; rr(-SIZE/2, -SIZE/4, SIZE, SIZE/2, 8); ctx.fill();                // 车身
+    // 车头（右端）：尖头造型
+    ctx.fillStyle="#e0503a";
+    ctx.beginPath(); ctx.moveTo(SIZE/2, -SIZE/4); ctx.lineTo(SIZE/2+12, 0); ctx.lineTo(SIZE/2, SIZE/4); ctx.closePath(); ctx.fill();
+    // 前挡风玻璃（靠车头）
+    ctx.fillStyle="rgba(200,225,245,.85)"; rr(6, -SIZE/4+5, SIZE/4, SIZE/2-10, 4); ctx.fill();
+    // 前灯（车头两个圆形灯）
+    ctx.fillStyle="#ffd166";
+    ctx.beginPath(); ctx.arc(SIZE/2+2, -SIZE/4+6, 4, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(SIZE/2+2, SIZE/4-6, 4, 0, 7); ctx.fill();
+    // 车尾（左端）：平尾 + 红色尾灯
+    ctx.fillStyle="#b02820"; rr(-SIZE/2, -SIZE/4, 6, SIZE/2, 3); ctx.fill();
+    ctx.fillStyle="#ff5050";
+    ctx.fillRect(-SIZE/2+1, -SIZE/4+4, 3, 6);
+    ctx.fillRect(-SIZE/2+1, SIZE/4-10, 3, 6);
+    // 车顶
+    ctx.fillStyle="rgba(255,255,255,.15)"; rr(-SIZE/6, -SIZE/4+3, SIZE/3, SIZE/2-6, 4); ctx.fill();
+    ctx.restore();
+  }
+  // 完美出弯特效（绿色加速线）
+  function drawExitFx(){
+    const r = Math.min(1, settleT / 0.5);
+    ctx.strokeStyle=`rgba(52,211,153,${0.8*(1-r)})`; ctx.lineWidth=4;
+    for (let i=0;i<3;i++){
+      const off = i*20;
+      ctx.beginPath();
+      ctx.moveTo(carX+30+off, carY-20); ctx.lineTo(carX+80+off+r*80, carY-20); ctx.stroke();
+    }
+    ctx.fillStyle=`rgba(255,255,255,${0.5*(1-r)})`;
+    ctx.font="16px sans-serif"; ctx.textAlign="left";
+    ctx.fillText("ACCELERATE 加速", carX+40, carY-30);
+  }
+
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  function render(){
+    drawSky();
+    drawTrack();
+    drawExitArrow();
+    drawCar();
+    if (phase === "exit") drawExitFx();
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 出弯键 J + 空格触发 Start/Next（phase 隔离）
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    const isJ = k==="j"||c==="KeyJ"||kc===74;
+    const isSpace = k===" "||c==="Space"||kc===32;
+    if (isJ) { e.preventDefault(); pressExit(); }
+    if (isSpace) {
+      e.preventDefault();
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+    }
+  });
+  cv.addEventListener("mousedown", ()=>pressExit());
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

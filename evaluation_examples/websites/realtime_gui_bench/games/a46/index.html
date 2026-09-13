@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flash Path 路径复现</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Reveal to unroll the map 点揭示展开藏宝图</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Flash Path 路径复现</div>
+      <div class="intro-rule">A rolled-up treasure map lies before you — its route is already drawn on it. <b>Unroll the map</b> to see the route, but it's <b>starting to burn from the edges</b>! Memorize the route to the chest before the flames consume it, then pick that route from 6 candidates.<br>你面前是一卷藏宝图——路线本来就画在上面。点揭示<b>展开地图</b>看到路线，但它正从边缘<b>开始燃烧</b>！趁火焰吞没地图前记住通向宝箱的路线，然后从 6 条候选路线里认出那条路。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·路径形状记忆）：寻宝地图上一条从起点到宝藏的虚线路径闪现后被火焰烧毁（路径消失），
+  // 玩家凭记忆从 6 条候选路径认出「整条路径的形状」（连续、有走向）——区别于 a43/a44/a45 的「离散符号/图案记忆」。
+  // IEW 有限（路径只闪现后被烧毁清空）；AVW=∞（作答无时限）。补丁=视频。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const READY_MIN = 300, READY_MAX = 2000;
+  const SHOW_MS = 1500;
+  const BURN_MS = 1400;         // 烧毁动画时长
+  const UNROLL_MS = 800;        // 卷轴展开动画时长
+
+  // 6 条路径（归一化顶点 0~1，x 左→右，y 上→下），形状明显不同
+  const PATHS = [
+    { id:"straight", points:[[0.08,0.9],[0.92,0.1]] },
+    { id:"zigzag",   points:[[0.08,0.9],[0.37,0.15],[0.63,0.85],[0.92,0.1]] },
+    { id:"scoop",    points:[[0.08,0.2],[0.5,0.95],[0.92,0.2]] },
+    { id:"over",     points:[[0.08,0.85],[0.5,0.05],[0.92,0.85]] },
+    { id:"L",        points:[[0.08,0.9],[0.08,0.1],[0.92,0.1]] },
+    { id:"step",     points:[[0.08,0.55],[0.5,0.55],[0.5,0.15],[0.92,0.15]] },
+  ];
+
+  const BENCH = { task:"flash_path", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | show | answer | done
+  let target = 0;              // 目标路径索引 0..5
+  let clickedIdx = -1;
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, target, targetId: PATHS[target].id, clickedIdx, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  function startRound(){
+    target = Math.floor(Math.random()*PATHS.length);
+    clickedIdx = -1;
+    phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Reveal to unroll the map 点揭示展开藏宝图","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "unroll"; phaseStart = now; setStatus("Unrolling the map… 展开地图…","ready"); }
+    }
+    else if (phase === "unroll"){
+      if (now - phaseStart >= UNROLL_MS){ phase = "show"; phaseStart = now; setStatus("Memorize the route… 记住路线…","ready"); }
+    }
+    else if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "burn"; phaseStart = now; setStatus("It's burning! 烧起来了！","ready"); }
+    }
+    else if (phase === "burn"){
+      if (now - phaseStart >= BURN_MS){ phase = "answer"; setStatus("Which route was it? 刚才哪条路线？","action"); }
+    }
+  }
+
+  function drawBg(){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#2a2015"); g.addColorStop(1,"#171009");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 桌面
+    ctx.fillStyle = "#3a2c18";
+    ctx.fillRect(0, 420, CW, 80);
+    // 木纹
+    ctx.strokeStyle = "rgba(255,255,255,.04)"; ctx.lineWidth = 1;
+    for (let x=0;x<CW;x+=60){ ctx.beginPath(); ctx.moveTo(x,430); ctx.lineTo(x,500); ctx.stroke(); }
+  }
+
+  // 羊皮纸地图（矩形，带边框和纹理）
+  function drawMap(x, y, w, h){
+    ctx.fillStyle = "#e8d9b0";
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill();
+    ctx.strokeStyle = "#a8834a"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.stroke();
+    // 老化纹理
+    ctx.fillStyle = "rgba(168,131,74,.15)";
+    for (let i=0;i<8;i++){ ctx.beginPath(); ctx.arc(x+ (i*53)%w, y + (i*37)%h, 4, 0, Math.PI*2); ctx.fill(); }
+    // 折痕
+    ctx.strokeStyle = "rgba(120,95,50,.2)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x+w/2, y); ctx.lineTo(x+w/2, y+h); ctx.stroke();
+  }
+
+  // 竖直卷轴筒（未展开的卷起部分）：tx 为筒左边缘，w 为筒宽，h 为高
+  // 代表「同一个卷轴」还没展开的部分，紧贴已展开纸的右边缘，随展开向右收缩到消失
+  function drawRollTube(tx, y, w, h){
+    if (w <= 0) return;
+    // 圆柱主体（横向渐变：竖筒光照，左右深、中间亮）
+    const grad = ctx.createLinearGradient(tx, 0, tx+w, 0);
+    grad.addColorStop(0, "#7a5a28");
+    grad.addColorStop(0.25, "#c8ae74");
+    grad.addColorStop(0.5, "#f0dfb8");
+    grad.addColorStop(0.75, "#c8ae74");
+    grad.addColorStop(1, "#7a5a28");
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.roundRect(tx, y, w, h, Math.min(10, w/2)); ctx.fill();
+    ctx.strokeStyle = "#8a6a38"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(tx, y, w, h, Math.min(10, w/2)); ctx.stroke();
+    // 卷绕的纸圈（横向弧线，表示卷了几圈）
+    ctx.strokeStyle = "rgba(120,90,48,.5)"; ctx.lineWidth = 2;
+    const rings = Math.max(2, Math.floor(w/26));
+    for (let i=1;i<rings;i++){
+      const rx = tx + (w * i / rings);
+      ctx.beginPath();
+      ctx.moveTo(rx, y+6);
+      ctx.quadraticCurveTo(rx + 6, y+h/2, rx, y+h-6);
+      ctx.stroke();
+    }
+    // 上下轴头（露出的圆头，略宽于筒）
+    ctx.fillStyle = "#6b4e24";
+    ctx.beginPath(); ctx.roundRect(tx-2, y-6, w+4, 8, 4); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(tx-2, y+h-2, w+4, 8, 4); ctx.fill();
+    ctx.fillStyle = "#7a5a2c";
+    ctx.beginPath(); ctx.arc(tx + w/2 - 6, y-2, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(tx + w/2 + 6, y-2, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(tx + w/2 - 6, y+h+2, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(tx + w/2 + 6, y+h+2, 5, 0, Math.PI*2); ctx.fill();
+  }
+
+  // 画一条路径（虚线折线 + 起点 + 宝藏终点），映射到 rect
+  function drawTrail(points, rx, ry, rw, rh){
+    // 虚线路径
+    ctx.setLineDash([8,6]);
+    ctx.strokeStyle = "#b0352a"; ctx.lineWidth = 4;
+    ctx.beginPath();
+    points.forEach((p,i)=>{
+      const x = rx + p[0]*rw, y = ry + p[1]*rh;
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 起点（圆点，第一个点）
+    const s0 = points[0];
+    ctx.fillStyle = "#b0352a";
+    ctx.beginPath(); ctx.arc(rx+s0[0]*rw, ry+s0[1]*rh, 7, 0, Math.PI*2); ctx.fill();
+    // 终点（宝箱，最后一个点）
+    const e0 = points[points.length-1];
+    const ex = rx + e0[0]*rw, ey = ry + e0[1]*rh;
+    ctx.fillStyle = "#f6c453";
+    ctx.beginPath(); ctx.roundRect(ex-9, ey-8, 18, 14, 3); ctx.fill();
+    ctx.strokeStyle = "#8a6520"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(ex-9, ey-8, 18, 14, 3); ctx.stroke();
+    ctx.fillStyle = "#8a6520";
+    ctx.fillRect(ex-2, ey-6, 4, 14);
+  }
+
+  // 烧毁特效：火焰从四周边缘向中心蔓延（焦黑只覆盖边缘、不铺满全图，中间路径逐渐被烤糊）
+  function drawBurnEffect(x, y, w, h, t, now){
+    const insetX = w * t * 0.5;   // 左右各烧掉的宽度
+    const insetY = h * t * 0.5;   // 上下各烧掉的高度
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.clip();
+    // 1) 焦黑覆盖「已烧掉的边缘 4 条边」（不铺满全图，中间未烧区域保留原路径）
+    ctx.fillStyle = "#201208";
+    ctx.fillRect(x, y, w, insetY);               // 上
+    ctx.fillRect(x, y+h-insetY, w, insetY);      // 下
+    ctx.fillRect(x, y, insetX, h);               // 左
+    ctx.fillRect(x+w-insetX, y, insetX, h);      // 右
+    // 2) 烧糊过渡（焦黑前沿向未烧区域的一圈灰黑渐晕，路径边缘被「烤糊」）
+    const ux = x+insetX, uy = y+insetY, uw = Math.max(0,w-2*insetX), uh = Math.max(0,h-2*insetY);
+    if (uw > 0 && uh > 0){
+      const grad = ctx.createRadialGradient(x+w/2, y+h/2, Math.max(1, Math.min(uw,uh)*0.25), x+w/2, y+h/2, w*0.5);
+      grad.addColorStop(0, "rgba(32,18,8,0)");
+      grad.addColorStop(0.7, "rgba(90,55,20,.55)");
+      grad.addColorStop(1, "rgba(32,18,8,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, w, h);
+    }
+    // 3) 焦黑前沿的橙色火光（紧贴焦黑边的一圈亮橙）
+    const fglow = Math.max(0, t);
+    const fg = ctx.createRadialGradient(x+w/2, y+h/2, Math.max(1, Math.min(uw,uh)*0.2), x+w/2, y+h/2, w*0.52);
+    fg.addColorStop(0, "rgba(255,140,40,0)");
+    fg.addColorStop(0.6, "rgba(255,110,25," + (0.5*fglow) + ")");
+    fg.addColorStop(1, "rgba(255,80,15," + (0.75*fglow) + ")");
+    ctx.fillStyle = fg;
+    ctx.fillRect(x, y, w, h);
+    // 4) 大火舌：沿「焦黑前沿」（4 条边内侧）密集分布，朝中心方向跳动（醒目橙红 + 金黄芯）
+    if (uw > 6 && uh > 6){
+      const edges = [
+        { hor:true,  along:uw, baseX:ux,          baseY:uy,          dir: 1 },  // 上沿（火舌向下）
+        { hor:true,  along:uw, baseX:ux,          baseY:uy+uh,       dir:-1 },  // 下沿（火舌向上）
+        { hor:false, along:uh, baseX:ux,          baseY:uy,          dir: 1 },  // 左沿（火舌向右）
+        { hor:false, along:uh, baseX:ux+uw,       baseY:uy,          dir:-1 },  // 右沿（火舌向左）
+      ];
+      edges.forEach((e, ei)=>{
+        const cnt = Math.max(3, Math.floor(e.along/22));
+        const span = e.along / cnt;
+        for (let i=0;i<cnt;i++){
+          const pp = (i+0.5)*span;
+          const bx = e.hor ? e.baseX + pp : e.baseX;
+          const by = e.hor ? e.baseY : e.baseY + pp;
+          const fh = 30 + Math.sin(now/90 + ei*2.7 + i*1.9)*15;   // 火舌高 15~45px
+          const hw = span*0.5;
+          // 外焰（大橙红三角，朝中心 dir）
+          ctx.fillStyle = "rgba(255,105,22,.95)";
+          ctx.beginPath();
+          if (e.hor){
+            ctx.moveTo(bx-hw, by);
+            ctx.quadraticCurveTo(bx, by + e.dir*fh, bx+hw, by);
+          } else {
+            ctx.moveTo(bx, by-hw);
+            ctx.quadraticCurveTo(bx + e.dir*fh, by, bx, by+hw);
+          }
+          ctx.closePath(); ctx.fill();
+          // 内焰（亮黄芯，稍矮）
+          ctx.fillStyle = "rgba(255,215,70,.98)";
+          ctx.beginPath();
+          if (e.hor){
+            ctx.moveTo(bx-hw*0.5, by);
+            ctx.quadraticCurveTo(bx, by + e.dir*fh*0.45, bx+hw*0.5, by);
+          } else {
+            ctx.moveTo(bx, by-hw*0.5);
+            ctx.quadraticCurveTo(bx + e.dir*fh*0.45, by, bx, by+hw*0.5);
+          }
+          ctx.closePath(); ctx.fill();
+        }
+      });
+    }
+    // 5) 火星粒子（向上飘，随烧毁增多）
+    if (t > 0.2){
+      ctx.fillStyle = "rgba(255,170,50," + (0.75*(t-0.2)) + ")";
+      for (let i=0;i<18;i++){
+        const fx = x + ((i*53 + now/32)%100)/100*w;
+        const fy = y + h - ((i*29 + now/22)%140);
+        ctx.beginPath(); ctx.arc(fx, fy, 1.5 + (i%4), 0, Math.PI*2); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    drawBg();
+    const map = { x:230, y:130, w:340, h:220 };
+    if (phase === "idle" || phase === "ready"){
+      // 藏宝图完全卷起（一个竖直卷轴筒，看不到路线），点 Reveal 才展开
+      drawRollTube(map.x, map.y, map.w, map.h);
+    }
+    else if (phase === "unroll"){
+      // 同一个卷轴连续展开：左侧已展开的纸露出地图+路线，右侧未展开的卷轴筒随展开向右收缩
+      const raw = Math.min(1, (performance.now() - phaseStart) / UNROLL_MS);
+      const u = raw * raw * (3 - 2*raw);   // smoothstep 缓动
+      const uw = map.w * u;                  // 已展开宽度
+      const remaining = map.w - uw;          // 未展开宽度（卷轴筒）
+      // 已展开的纸（左侧）：露出地图和路线（clip 到已展开区域）
+      if (uw > 2){
+        ctx.save();
+        ctx.beginPath(); ctx.rect(map.x, map.y, uw, map.h); ctx.clip();
+        drawMap(map.x, map.y, map.w, map.h);
+        drawTrail(PATHS[target].points, map.x, map.y, map.w, map.h);
+        ctx.restore();
+      }
+      // 未展开的卷轴筒（右侧，紧贴纸右边缘，随展开收缩）
+      if (remaining > 4){
+        drawRollTube(map.x + uw, map.y, remaining, map.h);
+      }
+    }
+    else if (phase === "show"){
+      // 藏宝图已完全展开，路线本来就在上面（不是凭空出现）
+      drawMap(map.x, map.y, map.w, map.h);
+      drawTrail(PATHS[target].points, map.x, map.y, map.w, map.h);
+    }
+    else if (phase === "burn"){
+      // 展开的藏宝图 + 路线，火焰从边缘烧毁（路径逐渐烧糊消失）
+      drawMap(map.x, map.y, map.w, map.h);
+      drawTrail(PATHS[target].points, map.x, map.y, map.w, map.h);
+      const t = Math.min(1, (performance.now() - phaseStart) / BURN_MS);
+      drawBurnEffect(map.x, map.y, map.w, map.h, t, performance.now());
+    }
+    else if (phase === "answer"){
+      // 地图已烧成焦黑残片（路径完全消失）
+      drawBurnEffect(map.x, map.y, map.w, map.h, 1.0, performance.now());
+      // 焦黑残片边框
+      ctx.strokeStyle = "#3a2a18"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(map.x, map.y, map.w, map.h, 8); ctx.stroke();
+      // 候选 6 条缩略路径（横排）
+      const candX = [60, 175, 290, 405, 520, 635], candY = 445, cw = 90, ch = 55;
+      for (let i=0;i<6;i++){
+        const cx = candX[i], cy = candY;
+        // 候选框
+        ctx.fillStyle = (clickedIdx === i) ? "#f6c453" : "#e8d9b0";
+        ctx.beginPath(); ctx.roundRect(cx-cw/2, cy-ch/2, cw, ch, 5); ctx.fill();
+        ctx.strokeStyle = (clickedIdx === i) ? "#fff" : "#a8834a"; ctx.lineWidth = (clickedIdx === i) ? 3 : 2;
+        ctx.beginPath(); ctx.roundRect(cx-cw/2, cy-ch/2, cw, ch, 5); ctx.stroke();
+        // 缩略路径
+        drawTrail(PATHS[i].points, cx-cw/2+6, cy-ch/2+6, cw-12, ch-12);
+      }
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    const candX = [60, 175, 290, 405, 520, 635], candY = 445, cw = 90, ch = 55;
+    let sel = -1;
+    for (let i=0;i<6;i++){
+      if (Math.abs(p.x-candX[i]) < cw/2 && Math.abs(p.y-candY) < ch/2){ sel = i; break; }
+    }
+    if (sel === -1) return;
+    clickedIdx = sel;
+    const ok = (sel === target);
+    BENCH.results.push(ok ? "hit" : "miss");
+    if (ok){
+      phase = "done";
+      BENCH.passed = true; BENCH.status = "passed";
+      setStatus("Success 成功","win"); syncURL(); celebrate();
+      return;
+    }
+    setStatus("Miss! 认错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

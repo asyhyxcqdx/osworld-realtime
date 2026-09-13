@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claw Grab 摆锤下抓</title>
+<style>
+:root{
+  --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+  --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+  --accent1:#4c5baa; --accent2:#3a4684;
+  --accent3:#4c7dff; --accent4:#3355d8;
+  --ok1:#34d399; --ok2:#0ea371;
+  --fail1:#f87171; --fail2:#dc2626;
+}
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; }
+body{
+  background:radial-gradient(900px 650px at 50% -8%, #3a2a1e 0%, #241911 58%, #140d08 100%);
+  font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:#e8eaf6; user-select:none; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px;
+}
+.status{ font-size:24px; font-weight:800; min-height:32px; letter-spacing:.4px; text-align:center; }
+.status.idle{ color:#8b93b8; } .status.armed{ color:var(--gold); }
+.status.win{ color:var(--ok1); } .status.lose{ color:var(--fail1); }
+.status.action{ font-size:29px; font-weight:800; color:var(--gold); text-shadow:0 0 16px rgba(246,196,83,.6); letter-spacing:.5px; }
+
+/* 目标信息卡 */
+.spec{ display:flex; align-items:center; gap:14px; }
+.spec-card{ background:linear-gradient(160deg,#2a1f14,#1a1409); border:1px solid rgba(255,255,255,.12);
+  border-radius:16px; padding:12px 22px; text-align:center; box-shadow:0 10px 26px rgba(0,0,0,.35); }
+.spec-lbl{ font-size:12px; color:#b09a72; letter-spacing:2px; text-transform:uppercase; }
+.spec-val{ font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--gold); margin-top:2px; }
+.spec-val b{ font-size:18px; font-weight:700; color:#e8eaf6; }
+
+/* 矿洞舞台 */
+.stage{ position:relative; width:760px; height:440px; border-radius:20px; overflow:hidden;
+  border:2px solid rgba(255,255,255,.10); box-shadow:inset 0 0 70px rgba(0,0,0,.5); }
+#arena{ position:absolute; inset:0; width:100%; height:100%; }
+
+/* 下抓键提示 */
+.grab-hint{ display:flex; align-items:center; gap:10px; }
+.grab-key{ padding:8px 18px; border-radius:10px; border:2px solid rgba(255,255,255,.2);
+  background:linear-gradient(160deg,#2a3350,#1c2743); font-size:18px; font-weight:800; color:#e8eaf6; }
+
+.feedback{ font-size:16px; font-weight:700; min-height:22px; color:#8b93b8; text-align:center; }
+.feedback.good{ color:var(--ok1); } .feedback.warn{ color:var(--gold); } .feedback.bad{ color:var(--fail1); }
+
+.row{ display:flex; align-items:center; gap:30px; }
+.btn{ padding:16px 38px; font-size:21px; font-weight:800; letter-spacing:1px; border:none; border-radius:14px;
+  cursor:pointer; color:#fff; background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+  box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25); transition:transform .12s; }
+.btn:active{ transform:translateY(2px) scale(.98); }
+.btn:disabled{ opacity:.35; cursor:default; }
+.hint{ font-size:14px; color:#b09a72; letter-spacing:.5px; }
+
+.toast{ position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+  background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+  padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+  opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4); }
+.toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+.overlay{ position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s; }
+.overlay.show{ opacity:1; pointer-events:auto; }
+.celeb-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+  transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.overlay.show .celeb-box{ transform:scale(1); }
+.celeb-check{ width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+.celeb-check.ok{ background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+.celeb-check.fail{ background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+.celeb-title{ font-size:30px; font-weight:800; color:var(--title); }
+.celeb-sub{ font-size:15px; color:var(--sub); margin-top:6px; }
+#confetti{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+
+.intro{ position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:200; }
+.intro.hidden{ display:none; }
+.intro-box{ background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center; max-width:680px; box-shadow:0 30px 80px rgba(0,0,0,.5); }
+.intro-title{ font-size:28px; font-weight:800; color:var(--title); }
+.intro-rule{ font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; }
+.intro-rule b{ color:var(--title); }
+.intro-start{ margin-top:26px; padding:13px 44px; border-radius:30px; border:none; background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff; font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s; }
+.intro-start:hover{ transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Press Start 按开始</div>
+
+  <div class="spec">
+    <div class="spec-card">
+      <div class="spec-lbl">Swing period 摆动周期</div>
+      <div class="spec-val">2s <b>/cycle 一循环</b></div>
+    </div>
+    <div class="spec-card">
+      <div class="spec-lbl">Gold position 金块位置</div>
+      <div class="spec-val">随机 <b>开局可见</b></div>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <canvas id="arena"></canvas>
+  </div>
+
+  <div class="grab-hint">
+    <span class="grab-key">SPACE 空格</span>
+    <span class="feedback" id="feedback">Grab when the claw swings over the gold 摆到金块上方时下抓</span>
+  </div>
+
+  <div class="row">
+    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <div class="hint" id="hint">Attempt 0 / 3 第0/3次</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Grabbed! 抓住了</div>
+      <div class="celeb-sub">Gold caught 抓到金块</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="overlay" id="retryOverlay">
+    <div class="celeb-box">
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Claw Grab 摆锤下抓</div>
+      <div class="intro-rule">In the gold mine, a <b>retracted</b> claw hangs from the ceiling and swings like a pendulum from the <b>left side</b> with a period of <b>2 seconds per cycle</b>. A gold nugget sits at a <b>random position below</b> (always visible). Press <b>SPACE</b> when the claw swings <b>directly over the gold</b> — the claw then <b>extends, grabs the gold, and pulls back</b>. Read the gold's position + the 2s period + the live angle to time your grab.<br>在金矿里，一只<b>缩着的</b>抓斗从<b>左侧</b>像单摆一样荡下，周期为 <b>每循环 2 秒</b>。一块金块躺在下方<b>随机位置</b>（始终可见）。当抓斗摆到<b>金块正上方</b>时按 <b>空格</b>下抓——抓斗会<b>伸出、抓住金块、收回</b>。读金块位置 + 2 秒周期 + 实时角度，即可预判何时下抓。</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+  const G = 1788;           // 重力加速度 px/s²（复用 c33 单摆物理；L=130 时完整周期≈2s/cycle）
+  const L = 130;            // 摆绳长 px（缩短，摆锤更紧凑；大摆幅周期需相应调 G 保持≈2s）
+  const START_ALPHA = -90;  // 起点摆角（左侧水平，静止摆下）
+  const ANGLE_EPS_RAD = 0.30; // 判定容差 ±0.30 rad（约 17°，三位置对称、人类可预判命中）
+  const GRAB_WINDOW_MS = 12000; // 最长 12s 内抓中，否则 miss
+
+  // 锚点 + 金块几何（复用 d31 缩伸收）
+  const PIVOT_X = 380, PIVOT_Y = 70;   // 悬挂点
+  const GOLD_Y = 300;                   // 金块高度（杆末端摆动范围下方，勾爪竖直下伸可到达）
+  const EXTEND_MS = 450, RETRACT_MS = 420, STEADY_MS = 400, COLLECT_MS = 700;
+
+  const BENCH = { task:"claw_grab", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const stage=document.getElementById("stage"), arena=document.getElementById("arena");
+  const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
+  const startBtn=document.getElementById("startBtn");
+  const feedback=document.getElementById("feedback");
+  const toast=document.getElementById("toast");
+  const overlay=document.getElementById("overlay"), failOverlay=document.getElementById("failOverlay");
+
+  // 状态机：idle | swing | extend | steady | retract | collect | done
+  let phase="idle", raf=null, lastT=0, armNow=0;
+  let alpha = START_ALPHA * Math.PI/180;   // 摆角（相对竖直向下）
+  let omega = 0;                            // 角速度
+  let armLen = 0;                           // 爪伸长长度（swing=0 缩着，extend 增长，retract 收回）
+  let phaseT = 0;                           // 当前阶段耗时
+  let grabAlpha = 0;                        // 下抓时锁定的角度
+  let grabbed = false;                      // 是否抓住金块
+  let goldX = 380, targetAlpha = 0;         // 金块 x + 目标摆角
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+" 第"+BENCH.attempts+"/"+MAX_ATTEMPTS+"次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+  function setFeedback(t,c){ feedback.textContent=t; feedback.className="feedback "+(c||""); }
+  function easeOutCubic(t){ return 1 - Math.pow(1-t,3); }
+  function sizeCanvas(){ arena.width=stage.clientWidth; arena.height=stage.clientHeight; }
+
+  function randomGold(){
+    // 目标摆角显式 ±30°/0°（三个位置对称、判定一致）；金块 x = 杆末端摆到该角时的 x
+    const degs = [-30, 0, 30];
+    const deg = degs[Math.floor(Math.random()*degs.length)];
+    targetAlpha = deg * Math.PI/180;
+    goldX = PIVOT_X + L * Math.sin(targetAlpha);
+  }
+  // 杆末端（勾爪连接点）：idle/swing 用实时 alpha，extend/steady/retract/collect 用锁定 grabAlpha
+  function connPoint(){
+    const a = (phase==="idle" || phase==="swing") ? alpha : grabAlpha;
+    return { x: PIVOT_X + L*Math.sin(a), y: PIVOT_Y + L*Math.cos(a), a:a };
+  }
+  // 勾爪末端 = 杆末端竖直向下伸长 armLen（爪口朝下，始终竖直）
+  function clawTip(){
+    const c = connPoint();
+    return { x: c.x, y: c.y + armLen, a: c.a };
+  }
+  // 勾爪需竖直下伸的伸长量：爪口（齿的开叉）停在金块下方 8px，让齿从下方托住金块、不穿模
+  function maxArmLen(){ return GOLD_Y + 8 - connPoint().y; }
+
+  function stepPendulum(dt){ omega -= (G/L)*Math.sin(alpha)*dt; alpha += omega*dt; }
+
+  // ---- 缩伸收状态机（复用 d31） ----
+  function startExtend(ok){
+    phase="extend"; phaseT=0; grabbed=ok;
+    // 杆锁定在「按下那一刻的实际 α」（连续无瞬移），不分成功/失败；成功失败由 grabbed 区分动画
+    grabAlpha = alpha;
+    setStatus(ok ? "Extending… 伸爪…" : "Extending… 伸爪…","action");
+  }
+  function extendDone(){
+    phase="steady"; phaseT=0;
+    setStatus(grabbed ? "Grabbed! 抓住了！" : "Missed… 抓空…", grabbed?"win":"lose");
+  }
+  function steadyDone(){
+    phase="retract"; phaseT=0;
+    setStatus("Pulling back… 收爪…","action");
+  }
+  function retractDone(){
+    if(grabbed){
+      phase="collect"; phaseT=0;
+      setStatus("Gold caught 抓到金块","win");
+    } else {
+      failAfterAnim();
+    }
+  }
+  function collectDone(){
+    phase="done";
+    BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+    setStatus("Grabbed! 抓住了","win"); syncURL(); celebrate();
+  }
+  function failAfterAnim(){
+    phase="done";
+    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    setStatus("Missed 未命中","lose");
+    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    document.getElementById("retryOverlay").classList.add("show");
+  }
+
+  function doGrab(){
+    if(phase!=="swing") return;
+    const ok = Math.abs(alpha - targetAlpha) <= ANGLE_EPS_RAD;
+    startExtend(ok);   // 对准则抓，否则抓空（伸到底返回）；frame 循环持续驱动 state 机
+  }
+
+  function update(dt){
+    const dtMs = dt*1000;
+    if(phase==="swing"){
+      stepPendulum(dt);
+    } else if(phase==="extend"){
+      phaseT += dtMs;
+      const p = Math.min(1, phaseT/EXTEND_MS);
+      armLen = maxArmLen() * easeOutCubic(p);
+      if(p>=1) extendDone();
+    } else if(phase==="steady"){
+      phaseT += dtMs;
+      if(phaseT>=STEADY_MS) steadyDone();
+    } else if(phase==="retract"){
+      phaseT += dtMs;
+      const p = Math.min(1, phaseT/RETRACT_MS);
+      armLen = maxArmLen() * (1 - easeOutCubic(p));
+      if(p>=1) retractDone();
+    } else if(phase==="collect"){
+      phaseT += dtMs;
+      if(phaseT>=COLLECT_MS) collectDone();
+    }
+  }
+
+  // ---- 渲染 ----
+  function drawBack(ctx,W,H){
+    ctx.fillStyle="#241911"; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle="rgba(0,0,0,.3)";
+    for(let x=0;x<W;x+=40){ const h=18+Math.abs(Math.sin(x*0.5))*30; ctx.fillRect(x,H-h,30,h); }
+    ctx.fillStyle="#3a2a1e"; ctx.fillRect(0,H-50,W,50);
+    ctx.strokeStyle="rgba(255,255,255,.05)";
+    for(let x=0;x<W;x+=36){ ctx.beginPath(); ctx.moveTo(x,H-50); ctx.lineTo(x,H); ctx.stroke(); }
+  }
+  function drawGold(ctx, atTarget){
+    // 优化金块美术：金色渐变 + 块状晶体 + 高光；collect 时画在勾爪爪口（被抓走）
+    const t = clawTip();
+    const gx = atTarget ? goldX : t.x, gy = atTarget ? GOLD_Y : t.y - 8;
+    ctx.save(); ctx.translate(gx, gy);
+    // 主体：梯形金块（块状晶体）
+    const g = ctx.createLinearGradient(-20,-16,20,16);
+    g.addColorStop(0,"#ffe9a0"); g.addColorStop(.45,"#f6c453"); g.addColorStop(1,"#c8891f");
+    ctx.fillStyle=g;
+    ctx.beginPath();
+    ctx.moveTo(-18,12); ctx.lineTo(-14,-8); ctx.lineTo(-4,-16); ctx.lineTo(14,-8); ctx.lineTo(18,12); ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle="#a56a12"; ctx.lineWidth=2; ctx.stroke();
+    // 顶面高光
+    ctx.fillStyle="rgba(255,255,255,.75)";
+    ctx.beginPath(); ctx.moveTo(-14,-8); ctx.lineTo(-4,-16); ctx.lineTo(14,-8); ctx.lineTo(-4,-2); ctx.closePath(); ctx.fill();
+    // 斜高光
+    ctx.fillStyle="rgba(255,255,255,.45)";
+    ctx.beginPath(); ctx.moveTo(-10,4); ctx.lineTo(-2,-8); ctx.lineTo(2,-8); ctx.lineTo(-4,4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  function drawClaw(ctx, W, H){
+    const c = connPoint();      // 杆末端（勾爪连接点）
+    const tip = clawTip();      // 勾爪末端（竖直向下 armLen）
+    const openFactor = Math.min(1, armLen / Math.max(1, maxArmLen()));  // 0=缩着收拢 1=张开
+    // 吊线（锚点到杆末端）
+    ctx.strokeStyle="#9a8570"; ctx.lineWidth=5; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(PIVOT_X,PIVOT_Y); ctx.lineTo(c.x,c.y); ctx.stroke();
+    ctx.strokeStyle="rgba(255,255,255,.16)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(PIVOT_X,PIVOT_Y); ctx.lineTo(c.x,c.y); ctx.stroke();
+    // 旋转中心转轴
+    ctx.fillStyle="#4a3a34"; ctx.beginPath(); ctx.arc(PIVOT_X,PIVOT_Y,11,0,7); ctx.fill();
+    ctx.fillStyle="#6b584e"; ctx.beginPath(); ctx.arc(PIVOT_X,PIVOT_Y,6,0,7); ctx.fill();
+    // 勾爪竖直下伸的杆（爪柄竖线，从连接点到爪头）
+    ctx.strokeStyle="#9a7d55"; ctx.lineWidth=6; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(tip.x, tip.y); ctx.stroke();
+    // 三齿勾爪（缩着收拢、伸出张开）；爪口始终朝下（世界坐标）
+    ctx.save();
+    ctx.translate(tip.x, tip.y);
+    const open = 0.3 + openFactor * 0.7;
+    ctx.fillStyle="#c9a86a"; ctx.strokeStyle="#8a6d3a"; ctx.lineWidth=2;
+    // 左齿
+    ctx.beginPath(); ctx.moveTo(-10*open,0); ctx.lineTo(-22*open,20); ctx.lineTo(-6,26); ctx.lineTo(-4,0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 右齿
+    ctx.beginPath(); ctx.moveTo(10*open,0); ctx.lineTo(22*open,20); ctx.lineTo(6,26); ctx.lineTo(4,0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 中齿
+    ctx.beginPath(); ctx.moveTo(-5*open,0); ctx.lineTo(-4,24); ctx.lineTo(4,24); ctx.lineTo(5*open,0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // 爪柄
+    ctx.fillStyle="#9a7d55"; ctx.fillRect(-8,-16,16,14);
+    ctx.restore();
+  }
+
+  function draw(now){
+    const W=arena.width, H=arena.height;
+    const ctx=arena.getContext("2d");
+    ctx.clearRect(0,0,W,H);
+    drawBack(ctx,W,H);
+    // 金块：collect 阶段被抓走（画在爪上），其余画在原位
+    if(phase==="collect") drawGold(ctx,false); else drawGold(ctx,true);
+    drawClaw(ctx,W,H);
+    // 折线辅助：悬挂点 →（沿目标角杆方向）→ 杆末端 →（竖直向下勾爪下伸）→ 金块
+    ctx.save();
+    ctx.strokeStyle="rgba(246,196,83,.5)"; ctx.lineWidth=2; ctx.setLineDash([6,6]);
+    ctx.beginPath();
+    ctx.moveTo(PIVOT_X, PIVOT_Y);                                      // 悬挂点
+    ctx.lineTo(goldX, PIVOT_Y + L * Math.cos(targetAlpha));             // 杆末端（目标角方向，x=goldX）
+    ctx.lineTo(goldX, GOLD_Y);                                         // 竖直向下到金块
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    // 实时角度读数（右下角）
+    ctx.save();
+    ctx.fillStyle="rgba(10,12,24,.7)";
+    ctx.beginPath(); ctx.roundRect(W-150,H-50,134,34,8); ctx.fill();
+    ctx.fillStyle="#e8eaf6"; ctx.font="700 17px sans-serif"; ctx.textAlign="center";
+    ctx.fillText(Math.round((phase==="swing"?alpha:grabAlpha)*180/Math.PI)+"°", W-83, H-27);
+    ctx.restore();
+  }
+
+  function frame(now){
+    const dt = Math.min(0.05, (now-lastT)/1000);
+    lastT = now;
+    if(phase!=="idle" && phase!=="done"){
+      update(dt);
+      draw(now);
+      if(phase==="swing" && (now-armNow)>=GRAB_WINDOW_MS){ phase="done"; failAfterAnim(); return; }
+    }
+    if(phase!=="done") raf=requestAnimationFrame(frame);
+  }
+
+  function resetToIdle(){
+    phase="idle"; startBtn.disabled=false; grabbed=false; armLen=0;
+    alpha = START_ALPHA*Math.PI/180; omega=0;
+    randomGold();
+    setFeedback("Grab when the claw swings over the gold 摆到金块上方时下抓","");
+    setStatus("Press Start 按开始","idle"); syncURL();
+    sizeCanvas(); draw(0);
+  }
+  function arm(){
+    phase="swing"; startBtn.disabled=true; armNow=performance.now(); grabbed=false; armLen=0;
+    lastT=performance.now();
+    setStatus("Grab over the gold! 摆到金块上方下抓！","action");
+    setFeedback("Watch the angle 观察角度", "warn");
+    syncURL();
+    cancelAnimationFrame(raf); raf=requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    const cv=document.getElementById("confetti"); cv.width=innerWidth; cv.height=innerHeight;
+    const ctx=cv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      ctx.clearRect(0,0,cv.width,cv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<cv.height+30) alive=true;
+        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else ctx.clearRect(0,0,cv.width,cv.height);
+    })(t0);
+  }
+
+  // 空格：intro/retry/idle = Start/Next；swing = 下抓
+  function onIntroStart(){
+    document.getElementById("intro").classList.add("hidden");
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
+  }
+  function onNext(){
+    document.getElementById("retryOverlay").classList.remove("show");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+  }
+  function onSpaceKey(e){
+    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
+    if(e.repeat) return;
+    const introEl=document.getElementById("intro");
+    const retryEl=document.getElementById("retryOverlay");
+    if(!introEl.classList.contains("hidden")){ e.preventDefault(); onIntroStart(); return; }   // 规则页 → Start
+    if(retryEl.classList.contains("show")){ e.preventDefault(); onNext(); return; }              // retry 页 → Next
+    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }     // 空闲 → 开始
+    if(phase==="swing"){ e.preventDefault(); doGrab(); return; }                                 // 游戏中 → 下抓
+  }
+
+  startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
+  window.addEventListener("keydown", onSpaceKey);
+  document.getElementById("introStart").addEventListener("click", onIntroStart);
+  document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  window.__dbg = function(){
+    const a = (phase==="idle" || phase==="swing") ? alpha : grabAlpha;
+    return { phase, alphaDeg:Math.round(a*180/Math.PI*10)/10,
+      targetDeg:Math.round(targetAlpha*180/Math.PI*10)/10,
+      goldX:Math.round(goldX), armLen:Math.round(armLen), grabbed,
+      inTarget:Math.abs(alpha - targetAlpha)<=ANGLE_EPS_RAD,
+      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  sizeCanvas();
+  resetToIdle(); setHint(); syncURL();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anti-Air Gunnery 防空炮</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:#e8eaf6; user-select:none; overflow:hidden;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+  }
+  .status { font-size:21px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.win { color:#34d399; } .status.lose { color:#ff5c7a; }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas { border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.08); display:block; }
+  .hint { font-size:13px; color:#7d86ab; letter-spacing:.5px; }
+  .keys { display:flex; gap:8px; align-items:center; font-size:13px; color:#7d86ab; }
+  .key { display:inline-block; min-width:26px; height:26px; line-height:26px; text-align:center; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.16); border-radius:6px; color:#cdd3ea; font-weight:700; padding:0 6px; }
+
+  .toast{position:fixed;top:34px;left:50%;transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92);border:1px solid rgba(255,255,255,.14);color:#fff;
+    padding:13px 28px;border-radius:30px;font-size:17px;font-weight:600;letter-spacing:.5px;
+    opacity:0;transition:all .35s;pointer-events:none;z-index:50;box-shadow:0 12px 34px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .intro{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .intro.hidden{display:none;}
+  .intro-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:44px 52px;text-align:center;max-width:620px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .intro-title{font-size:28px;font-weight:800;color:var(--title);}
+  .intro-rule{font-size:16px;color:var(--rule);margin-top:14px;line-height:1.7;}
+  .intro-rule b{color:var(--title);}
+  .intro-start{margin-top:26px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .intro-start:hover{transform:translateY(-2px);}
+
+  .retryOverlay{position:fixed;inset:0;background:rgba(10,12,24,.94);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;z-index:200;}
+  .retryOverlay.hidden{display:none;}
+  .retry-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;
+    padding:40px 50px;text-align:center;max-width:520px;box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .retry-title{font-size:26px;font-weight:800;color:var(--title);}
+  .retry-sub{font-size:15px;color:var(--sub);margin-top:8px;}
+  .next-btn{margin-top:24px;padding:13px 44px;border-radius:30px;border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%);color:#fff;
+    font-size:17px;font-weight:700;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.3);transition:transform .15s;}
+  .next-btn:hover{transform:translateY(-2px);}
+
+  .overlay{position:fixed;inset:0;background:rgba(10,12,24,.66);backdrop-filter:blur(3px);
+    display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .3s;}
+  .overlay.show{opacity:1;pointer-events:auto;}
+  .celeb-box{background:linear-gradient(160deg,#fff,#f3f5fd);border-radius:22px;padding:44px 56px;
+    text-align:center;transform:scale(.7);transition:transform .35s cubic-bezier(.2,1.4,.4,1);
+    box-shadow:0 30px 80px rgba(0,0,0,.5);}
+  .overlay.show .celeb-box{transform:scale(1);}
+  .celeb-check{width:74px;height:74px;margin:0 auto 18px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-size:40px;color:#fff;}
+  .celeb-check.ok{background:linear-gradient(150deg,var(--ok1),var(--ok2));box-shadow:0 10px 26px rgba(52,211,153,.45);}
+  .celeb-check.fail{background:linear-gradient(150deg,var(--fail1),var(--fail2));box-shadow:0 10px 26px rgba(248,113,113,.45);}
+  .celeb-title{font-size:30px;font-weight:800;color:var(--title);}
+  .celeb-sub{font-size:15px;color:var(--sub);margin-top:6px;}
+  #confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:110;}
+</style>
+</head>
+<body>
+  <div class="status" id="status">Watch the radar 盯住雷达</div>
+  <canvas id="cv" width="800" height="460"></canvas>
+  <div class="keys"><span class="key">←</span><span class="key">→</span> aim 瞄准 &nbsp;·&nbsp; <span class="key">Space</span> fire 发射</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Dive bomber down 俯冲轰炸机击落</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
+    </div>
+  </div>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Anti-Air Gunnery 防空炮</div>
+      <div class="intro-rule">Two enemy planes flash on the radar, then vanish under jamming. The <b>HIGHER</b> plane is the dive bomber — the bigger threat. Remember its position, aim the gun, and fire before the timer runs out.<br>两架敌机在雷达上闪现，随后被电子干扰消失。<b>更高的那架</b>是俯冲轰炸机——威胁更大。记住它的位置，调整炮管仰角，在倒计时结束前发射击落。<br><br>← / → aim 瞄准 &nbsp;·&nbsp; Space fire 发射</div>
+      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
+      <div class="retry-sub">Fire at the higher plane 击落更高的敌机</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+
+  <canvas id="confetti"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  const MAX_ATTEMPTS = 3;
+
+  /* ================================================================
+   * Anti-Air Gunnery（防空炮 / 瞄准发射）硬编码可复现
+   *   两架敌机在雷达上闪现 0.8s 后消失（电子干扰）：
+   *     A(500,70) 高 = 俯冲轰炸机（正确目标）
+   *     B(500,200) 低 = 侦察机（干扰）
+   *   玩家须在闪现期记住「更高者」的位置，然后在 2.5s 倒计时内
+   *   调炮管仰角（←→，90°/s）至正确方向（|θ-θ_target|<=3°）发射。
+   *   规则+目标位置只在闪现期暴露（IEW 有限，视频捕获）+ 瞄准动作
+   *   需连续调角（anticipation 预编码）→ 组合补丁解决。
+   * ================================================================ */
+  const GX = 400, GY = 430;              // 炮口位置
+  const TARGETS = [ {x:500, y:60, higher:true}, {x:500, y:212, higher:false} ];
+  const THETA_MIN = -Math.PI/3, THETA_MAX = Math.PI/3;
+  const THETA_SPEED = Math.PI/2;         // 90°/s
+  const TOL = 3 * Math.PI/180;           // 容差 3°
+  const FLASH_MS = 800;                  // 雷达闪现时长
+  const AIM_MS = 2500;                   // 瞄准倒计时
+  const CORRECT = TARGETS.find(t => t.higher);
+  const THETA_TARGET = Math.atan2(CORRECT.x - GX, GY - CORRECT.y);
+  const THETA_B = Math.atan2(TARGETS[1].x - GX, GY - TARGETS[1].y);
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status"), hintEl = document.getElementById("hint");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+  const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
+  const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
+
+  const BENCH = { task:"aim_fire", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+
+  let started = false;
+  let phase = "flash";       // flash | aim | shot | miss | over
+  let phaseStart = 0, aimStart = 0, fireAt = 0, missAt = 0;
+  let theta = 0;
+  let keys = { left:false, right:false };
+  let fired = false, hitState = false, missReason = "off", shotTheta = 0, shotX = GX, shotY = GY;
+  let exploded = false, explosionParts = [];
+  let missText = "";
+
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){
+    return { phase, thetaDeg: Math.round(theta*180/Math.PI), thetaTargetDeg: Math.round(THETA_TARGET*180/Math.PI),
+             targets: TARGETS.map(t=>({x:t.x, y:t.y, higher:t.higher})), correctIndex: TARGETS.indexOf(CORRECT),
+             tolDeg: 3, attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+  };
+
+  function reset(){
+    phase = "flash"; phaseStart = performance.now();
+    theta = 0; fired = false; exploded = false; explosionParts = []; missText = "";
+    shotX = GX; shotY = GY; missReason = "off";
+    setStatus("Watch the radar 盯住雷达","");
+  }
+
+  function fire(){
+    if (phase !== "aim") return;
+    fired = true; fireAt = performance.now();
+    shotTheta = theta;
+    hitState = Math.abs(theta - THETA_TARGET) <= TOL;
+    if (!hitState) missReason = Math.abs(theta - THETA_B) <= TOL ? "wrong" : "off";
+    phase = "shot";
+    if (hitState) setStatus("Hit! 命中！","action");
+    else setStatus("Missed 脱靶","lose");
+  }
+
+  function spawnExplosion(cx, cy){
+    for (let i=0;i<26;i++){
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1 + Math.random() * 3;
+      explosionParts.push({
+        x: cx, y: cy,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.5,
+        life: 1, size: 2 + Math.random() * 3,
+        c: Math.random() < 0.5 ? "#ffd166" : "#ff7a3c"
+      });
+    }
+  }
+
+  function onHit(){
+    if (phase === "over") return;
+    phase = "over";
+    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Success 成功","win"); syncURL(); celebrate();
+  }
+
+  function onMiss(reason){
+    if (phase === "over") return;
+    missText = reason === "timeout" ? "TOO SLOW 太慢了" : (reason === "wrong" ? "WRONG TARGET 打错目标" : "OFF TARGET 脱靶");
+    phase = "miss"; missAt = performance.now();
+    BENCH.results.push(false); BENCH.attempts += 1; setHint();
+    const msg = reason === "timeout" ? "Too slow! 太慢了！" : (reason === "wrong" ? "Wrong target! 打错目标！" : "Off target! 脱靶！");
+    setStatus(msg,"lose"); showToast(msg);
+    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+      setTimeout(()=>{ phase="over"; BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); }, 550);
+      return;
+    }
+    setTimeout(()=>{
+      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryOverlay.classList.remove("hidden");
+    }, 700);
+  }
+
+  function nextRound(){
+    retryOverlay.classList.add("hidden");
+    reset();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+  }
+  nextBtn.addEventListener("click", nextRound);
+
+  function update(dt, now){
+    if (phase === "flash"){
+      if (now - phaseStart >= FLASH_MS){ phase = "aim"; aimStart = now; setStatus("Aim & fire! 瞄准发射！","action"); }
+      return;
+    }
+    if (phase === "aim"){
+      const dir = (keys.right?1:0) - (keys.left?1:0);
+      if (dir !== 0) theta += dir * THETA_SPEED * dt;
+      if (theta > THETA_MAX) theta = THETA_MAX;
+      if (theta < THETA_MIN) theta = THETA_MIN;
+      if (now - aimStart >= AIM_MS) onMiss("timeout");
+      return;
+    }
+    if (phase === "shot"){
+      const t = Math.min(1, (now - fireAt) / 700);
+      const dist = t * 900;
+      shotX = GX + Math.sin(shotTheta) * dist;
+      shotY = GY - Math.cos(shotTheta) * dist;
+      // 命中：炮弹到达敌机时爆炸
+      if (hitState && !exploded && now - fireAt >= 380){
+        exploded = true;
+        spawnExplosion(CORRECT.x, CORRECT.y);
+      }
+      if (now - fireAt >= 700){
+        if (hitState) onHit();
+        else onMiss(missReason);
+      }
+      return;
+    }
+    // miss/over：爆炸粒子继续衰减
+    for (const p of explosionParts){ p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life -= 0.04; }
+    explosionParts = explosionParts.filter(p => p.life > 0);
+  }
+
+  // ---- 渲染 ----
+  const stars = [];
+  for (let i=0;i<60;i++) stars.push({x:Math.random()*800, y:Math.random()*260, r:0.5+Math.random()*1.4, o:0.3+Math.random()*0.6});
+  function drawSky(){
+    const g = ctx.createLinearGradient(0,0,0,460);
+    g.addColorStop(0,"#0b1226"); g.addColorStop(.55,"#16223c"); g.addColorStop(1,"#2a3a55");
+    ctx.fillStyle = g; ctx.fillRect(0,0,800,460);
+    for (const s of stars){
+      ctx.fillStyle = "rgba(220,230,255,"+s.o+")";
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, 7); ctx.fill();
+    }
+    // 城市剪影（底部，带窗户灯火层次）
+    ctx.fillStyle = "#0d1420";
+    for (let i=0;i<10;i++){
+      const bx = i*85, bw = 50, bh = 40 + (i%3)*28;
+      ctx.fillRect(bx, 420-bh, bw, bh);
+    }
+    ctx.fillStyle = "rgba(255,220,140,.32)";
+    for (let i=0;i<10;i++){
+      const bx = i*85, bw = 50, bh = 40 + (i%3)*28;
+      for (let wy=8; wy<bh-12; wy+=13){
+        for (let wx=8; wx<bw-6; wx+=15){
+          if ((bx*7 + wx + wy) % 29 < 9) ctx.fillRect(bx+wx, 420-bh+6+wy, 5, 6);
+        }
+      }
+    }
+  }
+  // 雷达扫描线（flash 阶段）
+  function drawRadarSweep(now){
+    if (phase !== "flash") return;
+    const a = ((now - phaseStart) / 1200) * Math.PI * 2;
+    ctx.strokeStyle = "rgba(90,220,140,.16)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(GX, GY, 330, 0, 7); ctx.stroke();
+    ctx.strokeStyle = "rgba(90,220,140,.22)";
+    ctx.beginPath(); ctx.arc(GX, GY, 230, 0, 7); ctx.stroke();
+    const sx = GX + Math.cos(a) * 330, sy = GY - Math.sin(a) * 330;
+    const grd = ctx.createLinearGradient(GX, GY, sx, sy);
+    grd.addColorStop(0, "rgba(90,220,140,.35)"); grd.addColorStop(1, "rgba(90,220,140,0)");
+    ctx.strokeStyle = grd; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(GX, GY); ctx.lineTo(sx, sy); ctx.stroke();
+  }
+  // 敌机（雷达回波发光轮廓，朝左来袭）
+  function drawPlane(cx, cy, glow){
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (glow){ ctx.shadowColor = "#5adc8c"; ctx.shadowBlur = 16; }
+    ctx.fillStyle = "#2a4a3a";
+    ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(12,-20); ctx.lineTo(20,-20); ctx.lineTo(8,0); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(12,20); ctx.lineTo(20,20); ctx.lineTo(8,0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#3d5a4a";
+    ctx.beginPath(); ctx.ellipse(0,0,24,7,0,0,7); ctx.fill();
+    ctx.fillStyle = "#4d6a5a";
+    ctx.beginPath(); ctx.ellipse(-20,0,8,4.5,0,0,7); ctx.fill();
+    ctx.fillStyle = "#2a4a3a";
+    ctx.beginPath(); ctx.moveTo(18,0); ctx.lineTo(27,-11); ctx.lineTo(31,-5); ctx.lineTo(23,0); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#5adc8c";
+    ctx.beginPath(); ctx.arc(1,-2,3.2,0,7); ctx.fill();
+    ctx.restore();
+  }
+  // 防空炮
+  function drawTurret(){
+    const g = ctx.createRadialGradient(GX-8, GY-8, 4, GX, GY, 26);
+    g.addColorStop(0,"#4d5a74"); g.addColorStop(1,"#2c3648");
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(GX, GY, 24, 0, 7); ctx.fill();
+    ctx.fillStyle = "#39445c"; ctx.beginPath(); ctx.arc(GX, GY, 14, 0, 7); ctx.fill();
+    ctx.fillStyle = "#5d6b8a"; ctx.beginPath(); ctx.arc(GX, GY, 7, 0, 7); ctx.fill();
+    ctx.save();
+    ctx.translate(GX, GY);
+    ctx.rotate(theta);
+    const gb = ctx.createLinearGradient(-8, 0, 8, 0);
+    gb.addColorStop(0,"#5d6b8a"); gb.addColorStop(.5,"#39445c"); gb.addColorStop(1,"#2c3648");
+    ctx.fillStyle = gb;
+    ctx.fillRect(-8, -76, 16, 76);
+    ctx.fillStyle = "#6b7a9a"; ctx.fillRect(-8, -76, 16, 12);
+    ctx.restore();
+  }
+  // 炮弹 + 爆炸
+  function drawShot(now){
+    if (!fired) return;
+    // 炮弹（shot 阶段飞行中，命中爆炸后消失）
+    if (phase === "shot" && !(hitState && exploded)){
+      ctx.fillStyle = "#ffd166"; ctx.shadowColor = "rgba(255,209,102,.9)"; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(shotX, shotY, 6, 0, 7); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    if (exploded){
+      const e = (now - fireAt - 380) / 1000;
+      if (e >= 0 && e < 0.6){
+        const a = Math.max(0, 1 - e / 0.6);
+        ctx.strokeStyle = "rgba(255,220,120,"+a+")"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(CORRECT.x, CORRECT.y, 6 + e*70, 0, 7); ctx.stroke();
+        for (const p of explosionParts){
+          ctx.globalAlpha = Math.max(0, p.life);
+          ctx.fillStyle = p.c;
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.size*p.life+1, 0, 7); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+  // 倒计时进度条（aim 阶段）
+  function drawTimer(now){
+    if (phase !== "aim") return;
+    const remain = Math.max(0, (aimStart + AIM_MS - now) / AIM_MS);
+    ctx.fillStyle = "rgba(255,255,255,.14)";
+    ctx.fillRect(250, 28, 300, 9);
+    ctx.fillStyle = remain > 0.3 ? "#4c7dff" : "#f87171";
+    ctx.fillRect(250, 28, 300 * remain, 9);
+  }
+
+  function render(now){
+    drawSky();
+    drawRadarSweep(now);
+    // 敌机（flash 阶段显示，aim 阶段消失）
+    if (phase === "flash"){
+      for (const t of TARGETS) drawPlane(t.x, t.y, true);
+      ctx.fillStyle = "#5adc8c"; ctx.font = "700 22px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("Shoot the HIGHER plane 击落更高的敌机", 400, 40);
+    }
+    drawTurret();
+    drawShot(now);
+    drawTimer(now);
+    // aim 阶段：雷达干扰雪花（敌机消失的自然原因）
+    if (phase === "aim"){
+      ctx.fillStyle = "rgba(150,180,200,.25)";
+      for (let i=0;i<40;i++){
+        const jx = Math.random()*800, jy = Math.random()*260;
+        ctx.fillRect(jx, jy, 2, 2);
+      }
+      ctx.fillStyle = "rgba(200,220,235,.7)"; ctx.font = "600 15px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("Radar jammed 雷达被干扰", 400, 100);
+    }
+    if (phase === "miss"){
+      const a = Math.max(0,1-(now-missAt)/700);
+      ctx.fillStyle="rgba(255,40,40,"+(a*0.3)+")"; ctx.fillRect(0,0,800,460);
+      ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 42px Arial"; ctx.textAlign="center";
+      ctx.fillText(missText, 400, 140);
+    }
+  }
+
+  let lastT = null;
+  function frame(now){
+    if (lastT === null) lastT = now;
+    const dt = Math.min((now - lastT)/1000, 0.05); lastT = now;
+    if (started) update(dt, now);
+    render(now);
+    requestAnimationFrame(frame);
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  // 键盘：左右键瞄准 + 空格发射/触发 Start/Next（phase 隔离）
+  addEventListener("keydown",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    if (["ArrowLeft","ArrowRight","Space"].includes(c)) e.preventDefault();
+    const left  = k==="a" || k==="arrowleft"  || c==="KeyA" || c==="ArrowLeft"  || kc===65 || kc===37;
+    const right = k==="d" || k==="arrowright" || c==="KeyD" || c==="ArrowRight" || kc===68 || kc===39;
+    const space = k===" "||c==="Space"||kc===32;
+    if (left) keys.left = true;
+    if (right) keys.right = true;
+    if (space){
+      if (!introEl.classList.contains("hidden")) startGame();
+      else if (!retryOverlay.classList.contains("hidden")) nextRound();
+      else if (phase === "aim") fire();
+    }
+  });
+  addEventListener("keyup",(e)=>{
+    const k=(e.key||"").toLowerCase();
+    const c=e.code||"";
+    const kc=e.keyCode||e.which||0;
+    if (k==="a" || k==="arrowleft"  || c==="KeyA" || c==="ArrowLeft"  || kc===65 || kc===37) keys.left = false;
+    if (k==="d" || k==="arrowright" || c==="KeyD" || c==="ArrowRight" || kc===68 || kc===39) keys.right = false;
+  });
+
+  setHint(); syncURL();
+  function startGame(){
+    started = true;
+    introEl.classList.add("hidden");
+    reset();
+    showToast("Attempt 1 / 3  第 1 / 3 次");
+  }
+  startBtn.addEventListener("click", startGame);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kitchen Order Match 厨房订单配对</title>
+<style>
+  :root{
+    --gold:#f6c453; --bg:#0a0c18; --panel:#1c2743;
+    --title:#1f2937; --rule:#4b5563; --sub:#6b7280;
+    --accent1:#4c5baa; --accent2:#3a4684;
+    --accent3:#4c7dff; --accent4:#3355d8;
+    --ok1:#34d399; --ok2:#0ea371;
+    --fail1:#f87171; --fail2:#dc2626;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: radial-gradient(1100px 700px at 50% -8%, #2b3150 0%, var(--bg) 58%);
+    font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#e8eaf6; user-select:none; overflow:hidden;
+  }
+  .status { font-size:20px; font-weight:600; min-height:27px; letter-spacing:.4px; }
+  .status.ready { color:var(--gold); }
+  .status.answer { color:#c9d2ff; }
+  .status.win { color:var(--ok1); }
+  .status.lose { color:var(--fail1); }
+  .status.action { font-size:30px; font-weight:800; color:var(--gold); text-shadow:0 0 14px rgba(246,196,83,.55); letter-spacing:.5px; }
+  canvas {
+    border-radius:16px; box-shadow:0 16px 44px rgba(0,0,0,.5);
+    border:1px solid rgba(255,255,255,.08); display:block; cursor:pointer;
+  }
+  .btn {
+    padding:15px 40px; font-size:20px; font-weight:800; letter-spacing:1px; border:none;
+    border-radius:16px; cursor:pointer; color:#fff;
+    background:linear-gradient(160deg,var(--accent3) 0%,var(--accent4) 100%);
+    box-shadow:0 14px 34px rgba(60,100,255,.4), inset 0 1px 0 rgba(255,255,255,.25);
+    transition:transform .15s, opacity .2s;
+  }
+  .btn:hover:not(:disabled){ transform:translateY(-2px); }
+  .btn:disabled { opacity:.35; cursor:not-allowed; }
+  .hint { font-size:14px; color:#7d86ab; letter-spacing:.5px; }
+  .toast {
+    position:fixed; top:34px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:rgba(28,32,54,.92); border:1px solid rgba(255,255,255,.14); color:#fff;
+    padding:13px 28px; border-radius:30px; font-size:17px; font-weight:600; letter-spacing:.5px;
+    opacity:0; transition:all .35s; pointer-events:none; z-index:50; box-shadow:0 12px 34px rgba(0,0,0,.4);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  .overlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.66); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; z-index:100; opacity:0; pointer-events:none; transition:opacity .3s;
+  }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .celeb-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 56px; text-align:center;
+    transform:scale(.7); transition:transform .35s cubic-bezier(.2,1.4,.4,1); box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .overlay.show .celeb-box { transform:scale(1); }
+  .celeb-check { width:74px; height:74px; margin:0 auto 18px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:40px; color:#fff; }
+  .celeb-check.ok { background:linear-gradient(150deg,var(--ok1),var(--ok2)); box-shadow:0 10px 26px rgba(52,211,153,.45); }
+  .celeb-check.fail { background:linear-gradient(150deg,var(--fail1),var(--fail2)); box-shadow:0 10px 26px rgba(248,113,113,.45); }
+  .celeb-title { font-size:30px; font-weight:800; color:var(--title); }
+  .celeb-sub { font-size:15px; color:var(--sub); margin-top:6px; }
+  #confetti { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:110; }
+  .intro {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .intro.hidden { display:none; }
+  .intro-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:44px 52px; text-align:center;
+    max-width:640px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .intro-title { font-size:28px; font-weight:800; color:var(--title); }
+  .intro-rule { font-size:16px; color:var(--rule); margin-top:14px; line-height:1.6; text-align:left; }
+  .intro-rule b { color:var(--title); }
+  .intro-start {
+    margin-top:26px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent1) 0%,var(--accent2) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .intro-start:hover { transform:translateY(-2px); }
+  .retryOverlay {
+    position:fixed; inset:0; background:rgba(10,12,24,.94); backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center; z-index:200;
+  }
+  .retryOverlay.hidden { display:none; }
+  .retry-box {
+    background:linear-gradient(160deg,#fff,#f3f5fd); border-radius:22px; padding:40px 50px; text-align:center;
+    max-width:520px; box-shadow:0 30px 80px rgba(0,0,0,.5);
+  }
+  .retry-title { font-size:26px; font-weight:800; color:var(--title); }
+  .retry-sub { font-size:15px; color:var(--sub); margin-top:8px; }
+  .next-btn {
+    margin-top:24px; padding:13px 44px; border-radius:30px; border:none;
+    background:linear-gradient(150deg,var(--accent3) 0%,var(--accent4) 100%); color:#fff;
+    font-size:17px; font-weight:700; cursor:pointer; box-shadow:0 10px 24px rgba(0,0,0,.3); transition:transform .15s;
+  }
+  .next-btn:hover { transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="status" id="status">Reveal to see the orders 点揭示查看订单</div>
+  <canvas id="cv" width="800" height="500"></canvas>
+  <button class="btn" id="revealBtn">Reveal 揭示</button>
+  <div class="hint" id="hint">Attempt 0 / 3</div>
+
+  <div class="toast" id="toast"></div>
+  <div class="overlay" id="overlay">
+    <div class="celeb-box">
+      <div class="celeb-check ok">✓</div>
+      <div class="celeb-title">Success 成功</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
+    </div>
+  </div>
+  <div class="overlay" id="failOverlay">
+    <div class="celeb-box">
+      <div class="celeb-check fail">✗</div>
+      <div class="celeb-title">Out of attempts 尝试用完</div>
+      <div class="celeb-sub">Failed 失败</div>
+    </div>
+  </div>
+  <div class="retryOverlay hidden" id="retryOverlay">
+    <div class="retry-box">
+      <div class="retry-title" id="retryText">Attempt 2 / 3</div>
+      <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
+      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+    </div>
+  </div>
+  <canvas id="confetti"></canvas>
+  <div class="intro" id="intro">
+    <div class="intro-box">
+      <div class="intro-title">Kitchen Order Match 厨房订单配对</div>
+      <div class="intro-rule">The kitchen is slammed. Three order tickets are <b>pinned at the pass</b> — each shows a dish and which <b>table</b> it goes to. Then a server <b>grabs them away</b>. Send each dish to its <b>right table</b> from memory.<br>后厨忙翻了。三张订单票<b>贴在出餐口</b>——每张写着菜名和它要送到<b>哪一桌</b>。接着服务员<b>取走出菜</b>，订单没了。凭记忆把每道菜送到<b>对应桌号</b>。</div>
+      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 核心设计（reveal·关联绑定）：餐厅后厨，3 张订单票（菜名 ↔ 桌号）贴在出餐口短暂展示，
+  // 然后服务员取走（订单消失），玩家凭记忆逐份「把菜送到对应桌号」（跨图关联绑定）。
+  // IEW 有限（订单↔桌号对应关系展示后消失）；AVW=∞（作答无时限）。补丁=视频。
+  const CW = 800, CH = 500;
+  const MAX_ATTEMPTS = 3;
+  const READY_MIN = 300, READY_MAX = 2000;
+  const SHOW_MS = 1500;
+
+  // 3 张订单票位置（出餐口并排）
+  const TICKET_X = [200, 400, 600];
+  const TICKET_Y = 200;
+  // 3 个桌号牌位置（作答区）
+  const TABLE_X = [200, 400, 600];
+  const TABLE_Y = 340;
+
+  // 菜名（英文 + 中文，无 emoji）
+  const DISHES = [
+    { en:"Burger", zh:"汉堡" },
+    { en:"Pizza",  zh:"披萨" },
+    { en:"Salad",  zh:"沙拉" },
+  ];
+
+  const BENCH = { task:"kitchen_order_match", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  window.BENCH = BENCH;
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const statusEl = document.getElementById("status");
+  const hintEl = document.getElementById("hint");
+  const revealBtn = document.getElementById("revealBtn");
+  const toast = document.getElementById("toast");
+  const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
+  const confettiCv = document.getElementById("confetti");
+
+  let phase = "idle";          // idle | ready | show | answer | done
+  let dishes = [];             // 3 个订单位的菜名索引（打乱 0..2）
+  let orderTable = [];         // 3 个订单位各自对应桌号（1/2/3，一一对应，打乱）
+  let qIdx = 0;                // 作答：当前问第几份订单（0..2）
+  let readyDelay = 0, phaseStart = 0;
+
+  function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
+
+  window.__dbg = function(){ return { phase, dishes: dishes.slice(), orderTable: orderTable.slice(), qIdx, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+
+  function shuffle(a){ const r=a.slice(); for(let i=r.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [r[i],r[j]]=[r[j],r[i]]; } return r; }
+
+  function startRound(){
+    dishes = shuffle([0,1,2]);        // 每个订单位的菜名
+    orderTable = shuffle([1,2,3]);    // 每个订单位对应桌号（一一对应）
+    qIdx = 0;
+    phase = "idle";
+    revealBtn.disabled = false;
+    setStatus("Reveal to see the orders 点揭示查看订单","");
+    setHint(); syncURL();
+    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+  }
+
+  function onReveal(){
+    if (phase !== "idle") return;
+    phase = "ready"; phaseStart = performance.now();
+    readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
+    revealBtn.disabled = true;
+    setStatus("Get ready… 准备…","ready");
+  }
+
+  function update(now){
+    if (phase === "ready"){
+      if (now - phaseStart >= readyDelay){ phase = "show"; phaseStart = now; setStatus("Watch the tickets… 注意订单…","ready"); }
+    }
+    else if (phase === "show"){
+      if (now - phaseStart >= SHOW_MS){ phase = "answer"; setStatus("Send it to the right table 送到正确的桌","action"); }
+    }
+  }
+
+  // 后厨背景
+  function drawBg(){
+    const g = ctx.createLinearGradient(0,0,0,CH);
+    g.addColorStop(0,"#2a1f14"); g.addColorStop(1,"#17120c");
+    ctx.fillStyle = g; ctx.fillRect(0,0,CW,CH);
+    // 出餐口（不锈钢窗台）
+    ctx.fillStyle = "#4a5560";
+    ctx.fillRect(120, 130, 560, 110);
+    ctx.fillStyle = "#39434d";
+    ctx.fillRect(120, 230, 560, 10);
+    // 出餐口上方横梁
+    ctx.fillStyle = "#2e3942";
+    ctx.fillRect(120, 118, 560, 14);
+    // 台面（下方）
+    ctx.fillStyle = "#5a4730";
+    ctx.fillRect(0, 400, CW, 100);
+    // 厨师台纹理
+    ctx.strokeStyle = "rgba(255,255,255,.04)"; ctx.lineWidth = 1;
+    for (let x=0;x<CW;x+=80){ ctx.beginPath(); ctx.moveTo(x,410); ctx.lineTo(x,500); ctx.stroke(); }
+    // 悬挂的厨具灯光
+    ctx.fillStyle = "rgba(255,210,120,.1)";
+    ctx.beginPath(); ctx.arc(400, 60, 70, 0, Math.PI*2); ctx.fill();
+  }
+
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+  // 订单票（贴在出餐口的小纸条：菜名 + → 桌号）
+  function drawTicket(i){
+    const x = TICKET_X[i], y = TICKET_Y;
+    const dish = DISHES[dishes[i]];
+    ctx.save();
+    ctx.translate(x, y);
+    // 纸条
+    ctx.fillStyle = "#fdf6e4";
+    ctx.beginPath(); ctx.roundRect(-65, -40, 130, 80, 6); ctx.fill();
+    ctx.strokeStyle = "#c9b88a"; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(-65, -40, 130, 80, 6); ctx.stroke();
+    // 顶部撕边虚线
+    ctx.strokeStyle = "#c9b88a"; ctx.lineWidth = 1;
+    ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(-60, -26); ctx.lineTo(60, -26); ctx.stroke();
+    ctx.setLineDash([]);
+    // 菜名
+    ctx.fillStyle = "#3a2f1a"; ctx.font = "bold 20px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(dish.en, 0, -8);
+    ctx.fillStyle = "#7a6a46"; ctx.font = "13px sans-serif";
+    ctx.fillText(dish.zh, 0, 10);
+    // 桌号
+    ctx.fillStyle = "#b0351f";
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText("→ 桌 " + orderTable[i], 0, 30);
+    ctx.restore();
+  }
+
+  // 桌号牌（作答区，可点）
+  function drawTablePlate(i, highlight){
+    const x = TABLE_X[i], y = TABLE_Y;
+    ctx.save();
+    // 桌号牌（圆形木牌）
+    const grad = ctx.createLinearGradient(x-22, 0, x+22, 0);
+    grad.addColorStop(0, highlight ? "#f6c453" : "#8a5a2a");
+    grad.addColorStop(1, highlight ? "#d99b28" : "#6b441d");
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#4a2f12"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(x, y, 30, 0, Math.PI*2); ctx.stroke();
+    // 桌号文字
+    ctx.fillStyle = "#fff"; ctx.font = "bold 22px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(String(i+1), x, y-6);
+    ctx.fillStyle = "#f0e6d0"; ctx.font = "bold 11px sans-serif";
+    ctx.fillText("桌", x, y+12);
+    ctx.restore();
+  }
+
+  function render(){
+    drawBg();
+    if (phase === "show"){
+      // 闪现：3 张订单票 + 对应桌号
+      for (let i=0;i<3;i++) drawTicket(i);
+    }
+    else if (phase === "answer"){
+      // 作答：顶部显示当前订单，下方 3 个桌号牌
+      const dish = DISHES[dishes[qIdx]];
+      // 当前订单提示（顶部横幅）
+      ctx.fillStyle = "#1c2743";
+      ctx.beginPath(); ctx.roundRect(140, 70, 520, 70, 10); ctx.fill();
+      ctx.fillStyle = "#f0e6d0"; ctx.font = "bold 22px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("送 " + dish.en + " " + dish.zh + " 到哪一桌？", 400, 105);
+      // 3 个桌号牌
+      for (let i=0;i<3;i++) drawTablePlate(i, false);
+    }
+    else if (phase === "done"){
+      // 成功时保留最后画面（可选）
+    }
+  }
+  function frame(now){ update(now); render(); requestAnimationFrame(frame); }
+
+  function canvasPos(e){
+    const r = cv.getBoundingClientRect();
+    return { x:(e.clientX-r.left)*(CW/r.width), y:(e.clientY-r.top)*(CH/r.height) };
+  }
+  cv.addEventListener("click", (e)=>{
+    if (phase !== "answer") return;
+    const p = canvasPos(e);
+    let sel = -1;
+    for (let i=0;i<3;i++){
+      const dx = p.x - TABLE_X[i], dy = p.y - TABLE_Y;
+      if (Math.hypot(dx, dy) < 34){ sel = i; break; }
+    }
+    if (sel === -1) return;
+    // 点桌号牌 sel（对应桌号 sel+1）
+    const ok = ((sel + 1) === orderTable[qIdx]);
+    BENCH.results.push(ok ? "hit" : "miss");
+    if (ok){
+      qIdx++;
+      if (qIdx >= 3){
+        phase = "done";
+        BENCH.passed = true; BENCH.status = "passed";
+        setStatus("Success 成功","win"); syncURL(); celebrate();
+        return;
+      }
+      setStatus("Correct! 送对啦，下一单","ready");
+      return;
+    }
+    setStatus("Miss! 送错了","lose");
+    setTimeout(()=> nextAttempt(), 900);
+  });
+
+  function nextAttempt(){
+    BENCH.attempts += 1; setHint();
+    if (BENCH.attempts >= MAX_ATTEMPTS){
+      BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
+      return;
+    }
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    document.getElementById("retryOverlay").classList.remove("hidden");
+  }
+
+  function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
+  function launchConfetti(){
+    confettiCv.width=innerWidth; confettiCv.height=innerHeight;
+    const c=confettiCv.getContext("2d");
+    const colors=["#34d399","#7c5cff","#f6c453","#ff5c7a","#4c7dff","#f59e0b"];
+    const parts=[];
+    for(let i=0;i<160;i++) parts.push({x:Math.random()*confettiCv.width,y:-20-Math.random()*confettiCv.height*.5,w:6+Math.random()*7,h:8+Math.random()*8,vy:2+Math.random()*4,vx:-1.5+Math.random()*3,rot:Math.random()*Math.PI,vr:-.15+Math.random()*.3,c:colors[i%6]});
+    const t0=performance.now();
+    (function tick(now){
+      c.clearRect(0,0,confettiCv.width,confettiCv.height); let alive=false;
+      parts.forEach(p=>{ p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr; if(p.y<confettiCv.height+30) alive=true;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.rot); c.fillStyle=p.c; c.fillRect(-p.w/2,-p.h/2,p.w,p.h); c.restore(); });
+      if(alive && now-t0<3200) requestAnimationFrame(tick); else c.clearRect(0,0,confettiCv.width,confettiCv.height);
+    })(t0);
+  }
+
+  document.getElementById("startBtn").addEventListener("click", ()=>{ document.getElementById("intro").classList.add("hidden"); });
+  revealBtn.addEventListener("click", onReveal);
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    document.getElementById("retryOverlay").classList.add("hidden");
+    startRound();
+  });
+  // 空格触发 Start/Next（弹层显示时）
+  document.addEventListener("keydown", (e)=>{
+    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
+    if (!space) return;
+    const introEl = document.getElementById("intro");
+    const retryEl = document.getElementById("retryOverlay");
+    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
+    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+  });
+  setHint(); syncURL(); startRound();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
