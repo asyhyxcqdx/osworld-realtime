@@ -2,7 +2,7 @@
   "id": "434d76a6-0f5e-565b-8e09-5f6822377a22",
   "benchmark_id": "A40",
   "snapshot": "chrome",
-  "instruction": "阅读当前页面中的游戏规则，并按照规则完成游戏。如果当前尝试失败且页面允许继续尝试，请继续完成后续尝试。游戏显示成功，或者所有尝试机会均已用完后，请立即结束任务并停留在当前页面。",
+  "instruction": "Read the game rules shown on the current page and follow them exactly. If an attempt fails and another attempt is available, continue with the next attempt. Never refresh, reload, reopen, or navigate away from this page. When the game shows success or no attempts remain, submit the action {\"action_type\":\"DONE\"}. Do not finish with a text-only response.",
   "source": "evaluation_examples/websites/realtime_gui_bench/games/a40/index.html",
   "config": [
     {
@@ -79,9 +79,9 @@
       "type": "realtime_gui_bench_state",
       "benchmark_id": "A40",
       "target_url_contains": "127.0.0.1:8765/a40/index.html",
-      "attempts": 3,
       "retry_interval": 0.5,
-      "timeout": 10.0
+      "timeout": 10.0,
+      "poll_attempts": 3
     }
   },
   "proxy": false,

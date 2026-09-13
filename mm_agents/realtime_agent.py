@@ -13,12 +13,15 @@ import time
 import requests
 
 from mm_agents.realtime_protocol import (
+    ACTION_TOOLS,
+    ACTION_TOOL_TYPES,
     FRAME_TOOL,
     GetFramesArgs,
     MODES,
     load_output,
     parse_actions,
     system_prompt,
+    validate_action,
 )
 
 
@@ -67,6 +70,31 @@ def response_reasoning(response, protocol):
         "reasoning": texts,
         "reasoning_status": "returned" if texts else "opaque" if opaque else "not_returned",
     }
+
+
+def loggable_messages(messages):
+    """Copy request messages while replacing inline image bytes with hashes."""
+    logged = copy.deepcopy(messages)
+    for message in logged:
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            source = block.get("source")
+            if isinstance(source, dict) and isinstance(source.get("data"), str):
+                data = source.pop("data")
+                source["data_sha256"] = hashlib.sha256(data.encode("ascii")).hexdigest()
+                source["data_length"] = len(data)
+            image_url = block.get("image_url")
+            if isinstance(image_url, dict) and isinstance(image_url.get("url"), str):
+                url = image_url["url"]
+                if url.startswith("data:"):
+                    image_url["url"] = "data:image/png;base64,[omitted]"
+                    image_url["url_sha256"] = hashlib.sha256(url.encode("ascii")).hexdigest()
+                    image_url["url_length"] = len(url)
+    return logged
 
 
 class ModelWire:
@@ -121,19 +149,28 @@ class ModelWire:
         return {"role": "user", "content": parts}
 
     def request(
-        self, system, messages, *, tools_enabled, native, max_tokens, temperature
+        self,
+        system,
+        messages,
+        *,
+        tools_enabled,
+        native,
+        max_tokens,
+        temperature,
+        tools=None,
     ):
-        # Keep definitions for prior tool messages after the query budget is used.
         has_tool_history = any(
             m.get("tool_calls")
             or m.get("type") in {"function_call", "function_call_output"}
             or (
                 isinstance(m.get("content"), list)
-                and any(b.get("type") == "tool_use" for b in m["content"])
+                and any(b.get("type") in {"tool_use", "tool_result"} for b in m["content"])
             )
             for m in messages
         )
-        send_tools = native and (tools_enabled or has_tool_history)
+        if tools is None:
+            tools = [FRAME_TOOL] if tools_enabled or has_tool_history else []
+        send_tools = native and bool(tools)
         key = (
             os.getenv("PACKY_API_KEY")
             or os.getenv(
@@ -165,12 +202,15 @@ class ModelWire:
             if send_tools:
                 payload["tools"] = [
                     {
-                        "name": FRAME_TOOL["name"],
-                        "description": FRAME_TOOL["description"],
-                        "input_schema": FRAME_TOOL["parameters"],
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "input_schema": tool["parameters"],
                     }
+                    for tool in tools
                 ]
-                if not tools_enabled:
+                if not tools_enabled and not any(
+                    tool["name"] != FRAME_TOOL["name"] for tool in tools
+                ):
                     payload["tool_choice"] = {"type": "none"}
         else:
             headers["Authorization"] = f"Bearer {key}"
@@ -185,9 +225,18 @@ class ModelWire:
                 )
                 if send_tools:
                     payload["tools"] = [
-                        {"type": "function", **FRAME_TOOL, "strict": False}
+                        {
+                            "type": "function",
+                            "name": tool["name"],
+                            "description": tool["description"],
+                            "parameters": tool["parameters"],
+                            "strict": False,
+                        }
+                        for tool in tools
                     ]
-                    if not tools_enabled:
+                    if not tools_enabled and not any(
+                        tool["name"] != FRAME_TOOL["name"] for tool in tools
+                    ):
                         payload["tool_choice"] = "none"
             else:
                 path = "chat/completions"
@@ -197,8 +246,20 @@ class ModelWire:
                     temperature=temperature,
                 )
                 if send_tools:
-                    payload["tools"] = [{"type": "function", "function": FRAME_TOOL}]
-                    if not tools_enabled:
+                    payload["tools"] = [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": tool["name"],
+                                "description": tool["description"],
+                                "parameters": tool["parameters"],
+                            },
+                        }
+                        for tool in tools
+                    ]
+                    if not tools_enabled and not any(
+                        tool["name"] != FRAME_TOOL["name"] for tool in tools
+                    ):
                         payload["tool_choice"] = "none"
         url = self.base_url + ("/" if self.base_url.endswith("/v1") else "/v1/") + path
         response = self.session.post(
@@ -309,22 +370,25 @@ class RealtimeAgent:
         self,
         *,
         variant="agent1",
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         api_format="auto",
         api_base_url=None,
-        max_tokens=1500,
+        max_tokens=128000,
         temperature=1.0,
         max_trajectory_length=3,
         pause=0.0,
-        max_sequence_actions=16,
+        max_sequence_actions=100,
         max_frame_queries=0,
         tool_format="native",
         thinking_summary=False,
+        system_prompt_text=None,
         wire=None,
     ):
         self.mode = MODES[variant]
         self.variant = variant
         self.max_tokens, self.temperature = max_tokens, temperature
+        if max_trajectory_length is not None and max_trajectory_length < 0:
+            raise ValueError("max_trajectory_length must be nonnegative or None")
         self.history_length = max_trajectory_length
         if max_frame_queries < 0:
             raise ValueError("max_frame_queries must be nonnegative (0 means unlimited)")
@@ -333,7 +397,7 @@ class RealtimeAgent:
         self.wire = wire or ModelWire(
             model, api_format, api_base_url, thinking_summary=thinking_summary
         )
-        self.system = system_prompt(
+        self.system = system_prompt_text or system_prompt(
             self.mode, pause, self.max_actions, self.max_queries
         )
         if self.mode.frames and tool_format == "json":
@@ -349,6 +413,8 @@ class RealtimeAgent:
         self.rounds = []
         self.observations = []
         self.last_events = []
+        self.pending_action_calls = None
+        self.active_round_messages = None
         self.counters = {
             "model_requests": 0,
             "tool_calls": 0,
@@ -362,10 +428,83 @@ class RealtimeAgent:
     def bind_event_sink(self, callback):
         self.event_sink = callback
 
+    def _history_rounds(self):
+        if self.history_length is None:
+            return self.rounds
+        return self.rounds[-self.history_length:] if self.history_length else []
+
+    def _retain_history(self):
+        if self.history_length is None:
+            return
+        if len(self.rounds) > self.history_length:
+            self.rounds = self.rounds[-self.history_length:] if self.history_length else []
+        self.observations = (
+            self.observations[-self.history_length:]
+            if self.history_length
+            else []
+        )
+
     def emit(self, event):
         self.last_events.append(event)
         if self.event_sink is not None:
             self.event_sink(event)
+
+    def record_action_result(self, actions, *, reward=0, done=False, info=None, error=None):
+        """Close the previous assistant action calls with environment results."""
+        calls = self.pending_action_calls
+        if not calls:
+            raise RuntimeError("No pending native action calls to close.")
+        if len(calls) != len(actions):
+            raise ValueError("Environment returned a different number of action results.")
+        results = []
+        for index, (call, action) in enumerate(zip(calls, actions)):
+            result = {
+                "action_type": action["action_type"],
+                "executed": error is None,
+                "reward": reward,
+                "done": bool(done),
+                "last_in_decision": index == len(actions) - 1,
+            }
+            if info is not None:
+                result["info"] = info
+            if error is not None:
+                result["error"] = error
+            results.append((call, result))
+        if self.active_round_messages is None:
+            raise RuntimeError("The pending action round is no longer available.")
+        self.active_round_messages.extend(self.wire.tool_results(results))
+        self.emit({"event": "action_tool_result", "calls": results})
+        self.pending_action_calls = None
+        self.active_round_messages = None
+
+    def _decode_action_calls(self, calls, obs):
+        max_allowed = min(
+            self.max_actions,
+            obs.get("remaining_actions", self.max_actions),
+        )
+        if not self.mode.sequence:
+            max_allowed = 1
+        if len(calls) > max_allowed:
+            raise ValueError("Invalid action count for this agent group.")
+        actions = []
+        for call in calls:
+            action_type = ACTION_TOOL_TYPES.get(call["name"])
+            if action_type is None:
+                raise ValueError("Unknown action tool.")
+            arguments = call.get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("Action tool arguments are not valid JSON.") from exc
+            if arguments is None:
+                arguments = {}
+            action = {"action_type": action_type, "parameters": arguments}
+            validate_action(action)
+            actions.append(action)
+        if any(action["action_type"] == "DONE" for action in actions[:-1]):
+            raise ValueError("DONE must be the last action.")
+        return actions
 
     def predict(self, instruction, obs):
         self.last_events = []
@@ -394,9 +533,7 @@ class RealtimeAgent:
         round_messages = [self.wire.user(blocks)]
         history = [
             m
-            for r in (
-                self.rounds[-self.history_length :] if self.history_length else []
-            )
+            for r in self._history_rounds()
             for m in r
         ]
         queries, errors, requests_in_decision = 0, 0, 0
@@ -408,11 +545,24 @@ class RealtimeAgent:
             start = time.monotonic()
             self.counters["model_requests"] += 1
             request_id = self.counters["model_requests"]
-            tools_enabled = self.mode.frames and (not self.max_queries or queries < self.max_queries)
+            tools_enabled = self.mode.frames and (
+                not self.max_queries or queries < self.max_queries
+            )
+            request_tools = []
+            if self.tool_format == "native":
+                request_tools.extend(ACTION_TOOLS)
+                if tools_enabled:
+                    request_tools.insert(0, FRAME_TOOL)
             self.emit({
                 "event": "model_request", "request_id": request_id,
                 "observation": observation, "history_observations": list(self.observations),
                 "tools_enabled": tools_enabled,
+                "protocol": self.wire.protocol,
+                "model": self.wire.model,
+                    "max_tokens": self.max_tokens,
+                    "temperature": self.temperature,
+                    "tools": [tool["name"] for tool in request_tools],
+                    "request_messages": loggable_messages(history + round_messages),
             })
             try:
                 raw = self.wire.request(
@@ -422,6 +572,7 @@ class RealtimeAgent:
                     native=self.tool_format == "native",
                     max_tokens=self.max_tokens,
                     temperature=self.temperature,
+                    tools=request_tools,
                 )
             except Exception as exc:
                 self.emit({
@@ -453,7 +604,7 @@ class RealtimeAgent:
                 }
             )
             structured = False
-            if not calls:
+            if not calls and self.tool_format != "native":
                 try:
                     value = load_output(text)
                     if isinstance(value, dict) and "tool_call" in value:
@@ -471,12 +622,47 @@ class RealtimeAgent:
                 except (ValueError, KeyError, TypeError):
                     pass
             if calls:
+                frame_calls = [call for call in calls if call["name"] == FRAME_TOOL["name"]]
+                action_calls = [call for call in calls if call["name"] != FRAME_TOOL["name"]]
+                if frame_calls and action_calls:
+                    raise ValueError("A model response cannot mix frame queries and actions.")
+                if action_calls:
+                    if self.tool_format != "native":
+                        raise ValueError("Native action tools are required for action calls.")
+                    self.counters["tool_calls"] += len(action_calls)
+                    try:
+                        actions = self._decode_action_calls(action_calls, obs)
+                    except ValueError as exc:
+                        errors += 1
+                        self.emit(
+                            {
+                                "event": "format_error",
+                                "request_id": request_id,
+                                "message": str(exc),
+                                "correction": errors,
+                                "will_retry": errors <= 2,
+                            }
+                        )
+                        if errors > 2:
+                            raise
+                        round_messages.append(
+                            self.wire.user(
+                                [text_block(f"Invalid tool call: {exc}. Correct it; no action was executed.")]
+                            )
+                        )
+                        continue
+                    self.rounds.append(round_messages)
+                    self.observations.append(observation)
+                    self.pending_action_calls = action_calls
+                    self.active_round_messages = round_messages
+                    self._retain_history()
+                    return text, actions
+                if not frame_calls:
+                    raise ValueError("Unknown native tool call.")
                 if not self.mode.frames:
-                    raise ValueError(
-                        "This agent group has no tools; refusing an unexpected tool call."
-                    )
+                    raise ValueError("This agent group has no frame query tool.")
                 results = []
-                for call in calls:
+                for call in frame_calls:
                     self.counters["tool_calls"] += 1
                     started = time.monotonic()
                     try:
@@ -530,6 +716,22 @@ class RealtimeAgent:
                 else:
                     round_messages.extend(self.wire.tool_results(results))
                 continue
+            if self.tool_format == "native":
+                errors += 1
+                message = "Native tool use is required; return a computer action tool call."
+                self.emit(
+                    {
+                        "event": "format_error",
+                        "request_id": request_id,
+                        "message": message,
+                        "correction": errors,
+                        "will_retry": errors <= 2,
+                    }
+                )
+                if errors > 2:
+                    raise ValueError(message)
+                round_messages.append(self.wire.user([text_block(message)]))
+                continue
             try:
                 actions = parse_actions(
                     text,
@@ -558,9 +760,5 @@ class RealtimeAgent:
                 continue
             self.rounds.append(round_messages)
             self.observations.append(observation)
-            if len(self.rounds) > self.history_length:
-                self.rounds = (
-                    self.rounds[-self.history_length :] if self.history_length else []
-                )
-            self.observations = self.observations[-self.history_length:] if self.history_length else []
+            self._retain_history()
             return text, actions

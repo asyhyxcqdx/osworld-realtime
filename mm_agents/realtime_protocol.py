@@ -47,6 +47,67 @@ FRAME_TOOL = {
 }
 
 
+def _json_parameter_schema(rule):
+    kind = rule.get("type")
+    if kind is float:
+        schema = {"type": "number"}
+    elif kind is int:
+        schema = {"type": "integer"}
+    elif kind is str:
+        schema = {"type": "string"}
+    elif kind is list:
+        schema = {"type": "array", "items": {"type": "string"}}
+        values = rule.get("range")
+        if values and len(values) == 1 and isinstance(values[0], list):
+            schema["items"]["enum"] = values[0]
+    else:
+        raise ValueError(f"Unsupported computer action parameter type: {kind!r}")
+    values = rule.get("range")
+    if values and kind is str:
+        schema["enum"] = values
+    if values and kind in {float, int} and len(values) == 2:
+        schema["minimum"], schema["maximum"] = values
+    return schema
+
+
+def _action_tool_name(action_type):
+    return f"computer_{action_type.lower()}"
+
+
+def _build_action_tools():
+    tools = []
+    names = {}
+    for spec in ACTION_SPACE:
+        action_type = spec["action_type"]
+        if action_type == "FAIL":
+            continue
+        properties = {}
+        required = []
+        for name, rule in spec.get("parameters", {}).items():
+            properties[name] = _json_parameter_schema(rule)
+            if not rule.get("optional", False):
+                required.append(name)
+        parameters = {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": False,
+        }
+        tool_name = _action_tool_name(action_type)
+        names[tool_name] = action_type
+        tools.append(
+            {
+                "name": tool_name,
+                "description": spec.get("note", action_type),
+                "parameters": parameters,
+            }
+        )
+    return tools, names
+
+
+ACTION_TOOLS, ACTION_TOOL_TYPES = _build_action_tools()
+
+
 def load_output(text):
     """One JSON payload only; never silently execute multiple fenced blocks."""
     text = text.strip()
@@ -101,38 +162,51 @@ def validate_action(action):
             raise ValueError("Invalid HOTKEY keys.")
     if ("x" in params) != ("y" in params):
         raise ValueError("Supply x and y together.")
+    action_type = action["action_type"]
+    if action_type == "FAIL":
+        raise ValueError("FAIL is not an agent action; submit DONE only after terminal game state.")
+    if action_type == "PRESS" and params.get("key") in {
+        "browserrefresh",
+        "browserback",
+        "browserforward",
+        "browserhome",
+        "f5",
+    }:
+        raise ValueError("Refreshing or navigating away from the game page is forbidden.")
+    if action_type == "HOTKEY":
+        keys = {str(key).lower() for key in params.get("keys", [])}
+        if "browserrefresh" in keys or "f5" in keys or (
+            "ctrl" in keys and ("r" in keys or "shift" in keys)
+        ):
+            raise ValueError("Refreshing or navigating away from the game page is forbidden.")
     return action
 
 
-def parse_actions(text, *, sequence=False, max_actions=16):
+def parse_actions(text, *, sequence=False, max_actions=100):
     value = load_output(text)
     actions = value if isinstance(value, list) else [value]
     if not 1 <= len(actions) <= (max_actions if sequence else 1):
         raise ValueError("Invalid action count for this agent group.")
     for i, action in enumerate(actions):
         validate_action(action)
-        if action["action_type"] in {"DONE", "FAIL"} and i != len(actions) - 1:
-            raise ValueError("DONE/FAIL must be the last action.")
+        if action["action_type"] == "DONE" and i != len(actions) - 1:
+            raise ValueError("DONE must be the last action.")
     return actions
 
 
 def system_prompt(mode, pause, max_actions, max_queries):
-    # Serialize the actual vocabulary, avoiding stale examples and str.format braces.
-    vocabulary = json.dumps(
-        ACTION_SPACE, default=lambda t: t.__name__, ensure_ascii=False
-    )
     output = (
-        f"Return one JSON array containing 1-{max_actions} actions. "
-        "Actions execute consecutively in the VM with one final screenshot. "
+        f"Submit 1-{max_actions} native computer action tool calls. "
+        "The calls execute consecutively in the VM with one final screenshot. "
         "No automatic gaps are inserted. "
         if mode.sequence
-        else "Return exactly one action JSON object, never a list or multiple actions. "
+        else "Submit exactly one native computer action tool call per decision. "
     )
     prompt = (
-        "You control a desktop using screenshots and the following existing action space. "
-        'Use {"action_type": NAME, "parameters": {...}}. Coordinates are screen pixels. '
+        "You control a desktop using native computer action tools. Coordinates are screen pixels. "
         "Use key names exactly as listed (a space character ' ' is the space bar). "
-        "Do not invent action parameters or execute Python. DONE ends the task; FAIL gives up. "
+        "Do not invent action parameters or execute Python. Never refresh, reload, reopen, or navigate away from the game page. "
+        "DONE is the only terminal action; submit it only when the game is visibly successful or has exhausted its attempts. "
         f"WAIT has no parameters. pause={pause} seconds. "
         + (
             f"WAIT sleeps once for {pause} seconds. "
@@ -141,8 +215,7 @@ def system_prompt(mode, pause, max_actions, max_queries):
         )
         + "MOVE_TO duration stays random 0.5-1 seconds; DRAG_TO stays 1 second. "
         + output
-        + "You may explain briefly before the single JSON block.\n"
-        + vocabulary
+        + "Do not finish with a text-only response."
     )
     if mode.frames:
         query_budget = (
@@ -160,6 +233,6 @@ def system_prompt(mode, pause, max_actions, max_queries):
             "the sampling interval or a guaranteed maximum query delay. "
             "Querying is part of deciding and does not execute an action. Only explicitly queried "
             "historical frames are provided. The screen keeps changing during inference. "
-            "Request a tool OR commit actions in a reply; do not mix them."
+            "Call get_frames before committing action tools when historical evidence is needed."
         )
     return prompt

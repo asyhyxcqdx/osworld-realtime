@@ -91,6 +91,8 @@ def update_realtime_gui_bench_summary(
                     continue
                 if details.get("pass_at_3") not in {0, 0.0, 1, 1.0}:
                     continue
+                if details.get("status") not in {"passed", "failed"}:
+                    continue
                 details_by_id[benchmark_id] = details
 
             def summarize(ids: set[str]) -> Dict[str, Any]:

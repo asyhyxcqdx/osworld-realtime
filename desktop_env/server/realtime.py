@@ -243,8 +243,8 @@ def register_realtime(app, capture, pyautogui):
         data = check_session()
         groups = data.get("groups")
         pause = data.get("pause", 0)
-        if not isinstance(groups, list) or not 1 <= len(groups) <= 16:
-            raise ValueError("Sequence must contain 1-16 actions")
+        if not isinstance(groups, list) or not 1 <= len(groups) <= 100:
+            raise ValueError("Sequence must contain 1-100 actions")
         if (
             isinstance(pause, bool)
             or not isinstance(pause, (int, float))

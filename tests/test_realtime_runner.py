@@ -98,7 +98,7 @@ def test_model_events_are_saved_before_next_request_and_survive_api_failure(tmp_
                 {"type": "tool_use", "id": "q1", "name": "get_frames", "input": {"times_s": [0]}},
             ]}
         # These records must be visible while predict() is still running.
-        events = [json.loads(line) for line in (tmp_path / "model_calls.jsonl").read_text().splitlines()]
+        events = [json.loads(line) for line in (tmp_path / "trajectory.jsonl").read_text().splitlines()]
         response = next(e for e in events if e["event"] == "model_response")
         assert response["reasoning"] == ["Need the earlier image."]
         artifacts = next(e for e in events if e["event"] == "frame_query_artifacts")
@@ -114,10 +114,14 @@ def test_model_events_are_saved_before_next_request_and_survive_api_failure(tmp_
     )
     with pytest.raises(RuntimeError, match="HTTP 503"):
         run_realtime_example(agent, env, {}, 15, "task", args, str(tmp_path), [])
-    events = [json.loads(line) for line in (tmp_path / "model_calls.jsonl").read_text().splitlines()]
+    events = [json.loads(line) for line in (tmp_path / "trajectory.jsonl").read_text().splitlines()]
     assert [e["event"] for e in events].count("model_response") == 1
     assert events[-1]["event"] == "model_error"
-    assert all(e["decision"] == 1 for e in events)
+    assert all(
+        e["decision_id"] == 1
+        for e in events
+        if e["event"] != "initial_observation"
+    )
     assert events[0]["observation"]["screenshot_file"] == "initial_state.png"
     assert (tmp_path / "system_prompt.txt").read_text() == agent.system
     assert json.loads((tmp_path / "experiment.json").read_text())["frame_queries_unlimited"] is True

@@ -17,11 +17,10 @@
 `evaluation_examples/websites/realtime_gui_bench/games/`，对应的 OSWorld
 任务配置位于 `evaluation_examples/examples/realtime_gui_bench/`。
 
-每个游戏在一次环境运行中最多有三次机会。评分器读取网页的
-`BENCH.passed` 和 `BENCH.attempts`：
-
-- `pass@1`：第一次尝试成功，即 `passed == true` 且 `attempts == 0`。
-- `pass@3`：三次机会内至少成功一次，即 `passed == true`。
+每个游戏在一次环境运行中最多有三次机会。评分器严格遵循
+`REALTIME_GUI_BENCH_PROTOCOL.md`，读取游戏直接写入的 `pass_at_1` 和
+`pass_at_3`；不再使用旧版 `BENCH.attempts` 或从其他字段推导分数。
+`ready`/`running` 状态属于未完成任务，`passed`/`failed` 才进入汇总。
 
 因此，`pass@3` 不需要把同一个游戏单独运行三遍。缺失或中断的结果应记为未评分，不能转换成游戏失败。
 
@@ -43,6 +42,7 @@
 ## 运行架构
 
 - `mm_agents/realtime_protocol.py`：四组模式、动作词汇校验、历史帧 schema 和提示词生成。
+- `REALTIME_AGENT_CONFIG_PROTOCOL.md`：四个 Agent 配置文件和字段协议。
 - `mm_agents/realtime_agent.py`：模型 API 协议、工具调用循环、历史帧处理和日志。
 - `lib_run_realtime.py`：任务生命周期、预算、录像和详细结果保存。
 - `desktop_env/server/realtime.py`：虚拟机内持续录像、取帧和动作序列执行。

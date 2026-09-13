@@ -69,10 +69,10 @@ def config() -> argparse.Namespace:
     )
 
     # lm config
-    parser.add_argument("--model", type=str, default="gpt-4o")
+    parser.add_argument("--model", type=str, default=None)
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top_p", type=float, default=0.9)
-    parser.add_argument("--max_tokens", type=int, default=1500)
+    parser.add_argument("--max_tokens", type=int, default=128000)
     parser.add_argument("--stop_token", type=str, default=None)
     parser.add_argument(
         "--api_format",
@@ -116,6 +116,12 @@ def config() -> argparse.Namespace:
     )
     parser.add_argument("--agent_variant", choices=["agent1", "agent2", "agent3", "agent4"], default=None)
     parser.add_argument(
+        "--agent_config",
+        type=str,
+        default=None,
+        help="Validated YAML config for a realtime Agent; defaults to the model-specific file.",
+    )
+    parser.add_argument(
         "--run_id", default=None,
         help="Four-agent experiment ID; reuse it across agents and for resume. Defaults to a new timestamp.",
     )
@@ -124,16 +130,37 @@ def config() -> argparse.Namespace:
                         help="Frame queries per decision; 0 (default) means unlimited")
     parser.add_argument("--thinking_summary", action="store_true",
                         help="Request adaptive thinking summaries from a compatible Anthropic Messages model")
-    parser.add_argument("--max_sequence_actions", type=int, default=16)
+    parser.add_argument("--max_sequence_actions", type=int, default=100)
     parser.add_argument("--recording_fragment_ms", type=int, default=100)
     parser.add_argument("--environment_ready_wait_s", type=float, default=60)
     parser.add_argument("--evaluation_settle_s", type=float, default=20)
     parser.add_argument("--install_realtime_server", action="store_true", help="Install the realtime extension in the VM after reset")
     args = parser.parse_args()
     if args.agent_variant:
+        from mm_agents.realtime_config import agent_kwargs, default_config_path, load_realtime_config
+
+        config_path = args.agent_config or default_config_path(
+            args.agent_variant, args.model or "claude-sonnet-5"
+        )
+        try:
+            realtime_config = load_realtime_config(config_path, variant=args.agent_variant)
+        except (OSError, ValueError) as exc:
+            parser.error(f"Invalid realtime Agent config {config_path}: {exc}")
+        config_values = agent_kwargs(realtime_config)
+        args.realtime_config_path = str(config_path)
+        args.realtime_config = realtime_config
+        args.model = config_values["model"]
+        args.api_format = config_values["api_format"]
+        args.max_tokens = config_values["max_tokens"]
+        args.temperature = config_values["temperature"]
+        args.max_trajectory_length = config_values["max_trajectory_length"]
+        args.max_sequence_actions = config_values["max_sequence_actions"]
+        args.max_frame_queries = config_values["max_frame_queries"]
+        args.tool_format = config_values["tool_format"]
+        args.thinking_summary = config_values["thinking_summary"]
         if args.action_space != "computer_13" or args.observation_type != "screenshot":
             parser.error("Four-agent experiments require --action_space computer_13 --observation_type screenshot")
-        if not 1 <= args.max_sequence_actions <= 16 or args.max_frame_queries < 0:
+        if not 1 <= args.max_sequence_actions <= 100 or args.max_frame_queries < 0:
             parser.error("Invalid sequence/query budget")
         if args.thinking_summary and not (
                 args.api_format == "anthropic_messages"
@@ -324,6 +351,7 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                 pause=args.sleep_after_execution, max_sequence_actions=args.max_sequence_actions,
                 max_frame_queries=args.max_frame_queries, tool_format=args.tool_format,
                 thinking_summary=args.thinking_summary,
+                system_prompt_text=args.realtime_config["system_prompt"],
             )
         else:
             from mm_agents.agent import PromptAgent
@@ -597,6 +625,7 @@ def get_result(
         print("New experiment, no result yet.")
         return None
     else:
+        args.model = args.model or "gpt-4o"
         print("Current Success Rate:", sum(all_result) / len(all_result) * 100, "%")
         return all_result
 

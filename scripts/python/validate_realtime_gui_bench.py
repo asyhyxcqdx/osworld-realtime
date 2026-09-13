@@ -87,11 +87,13 @@ def bench_is_initial(state: dict[str, Any]) -> bool:
     bench = state.get("bench")
     return bool(
         isinstance(bench, dict)
-        and bench.get("attempts") == 0
-        and bench.get("maxAttempts") == 3
+        and bench.get("protocol_version") == "realtime-gui-bench/1.0"
+        and bench.get("attempts_completed") == 0
+        and bench.get("max_attempts") == 3
         and bench.get("passed") is False
-        and bench.get("results") == []
-        and bench.get("status") == "running"
+        and bench.get("pass_at_1") == 0
+        and bench.get("pass_at_3") == 0
+        and bench.get("status") == "ready"
     )
 
 

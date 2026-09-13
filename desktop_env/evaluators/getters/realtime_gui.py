@@ -79,12 +79,15 @@ _REALTIME_GUI_BENCH_EXPRESSION = r"""
 (() => {
   if (!window.BENCH || typeof window.BENCH !== 'object') return null;
   return {
+    ...window.BENCH,
+    protocol_version: window.BENCH.protocol_version,
     task: window.BENCH.task,
-    attempts: window.BENCH.attempts,
-    maxAttempts: window.BENCH.maxAttempts,
+    max_attempts: window.BENCH.max_attempts,
+    attempts_completed: window.BENCH.attempts_completed,
     passed: window.BENCH.passed,
-    results: window.BENCH.results,
-    status: window.BENCH.status
+    status: window.BENCH.status,
+    pass_at_1: window.BENCH.pass_at_1,
+    pass_at_3: window.BENCH.pass_at_3
   };
 })()
 """
@@ -189,58 +192,83 @@ def get_phoebe_checkpoint(env, config: Dict[str, Any]) -> Optional[str]:
 def _normalize_realtime_gui_bench_state(
     state: Any, benchmark_id: str
 ) -> Dict[str, Any]:
-    """Score whole-game completion, not individual events in BENCH.results.
+    """Validate and normalize the protocol-defined game state.
 
-    In the 2026-09-08 RealtimeGame package, attempts counts *failed* attempts:
-    each failure increments it, while winning leaves it unchanged. Therefore
-    passed with attempts == 0 means first-attempt success. The compact history
-    below is derived from these fields, not copied from the raw event log (A41
-    logs individual orders, and A38 does not append any results at all).
+    The game owns ``pass_at_1`` and ``pass_at_3``. They are never inferred from
+    attempt counters or diagnostic event logs.
     """
     if not isinstance(state, dict):
         raise ValueError("window.BENCH is missing or is not an object")
 
-    required = {"task", "attempts", "maxAttempts", "passed", "status"}
+    required = {
+        "protocol_version",
+        "task",
+        "max_attempts",
+        "attempts_completed",
+        "passed",
+        "status",
+        "pass_at_1",
+        "pass_at_3",
+    }
     missing = sorted(required.difference(state))
     if missing:
         raise ValueError(f"window.BENCH is missing fields: {', '.join(missing)}")
 
+    protocol_version = state["protocol_version"]
     task = state["task"]
-    attempts = state["attempts"]
-    max_attempts = state["maxAttempts"]
+    max_attempts = state["max_attempts"]
+    attempts_completed = state["attempts_completed"]
     passed = state["passed"]
     status = state["status"]
+    pass_at_1 = state["pass_at_1"]
+    pass_at_3 = state["pass_at_3"]
 
+    if protocol_version != "realtime-gui-bench/1.0":
+        raise ValueError(
+            "window.BENCH.protocol_version must be realtime-gui-bench/1.0"
+        )
     if not isinstance(task, str) or not task.strip():
         raise ValueError("window.BENCH.task must be a non-empty string")
-    if type(attempts) is not int or not 0 <= attempts <= 3:
-        raise ValueError("window.BENCH.attempts must be an integer from 0 to 3")
     if type(max_attempts) is not int or max_attempts != 3:
-        raise ValueError("window.BENCH.maxAttempts must equal 3")
+        raise ValueError("window.BENCH.max_attempts must equal 3")
+    if type(attempts_completed) is not int or not 0 <= attempts_completed <= max_attempts:
+        raise ValueError(
+            "window.BENCH.attempts_completed must be an integer from 0 to max_attempts"
+        )
     if type(passed) is not bool:
         raise ValueError("window.BENCH.passed must be boolean")
-    if not isinstance(status, str) or status not in {"running", "passed", "failed"}:
-        raise ValueError("window.BENCH.status must be running, passed, or failed")
-
-    if passed and attempts >= max_attempts:
-        raise ValueError("a win must occur before all three failed attempts are consumed")
-    expected_status = "passed" if passed else "failed" if attempts == max_attempts else "running"
-    if status != expected_status:
-        raise ValueError("window.BENCH.status disagrees with passed/attempts")
-
-    pass_at_1 = float(passed and attempts == 0)
-    pass_at_3 = float(passed)
-    attempt_results = [False] * attempts + ([True] if passed else [])
+    if type(pass_at_1) not in {int, float} or isinstance(pass_at_1, bool) or pass_at_1 not in {0, 1}:
+        raise ValueError("window.BENCH.pass_at_1 must be numeric 0 or 1")
+    if type(pass_at_3) not in {int, float} or isinstance(pass_at_3, bool) or pass_at_3 not in {0, 1}:
+        raise ValueError("window.BENCH.pass_at_3 must be numeric 0 or 1")
+    if not isinstance(status, str) or status not in {"ready", "running", "passed", "failed"}:
+        raise ValueError("window.BENCH.status must be ready, running, passed, or failed")
+    if passed != (pass_at_3 == 1):
+        raise ValueError("window.BENCH.passed must equal pass_at_3 == 1")
+    if status == "ready":
+        if attempts_completed != 0 or passed or pass_at_1 != 0 or pass_at_3 != 0:
+            raise ValueError("ready BENCH state has inconsistent completion fields")
+    elif status == "running":
+        if attempts_completed >= max_attempts or passed or pass_at_1 != 0 or pass_at_3 != 0:
+            raise ValueError("running BENCH state has inconsistent completion fields")
+    elif status == "passed":
+        if not passed or pass_at_3 != 1 or attempts_completed < 1:
+            raise ValueError("passed BENCH state has inconsistent completion fields")
+    elif status == "failed":
+        if passed or pass_at_1 != 0 or pass_at_3 != 0 or attempts_completed != max_attempts:
+            raise ValueError("failed BENCH state has inconsistent completion fields")
 
     return {
         "benchmark_id": benchmark_id,
-        "result": pass_at_3,
-        "pass_at_1": pass_at_1,
-        "pass_at_3": pass_at_3,
-        "attempt_results": attempt_results,
+        "protocol_version": protocol_version,
+        "task": task,
+        "max_attempts": max_attempts,
+        "attempts_completed": attempts_completed,
+        "passed": passed,
+        "result": float(pass_at_3),
+        "pass_at_1": float(pass_at_1),
+        "pass_at_3": float(pass_at_3),
         "status": status,
-        # Preserve the actual page fields separately, including raw results.
-        # They may contain zero, many, or differently encoded sub-action events.
         "raw_bench": copy.deepcopy(state),
     }
 
@@ -255,7 +283,7 @@ def get_realtime_gui_bench_state(env, config: Dict[str, Any]) -> Dict[str, Any]:
     target_url_contains = config.get(
         "target_url_contains", "127.0.0.1:8765/"
     )
-    attempts = int(config.get("attempts", 3))
+    attempts = int(config.get("poll_attempts", 3))
     retry_interval = float(config.get("retry_interval", 0.5))
     timeout = float(config.get("timeout", 10.0))
     if attempts < 1 or retry_interval < 0 or timeout <= 0:

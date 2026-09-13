@@ -35,6 +35,7 @@ def run_realtime_example(
         "frame_query": agent.mode.frames,
         "action_space": "computer_13",
         "model": args.model,
+        "agent_config": getattr(args, "realtime_config_path", None),
         "api_format": agent.wire.protocol,
         "tool_format": agent.tool_format,
         "pause_s": args.sleep_after_execution,
@@ -47,22 +48,30 @@ def run_realtime_example(
         "frame_queries_unlimited": args.max_frame_queries == 0,
         "thinking_summary_requested": getattr(agent.wire, "thinking_summary", False),
         "instruction": instruction,
+        "trajectory_file": "trajectory.jsonl",
         "system_prompt_file": "system_prompt.txt",
         "frame_tool": FRAME_TOOL if agent.mode.frames else None,
-        "model_log_version": 2,
+        "model_log_version": 3,
         "clock": "First recorded X11 frame after environment preparation is t=0; screenshot time is measured in the VM.",
     }
     (out / "experiment.json").write_text(json.dumps(metadata, indent=2) + "\n")
     (out / "system_prompt.txt").write_text(agent.system, encoding="utf-8")
-    action_count = decision_count = query_count = 0
+    action_count = decision_count = query_count = event_count = 0
     execution_error = None
     done = False
 
-    def write_event(event):
-        # Persist each request/response immediately, including queries preceding
-        # an error or interruption, instead of waiting for an action decision.
-        with (out / "model_calls.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps({"decision": decision_count + 1, **event}, ensure_ascii=False) + "\n")
+    def write_event(event, decision_id=None):
+        # Persist every model and environment event in one chronological stream.
+        nonlocal event_count
+        event_count += 1
+        record = {
+            "event_index": event_count,
+            "wall_time": datetime.now(timezone.utc).isoformat(),
+            "decision_id": decision_count + 1 if decision_id is None else decision_id,
+            **event,
+        }
+        with (out / "trajectory.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def query(times_s):
         nonlocal query_count
@@ -91,10 +100,28 @@ def run_realtime_example(
         obs["task_time_s"] = env.controller.last_observation_time
         (out / "initial_state.png").write_bytes(obs["screenshot"])
         obs["screenshot_file"] = "initial_state.png"
+        write_event(
+            {
+                "event": "initial_observation",
+                "observation": {
+                    "screenshot_file": "initial_state.png",
+                    "task_time_s": obs["task_time_s"],
+                },
+            },
+            decision_id=0,
+        )
         while not done and action_count < max_steps:
             obs["remaining_actions"] = max_steps - action_count
             response, actions = agent.predict(instruction, obs)
             decision_count += 1
+            write_event(
+                {
+                    "event": "action_submitted",
+                    "actions": actions,
+                    "response": response,
+                },
+                decision_id=decision_count,
+            )
             dispatched = time.monotonic()
             try:
                 if agent.mode.sequence:
@@ -110,45 +137,55 @@ def run_realtime_example(
                     exc, "details", {"status": "unknown", "message": type(exc).__name__}
                 )
                 action_count += len(execution_error.get("actions", []))
-                with (out / "traj.jsonl").open("a") as f:
-                    f.write(
-                        json.dumps(
-                            {
-                                "decision_num": decision_count,
-                                "planned_actions": actions,
-                                "execution_error": execution_error,
-                            }
-                        )
-                        + "\n"
-                    )
+                write_event(
+                    {
+                        "event": "action_execution_error",
+                        "actions": actions,
+                        "execution_error": execution_error,
+                    },
+                    decision_id=decision_count,
+                )
                 raise
             action_count += len(actions)
             obs["task_time_s"] = env.controller.last_observation_time
             screenshot_file = f"step_{decision_count}.png"
             obs["screenshot_file"] = screenshot_file
             (out / screenshot_file).write_bytes(obs["screenshot"])
-            with (out / "traj.jsonl").open("a") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "step_num": action_count,
-                            "decision_num": decision_count,
-                            "action": actions[0] if len(actions) == 1 else actions,
-                            "response": response,
-                            "reward": reward,
-                            "done": done,
-                            "info": info,
-                            "dispatch_to_observation_s": time.monotonic() - dispatched,
-                            "observation_time_s": obs["task_time_s"],
-                            "capture_interval_s": env.controller.last_capture_interval,
-                            "screenshot_file": screenshot_file,
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n"
+            write_event(
+                {
+                    "event": "action_executed",
+                    "step_num": action_count,
+                    "actions": actions,
+                    "reward": reward,
+                    "done": done,
+                    "info": info,
+                    "dispatch_to_observation_s": time.monotonic() - dispatched,
+                    "observation": {
+                        "task_time_s": obs["task_time_s"],
+                        "capture_interval_s": env.controller.last_capture_interval,
+                        "screenshot_file": screenshot_file,
+                    },
+                },
+                decision_id=decision_count,
+            )
+            record_action_result = getattr(agent, "record_action_result", None)
+            if record_action_result is not None:
+                record_action_result(
+                    actions,
+                    reward=reward,
+                    done=done,
+                    info=info,
                 )
         time.sleep(args.evaluation_settle_s)
         result = _evaluate_with_details(env, str(out), result_root=args.result_dir)
+        write_event(
+            {
+                "event": "evaluation",
+                "result": result,
+                "details": getattr(env, "_evaluation_details", None),
+            },
+            decision_id=decision_count,
+        )
         scores.append(result)
         (out / "result.txt").write_text(f"{result}\n")
         log_task_completion(example, result, str(out), args)
@@ -163,6 +200,7 @@ def run_realtime_example(
                     "task_finished_at": datetime.now(timezone.utc).isoformat(),
                     "executed_actions": action_count,
                     "action_decisions": decision_count,
+                    "trajectory_events": event_count,
                     "done": done,
                     "execution_error": execution_error,
                 },

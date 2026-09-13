@@ -55,12 +55,14 @@
 
 一次回合是“当前观测 → 思考和感知 → 行动”。Agent3/4 可以在提交行动前多次调用历史帧工具；这些调用不增加回合数。Agent1/3 的行动工具必须拒绝动作数组。
 
-最终接口约定是：四组都使用原生 API tool use，并用 schema 描述感知工具和行动工具。当前代码仍有一部分动作结果通过文本 JSON 解析，不能把它当作最终接口。
+最终接口约定是：四组都使用原生 API tool use，并用 schema 描述感知工具和行动工具。正式配置不接受文本 JSON 作为动作输出；旧 JSON 模式只为兼容历史测试保留。
 
 ## 代码地图
 
-- `mm_agents/realtime_protocol.py`：四组模式、动作校验、历史帧 schema 和提示词。
+- `REALTIME_AGENT_CONFIG_PROTOCOL.md`：四个 Agent 配置文件、能力边界和内嵌提示词协议。
+- `mm_agents/realtime_protocol.py`：动作校验、历史帧 schema 和运行时协议。
 - `mm_agents/realtime_agent.py`：模型 API 协议、工具调用循环和响应日志。
+- `REALTIME_AGENT_LOOP_GUIDE.md`：Agent loop 的中文逐步导读和消息流说明。
 - `lib_run_realtime.py`：任务生命周期、预算、录像和结果保存。
 - `desktop_env/server/realtime.py`：虚拟机内录像、取帧和动作序列执行。
 - `desktop_env/server/fmp4.py`：实时 fMP4 索引和历史帧解码。
@@ -71,7 +73,9 @@
 
 ## 开发前验证
 
-当前 Python 元数据要求 Python 3.12 或更高版本。先运行最小任务清单检查：
+推荐使用 Conda 环境 `osworld`（Python 3.12 或更高版本）。当前机器上的标准环境是 `/mnt/zhaorunsong/anaconda3/envs/osworld`；先执行 `conda activate osworld`。项目元数据要求 Python 3.12 或更高版本。
+
+先运行最小任务清单检查：
 
 ```bash
 python -m pytest -q tests/test_realtime_gui_bench_manifest.py
@@ -94,9 +98,10 @@ python -m pytest -q tests/test_realtime_gui_bench_manifest.py
 
 ## 当前未完成事项
 
-1. 将四组行动统一迁移为原生 action tool use，并由 schema 强制 Agent1/3 的单动作限制。
-2. 将运行器预算从原子动作计数整理为“一个感知—思考—行动回合”计数。
-3. 在固定实验配置下完成 69 道 × 4 组模型实验，并分别汇总 A/B/C/D 的 `pass@1` 和 `pass@3`。
-4. 接入多个商业 API，统一处理 tool-use 协议差异和错误日志。
+1. 审计并冻结 `computer_13` 的实时动作语义，尤其是持续时间、动作间隔、坐标系和 `WAIT` 行为。
+2. 将 69 个游戏逐一迁移到正式 `REALTIME_GUI_BENCH_PROTOCOL.md`，并运行接口合规检查。
+3. 完成真实 VM 单题验证，确认 native tool call、动作执行回传、录像取帧和 `trajectory.jsonl` 完整闭环。
+4. 在固定配置下完成 69 道 × 4 组模型实验，并分别汇总 A/B/C/D 的 `pass@1` 和 `pass@3`。
+5. 接入并验证多个商业 API，统一记录原始响应、thinking summary 和 input/output token usage。
 
-不要在上述语义冻结前直接启动全量付费实验。先用单题验证 schema、回合计数、动作执行和结果落盘，再扩大到全量任务。
+当前 Agent loop、四份 YAML 配置和配置加载入口已经完成；扩大全量付费实验前，先完成上面的动作空间和单题 VM 验证。

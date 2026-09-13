@@ -65,7 +65,23 @@ def test_invalid_frame_times(value):
         GetFramesArgs(times_s=value)
 
 
-def native_reply(protocol, *, tool=None, text=None):
+def native_reply(protocol, *, tool=None, text=None, force_text=False):
+    action_calls = []
+    if not force_text and tool is None and text is not None:
+        try:
+            value = json.loads(text)
+            values = value if isinstance(value, list) else [value]
+            if values and all(isinstance(item, dict) and "action_type" in item for item in values):
+                for index, item in enumerate(values):
+                    action_calls.append((f"a{index}", item["action_type"], item.get("parameters", {})))
+        except (TypeError, ValueError):
+            pass
+    if action_calls:
+        if protocol == "anthropic_messages":
+            return {"content": [{"type": "tool_use", "id": call_id, "name": "computer_" + action_type.lower(), "input": params} for call_id, action_type, params in action_calls]}
+        if protocol == "openai_chat":
+            return {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [{"id": call_id, "type": "function", "function": {"name": "computer_" + action_type.lower(), "arguments": json.dumps(params)}} for call_id, action_type, params in action_calls]}}]}
+        return {"output": [{"type": "function_call", "call_id": call_id, "name": "computer_" + action_type.lower(), "arguments": json.dumps(params)} for call_id, action_type, params in action_calls]}
     if protocol == "anthropic_messages":
         return {
             "content": (
@@ -183,7 +199,7 @@ def test_json_tool_output_and_query_budget():
         native_reply(
             wire.protocol, text='{"tool_call":{"tool_name":"get_frames","times_s":[1]}}'
         ),
-        native_reply(wire.protocol, text=json.dumps(ACTION)),
+        native_reply(wire.protocol, text=json.dumps(ACTION), force_text=True),
     ]
     wire.request = Mock(side_effect=replies)
     agent = RealtimeAgent(

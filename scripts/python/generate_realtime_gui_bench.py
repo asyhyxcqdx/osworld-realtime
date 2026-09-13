@@ -19,8 +19,11 @@ TASK_ROOT = PROJECT_ROOT / "evaluation_examples/examples/realtime_gui_bench"
 TASK_LIST = PROJECT_ROOT / "evaluation_examples/test_realtime_gui_bench.json"
 
 INSTRUCTION = (
-    "阅读当前页面中的游戏规则，并按照规则完成游戏。如果当前尝试失败且页面允许继续尝试，"
-    "请继续完成后续尝试。游戏显示成功，或者所有尝试机会均已用完后，请立即结束任务并停留在当前页面。"
+    "Read the game rules shown on the current page and follow them exactly. "
+    "If an attempt fails and another attempt is available, continue with the next attempt. "
+    "Never refresh, reload, reopen, or navigate away from this page. "
+    "When the game shows success or no attempts remain, submit the action "
+    '{"action_type":"DONE"}. Do not finish with a text-only response.'
 )
 
 def benchmark_ids() -> list[str]:
@@ -131,7 +134,7 @@ def task_config(benchmark_id: str) -> dict:
                 "type": "realtime_gui_bench_state",
                 "benchmark_id": benchmark_id.upper(),
                 "target_url_contains": page_url.removeprefix("http://"),
-                "attempts": 3,
+                "poll_attempts": 3,
                 "retry_interval": 0.5,
                 "timeout": 10.0,
             },

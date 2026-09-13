@@ -1,5 +1,7 @@
 # RealtimeGame 最终任务包接入记录
 
+> **协议更新说明（2026-09-13）**：本文早期验收记录中的 `attempts`、`maxAttempts` 和推导式评分已废弃。当前环境实现与游戏制作必须遵循仓库根目录的 [REALTIME_GUI_BENCH_PROTOCOL.md](../REALTIME_GUI_BENCH_PROTOCOL.md)，评分只读取游戏直接提供的 `pass_at_1` 和 `pass_at_3`。本文历史段落仅用于追溯，不能作为新游戏接口说明。
+
 ## 当前版本与范围
 
 2026-09-08 按用户要求，用 `RealtimeGame(1).zip` 整套替换原来的 107 道任务。
@@ -41,9 +43,9 @@
 
 ## Instruction 与 Config
 
-所有任务统一使用已经确认的 instruction：
+所有任务统一使用以下英文 instruction：
 
-> 阅读当前页面中的游戏规则，并按照规则完成游戏。如果当前尝试失败且页面允许继续尝试，请继续完成后续尝试。游戏显示成功，或者所有尝试机会均已用完后，请立即结束任务并停留在当前页面。
+> Read the game rules shown on the current page and follow them exactly. If an attempt fails and another attempt is available, continue with the next attempt. Never refresh, reload, reopen, or navigate away from this page. When the game shows success or no attempts remain, submit the action `{"action_type":"DONE"}`. Do not finish with a text-only response.
 
 保留完整 OSWorld 字段：`id`、`benchmark_id`、`snapshot`、`instruction`、`source`、`config`、`trajectory`、`related_apps`、`evaluator`、`proxy`、`fixed_ip`、`possibility_of_env_change`。
 
@@ -58,70 +60,71 @@
 7. `sleep`：等待 3 秒。Config 不点击 Start/Reveal，不提前开始游戏。
 
 网页不需要外网：`proxy=false`、`fixed_ip=false`、`possibility_of_env_change=low`。
-模型接入、动作空间、Prompt、WAIT、API 错误处理不属于本次替换范围，保持原状。
+模型接入、动作空间、WAIT、API 错误处理沿用现有实现；实时 Agent 的系统提示同样明确禁止刷新、重载、重新打开或离开游戏页面。
 
 ## 评分口径
 
 唯一游戏结果来源仍是 `window.BENCH`；不从 `__dbg()` 中取答案作为正式评分。
 `__dbg()` 可在无模型验收中作为只读诊断信息；自动正确轨迹不代表模型完成能力。
 
-2026-09-08 核对新版 69 个 HTML：`BENCH.attempts` 初始为 0，每次失败结算时加 1，成功分支不增加，实际含义是**已失败次数**，不是“当前正在第几次尝试”。
-`BENCH.passed` 表示整局是否通过。当前评分采用：
+当前环境不再读取旧版 `BENCH.attempts`/`maxAttempts`。游戏必须提供协议规定的 `attempts_completed`、`pass_at_1` 和 `pass_at_3`，其中两个 pass 字段由游戏直接维护，checker 不推导：
 
 ```python
-pass_at_3 = float(passed)
-pass_at_1 = float(passed and attempts == 0)
+pass_at_1 = float(window.BENCH.pass_at_1)
+pass_at_3 = float(window.BENCH.pass_at_3)
 ```
 
-| 已结算情况 | passed | attempts | pass_at_1 | pass_at_3 |
+| 已结算情况 | status | attempts_completed | pass_at_1 | pass_at_3 |
 | --- | --- | ---: | ---: | ---: |
-| 未开始或第一次尚未完成 | false | 0 | 0 | 0 |
-| 第一次通过 | true | 0 | 1 | 1 |
-| 失败一次后通过 | true | 1 | 0 | 1 |
-| 失败两次后通过 | true | 2 | 0 | 1 |
-| 三次均失败 | false | 3 | 0 | 0 |
+| 未开始 | ready | 0 | 0 | 0 |
+| 第一次通过 | passed | 1 | 1 | 1 |
+| 后续尝试通过 | passed | 2 或 3 | 0 | 1 |
+| 三次均失败 | failed | 3 | 0 | 0 |
 
-getter 不再根据 `results` 数组中的 hit 或 true 计算分数，不再要求它每项对应一次完整尝试、不超过三项。
-原始 `results` 只作为诊断数据，连同其他 BENCH 字段保存在详细结果的 `raw_bench` 内。它为空、缺失、记录子操作或采用其他编码，都不改变从 `passed/attempts` 读到的分数。
+getter 只校验协议字段并读取游戏提供的两个分数。`results`、URL hash 和 `window.__dbg()` 仅可作为诊断信息，不能参与评分；完整 BENCH 对象保存于详细结果的 `raw_bench`。
 
 保留此前约定的双指标及 OSWorld 单标量接口：
 
 - `pass_at_1`：第一次尝试成功为 1，否则为 0。
 - `pass_at_3`：前三次中至少一次成功为 1，否则为 0。
 - `env.evaluate()` 和 `result.txt`：仍只返回/保存标量 `pass_at_3`。
-- `result.json`：保存 `benchmark_id`、`result`、`pass_at_1`、`pass_at_3`、`attempt_results`、`status`，另保存原始状态 `raw_bench` 便于核查。
+- `result.json`：保存协议核心字段、兼容标量 `result`（等于 `pass_at_3`）、`status` 和原始状态 `raw_bench`。
 - 不要求尝试机会全部用完才读取已有结果；未开始或尚未成功的有效状态可以正常得到 0。
 
-`attempt_results` 是依据失败次数和整局通过状态**推导的已完成尝试历史**：`[False] * attempts + ([True] if passed else [])`。
-未完成的当前尝试不补写为失败，也不把这份推导结果写回网页。它不是原始 `BENCH.results` 的拷贝。
+`ready`/`running` 表示尚未进入终态，汇总时计为未评分；只有 `passed`/`failed` 终态进入已评分任务。checker 不会把未完成状态改写为失败。
 
-例如 A41 第一局送对两张、第三张送错，第二局全部送对：原始事件有 6 条，但完整尝试只有两次。
+例如某游戏第二次尝试成功时，游戏应直接写入以下核心字段（无论内部诊断事件如何记录）：
 
 ```json
 {
   "benchmark_id": "A41",
+  "protocol_version": "realtime-gui-bench/1.0",
+  "task": "kitchen_order_match",
+  "max_attempts": 3,
+  "attempts_completed": 2,
+  "passed": true,
   "result": 1.0,
   "pass_at_1": 0.0,
   "pass_at_3": 1.0,
-  "attempt_results": [false, true],
   "status": "passed",
   "raw_bench": {
+    "protocol_version": "realtime-gui-bench/1.0",
     "task": "kitchen_order_match",
-    "attempts": 1,
-    "maxAttempts": 3,
+    "max_attempts": 3,
+    "attempts_completed": 2,
     "passed": true,
-    "results": ["hit", "hit", "miss", "hit", "hit", "hit"],
+    "pass_at_1": 0,
+    "pass_at_3": 1,
     "status": "passed"
   }
 }
 ```
 
-读取器仍校验真正的评分字段：`passed` 必须为布尔值，`attempts` 为 0～3 的整数，`maxAttempts=3`，`task` 为非空名称。
-`status` 必须与它们一致：通过时为 passed；未通过且失败次数不到 3 时为 running；三次失败后为 failed。三次已失败之后再报通过不属于合法的三次机会内成功。
+读取器校验 `protocol_version`、`task`、`max_attempts=3`、`attempts_completed`、`passed`、`status` 及两个 pass 字段的不变量。三次已失败之后再报通过不属于合法状态。
 状态缺失或关键字段矛盾继续按原重试逻辑读取，仍无效则报错；不将这种异常当成正常 0 分。
-Config 中 evaluator 的 `attempts=3` 是读取状态的重试次数，不是让游戏自动玩三次。
+Config 中 evaluator 的 `poll_attempts=3` 是读取状态的重试次数，不是让游戏自动玩三次。
 
-最终通过按用户提供的 `passed` 规范执行；首次成功指标利用已核实的失败计数补充计算。不使用 debug 答案，不需要修补 A38 的空列表，不会将 A41 送对一张订单误判成整局通过。
+最终通过按游戏提供的 `pass_at_3` 执行；不使用 debug 答案，也不从尝试计数或事件数组推导分数。
 正式读取仍走 Chrome CDP 的 BENCH 对象；不新增 URL hash 回退或其他评分接口。
 
 ## 模型结果位置
@@ -134,7 +137,7 @@ Config 中 evaluator 的 `attempts=3` 是读取状态的重试次数，不是让
 └── <action_space>/<observation_type>/<model>/realtime_gui_bench/<UUID>/
     ├── result.txt
     ├── result.json
-    ├── traj.jsonl
+    ├── trajectory.jsonl
     ├── screenshot*.png
     └── recording.mp4
 ```

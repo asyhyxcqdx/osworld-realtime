@@ -217,13 +217,13 @@ Agent 3/4 的循环：
 - 格式错误最多纠正两次；纠正请求也计入模型调用数，错误输出不执行。
 - 结果自动按模型、实验批次和 agent 隔离到 `result_dir/<model>/<run_id>/agent1`～`agent4`，恢复运行时不会串用另一组成绩。
 
-每个任务保存 `experiment.json`、`agent_metrics.json`、`model_calls.jsonl`、`traj.jsonl`、当前/查询图片、`recording.mp4`、`recording_ffmpeg.log`、`recording_index.json` 和原任务评分文件。配置与日志中不保存模型密钥。
+每个任务保存 `experiment.json`、`agent_metrics.json`、`trajectory.jsonl`、当前/查询图片、`recording.mp4`、`recording_ffmpeg.log`、`recording_index.json` 和原任务评分文件。配置与日志中不保存模型密钥。
 
 ### 模型调用复盘日志（2026-09-10 更新）
 
-每个新运行任务另外保存实际的 `system_prompt.txt`。`experiment.json` 保存 instruction、工具定义、是否请求思考摘要、是否不限查询次数；`model_log_version=2` 标识新日志格式。
+每个新运行任务另外保存实际的 `system_prompt.txt`。`experiment.json` 保存 instruction、工具定义、是否请求思考摘要、是否不限查询次数；`model_log_version=3` 标识统一时间线格式。
 
-`model_calls.jsonl` 每个事件立即追加写盘，不再等整个动作决策结束。事件包括：
+`trajectory.jsonl` 每个事件立即追加写盘，不再等整个动作决策结束。`model_log_version=3` 标识这一统一时间线格式；它是实时任务的唯一时间线，事件包括：
 
 - `model_request`：请求编号、当前截图文件/时间/SHA-256、实际保留的历史截图引用、是否开放工具。
 - `model_response`：保留原来的 `text`、`calls`、`usage`、耗时；增加 `provider_response`（接口原始 JSON 响应）及 `reasoning`（接口实际返回的思考文字/摘要数组）。
@@ -261,8 +261,7 @@ results_four_agents/
                     ├── recording.mp4
                     ├── recording_index.json
                     ├── query_*.png
-                    ├── model_calls.jsonl
-                    └── traj.jsonl
+                    └── trajectory.jsonl
 ```
 
 每个模型可以有多批实验，每批下面都有自己的四个 Agent。每组独立保存任务文件和 `summary/`，断点续跑只读取该模型、该批次、该组的完成记录。`realtime_gui_bench_metrics.json` 在评估对应 benchmark 时生成。模型名只出现一次，`--result_dir` 仍传公共根目录，程序自动添加模型、批次和 Agent 层级。不指定 `--agent_variant` 的普通 OSWorld 运行沿用原目录结构。
