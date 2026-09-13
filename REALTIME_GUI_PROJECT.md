@@ -101,6 +101,5 @@ configuration. The canonical command template is in
 5. Document any change to the action schema, turn definition, timing, scoring,
    or result layout before running a new experiment.
 
-The handoff files record historical decisions and interruptions. They are useful
-for archaeology, while this guide is the intended starting point for new
-contributors.
+Historical experiment notes are intentionally kept outside the source tree;
+this guide is the intended starting point for new contributors.
