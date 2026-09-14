@@ -6,11 +6,13 @@ call IDs and provider reasoning blocks. History is pruned only at round boundari
 import base64
 import copy
 import hashlib
+import io
 import json
 import os
 import time
 
 import requests
+from PIL import Image
 
 from mm_agents.realtime_protocol import (
     ACTION_TOOLS,
@@ -25,6 +27,15 @@ from mm_agents.realtime_protocol import (
 
 def text_block(text):
     return {"type": "text", "text": text}
+
+
+def resize_image_bytes(image_bytes, size):
+    """Resize a screenshot to the exact coordinate space used by a vision model."""
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        image = image.convert("RGB").resize(size, Image.Resampling.LANCZOS)
+        output = io.BytesIO()
+        image.save(output, format="PNG")
+        return output.getvalue()
 
 
 def result_blocks(result):
@@ -649,13 +660,22 @@ class RealtimeAgent:
                 "This timestamp describes the screenshot, not the time your reply will execute."
             )
         ]
+        screenshot = obs["screenshot"]
+        if self.coordinate_mapping:
+            screenshot = resize_image_bytes(
+                screenshot,
+                (
+                    self.coordinate_mapping["source_width"],
+                    self.coordinate_mapping["source_height"],
+                ),
+            )
         blocks.append(
             {
                 "type": "image",
                 "source": {
                     "type": "base64",
                     "media_type": "image/png",
-                    "data": base64.b64encode(obs["screenshot"]).decode("ascii"),
+                    "data": base64.b64encode(screenshot).decode("ascii"),
                 },
             }
         )

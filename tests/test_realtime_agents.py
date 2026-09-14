@@ -547,7 +547,9 @@ def test_astra_config_preserves_thinking_and_combine_tools(monkeypatch):
 
 
 def test_fable_standard_vision_coordinates_are_mapped_to_native_screen(monkeypatch):
+    from io import BytesIO
     from pathlib import Path
+    from PIL import Image
 
     path = Path(__file__).resolve().parents[1] / "configs/realtime_agents/combine-claude-fable-5-1.yaml"
     config = load_realtime_config(path, variant="agent4")
@@ -563,12 +565,31 @@ def test_fable_standard_vision_coordinates_are_mapped_to_native_screen(monkeypat
         text=json.dumps({"action_type": "CLICK", "parameters": {"x": 754, "y": 549}}),
     ))
     agent = RealtimeAgent(**agent_kwargs(config), wire=wire)
+    screenshot = BytesIO()
+    Image.new("RGB", (1920, 1080), "#123456").save(screenshot, format="PNG")
     assert "processed-image pixel space" not in agent.system
     assert "native 1920x1080 VM screen" not in agent.system
-    assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [{
+    assert agent.predict("task", {"screenshot": screenshot.getvalue(), "task_time_s": 0})[1] == [{
         "action_type": "CLICK",
         "parameters": {"x": 994.286, "y": 723.956},
     }]
+
+
+def test_fable_screenshot_is_pre_resized_to_mapping_coordinate_space():
+    from io import BytesIO
+    from pathlib import Path
+    from PIL import Image
+
+    path = Path(__file__).resolve().parents[1] / "configs/realtime_agents/combine-claude-fable-5-1.yaml"
+    config = load_realtime_config(path, variant="agent4")
+    wire = ModelWire("claude-fable-5-1", "anthropic_messages")
+    wire.request = Mock(return_value=native_reply(wire.protocol, text=json.dumps(ACTION)))
+    agent = RealtimeAgent(**agent_kwargs(config), wire=wire)
+    screenshot = BytesIO()
+    Image.new("RGB", (1920, 1080), "#123456").save(screenshot, format="PNG")
+    agent.predict("task", {"screenshot": screenshot.getvalue(), "task_time_s": 0})
+    sent = wire.request.call_args.args[1][0]["content"][1]["source"]["data"]
+    assert Image.open(BytesIO(base64.b64decode(sent))).size == (1456, 819)
 
 
 def test_astra_does_not_apply_anthropic_coordinate_mapping():
