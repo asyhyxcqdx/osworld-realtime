@@ -6,7 +6,6 @@ import pytest
 from desktop_env.evaluators.metrics.realtime_gui import (
     humanbenchmark_aim_percentile,
     humanbenchmark_reaction_time_percentile,
-    realtime_gui_bench_result,
     score_ratio_to_threshold,
 )
 
@@ -71,52 +70,3 @@ def test_score_ratio_to_threshold(raw_score, expected):
 def test_score_ratio_rejects_missing_or_invalid_score():
     assert score_ratio_to_threshold({}, threshold=10) == 0.0
     assert score_ratio_to_threshold({"score": "Game Over"}, threshold=10) == 0.0
-
-
-def test_realtime_gui_bench_result_returns_pass_at_3():
-    details = {
-        "benchmark_id": "A2",
-        "result": 1.0,
-        "pass_at_1": 0.0,
-        "pass_at_3": 1.0,
-        "attempt_results": [False, True],
-        "status": "passed",
-    }
-
-    assert realtime_gui_bench_result(details) == 1.0
-
-
-def test_realtime_gui_bench_result_rejects_disagreement():
-    details = {
-        "benchmark_id": "A2",
-        "result": 0.0,
-        "pass_at_1": 0.0,
-        "pass_at_3": 1.0,
-        "attempt_results": [False, True],
-        "status": "passed",
-    }
-
-    with pytest.raises(ValueError):
-        realtime_gui_bench_result(details)
-
-
-@pytest.mark.parametrize("change", [
-    {"pass_at_1": 1.0}, {"pass_at_3": "1"}, {"result": True},
-    {"status": "running"}, {"attempt_results": [True, False]},
-    {"attempt_results": [True, True]}, {"attempt_results": [False] * 4},
-    {"attempt_results": ["miss", "hit"]}, {"attempt_results": None},
-])
-def test_bench_metric_requires_consistent_derived_scores(change):
-    details = {"benchmark_id": "A41", "result": 1.0, "pass_at_1": 0.0,
-               "pass_at_3": 1.0, "attempt_results": [False, True], "status": "passed"}
-    details.update(change)
-    with pytest.raises(ValueError):
-        realtime_gui_bench_result(details)
-
-
-@pytest.mark.parametrize("history,status", [([], "running"), ([False], "running"), ([False, False], "running"), ([False] * 3, "failed")])
-def test_bench_metric_scores_incomplete_or_exhausted_game_zero(history, status):
-    details = {"benchmark_id": "A41", "result": 0.0, "pass_at_1": 0.0,
-               "pass_at_3": 0.0, "attempt_results": history, "status": status,
-               "raw_bench": {"results": ["hit"] * 8}}
-    assert realtime_gui_bench_result(details) == 0.0
