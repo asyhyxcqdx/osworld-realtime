@@ -452,11 +452,9 @@ class RealtimeAgent:
             self.sequence, self.frames, self.max_actions, self.max_queries
         )
         coordinate_guidance = (
-            "\nThe VM screen is 1920x1080 and all x/y action parameters use that full-screen "
-            "pixel coordinate system. If the vision provider displays the screenshot resized "
-            "to 768x432, multiply displayed coordinates by 2.5 before submitting them "
-            "(for example, displayed (400, 300) means action (1000, 750)). Do not submit "
-            "coordinates from the resized image directly."
+            "\nThe VM screen and screenshots use the native 1920x1080 pixel coordinate system. "
+            "Always submit x/y action parameters in native screen pixels measured from the "
+            "top-left corner. Do not rescale or multiply coordinates."
         )
         self.system = base_system + coordinate_guidance
         self.frame_query = None
@@ -552,12 +550,6 @@ class RealtimeAgent:
                     raise ValueError("Action tool arguments are not valid JSON.") from exc
             if arguments is None:
                 arguments = {}
-            if isinstance(arguments, dict) and "x" in arguments and "y" in arguments:
-                x, y = arguments["x"], arguments["y"]
-                if isinstance(x, (int, float)) and isinstance(y, (int, float)) and x <= 768 and y <= 432:
-                    arguments = dict(arguments)
-                    arguments["x"] = round(x * 2.5, 3)
-                    arguments["y"] = round(y * 2.5, 3)
             action = {"action_type": action_type, "parameters": arguments}
             try:
                 validate_action(action)

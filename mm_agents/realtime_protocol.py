@@ -188,10 +188,8 @@ def system_prompt(sequence, frames, max_actions, max_queries):
     )
     prompt = (
         "You control a desktop using native computer action tools. The VM screen is 1920x1080, "
-        "and all x/y action parameters use that full-screen pixel coordinate system. "
-        "If the vision provider displays the image resized to 768x432, multiply its displayed "
-        "coordinates by 2.5 before submitting the action (for example, displayed (400, 300) "
-        "means action (1000, 750)). Do not submit coordinates from the resized image directly. "
+        "and all x/y action parameters use that native full-screen pixel coordinate system. "
+        "Always submit native screen pixels measured from the top-left corner; do not rescale or multiply coordinates. "
         "Use key names exactly as listed (a space character ' ' is the space bar). "
         "Do not invent action parameters or execute Python. Never refresh, reload, reopen, or navigate away from the game page. "
         "DONE is the only terminal action; submit it only when the game is visibly successful or has exhausted its attempts. "
