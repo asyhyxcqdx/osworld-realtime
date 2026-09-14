@@ -205,6 +205,7 @@ class ModelWire:
         max_tokens,
         temperature,
         tools=None,
+        parallel_tool_calls=None,
     ):
         has_tool_history = any(
             m.get("tool_calls")
@@ -281,6 +282,8 @@ class ModelWire:
                     stream=True,
                     include=["reasoning.encrypted_content"],
                 )
+                if parallel_tool_calls is not None:
+                    payload["parallel_tool_calls"] = bool(parallel_tool_calls)
                 if self.thinking_enabled:
                     payload["reasoning"] = {}
                     if self.thinking_effort:
@@ -309,6 +312,8 @@ class ModelWire:
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
+                if parallel_tool_calls is not None:
+                    payload["parallel_tool_calls"] = bool(parallel_tool_calls)
                 if send_tools:
                     payload["tools"] = [
                         {
@@ -678,6 +683,7 @@ class RealtimeAgent:
                     max_tokens=self.max_tokens,
                     temperature=self.temperature,
                     tools=request_tools,
+                    parallel_tool_calls=self.sequence,
                 )
             except Exception as exc:
                 self.emit({

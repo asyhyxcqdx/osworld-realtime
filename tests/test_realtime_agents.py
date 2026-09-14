@@ -495,9 +495,31 @@ def test_openai_native_tool_schema_is_sent_without_text_fallback(monkeypatch, pr
     if protocol == "openai_responses":
         assert payload["max_output_tokens"] == 128000
         assert payload["instructions"] == "system prompt"
+        assert "parallel_tool_calls" not in payload
     else:
         assert payload["max_tokens"] == 128000
         assert payload["messages"][0] == {"role": "system", "content": "system prompt"}
+        assert "parallel_tool_calls" not in payload
+
+
+@pytest.mark.parametrize("protocol", ["openai_chat", "openai_responses"])
+def test_sequence_mode_explicitly_enables_parallel_tool_calls(monkeypatch, protocol):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    wire = ModelWire("openai-test", protocol)
+    wire.session.post = Mock(
+        return_value=SimpleNamespace(status_code=200, json=lambda: {})
+    )
+    wire.request(
+        "system prompt",
+        [{"role": "user", "content": "task"}],
+        tools_enabled=True,
+        native=True,
+        max_tokens=128000,
+        temperature=0.2,
+        tools=[ACTION_TOOLS[0]],
+        parallel_tool_calls=True,
+    )
+    assert wire.session.post.call_args.kwargs["json"]["parallel_tool_calls"] is True
 
 
 def test_astra_config_preserves_thinking_and_combine_tools(monkeypatch):
@@ -520,6 +542,7 @@ def test_astra_config_preserves_thinking_and_combine_tools(monkeypatch):
     assert {tool["name"] for tool in payload["tools"]} == {
         "get_frames", *(tool["name"] for tool in ACTION_TOOLS)
     }
+    assert payload["parallel_tool_calls"] is True
     assert agent.max_actions == 100
 
 
