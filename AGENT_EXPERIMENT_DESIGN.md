@@ -14,7 +14,7 @@
 | `--agent_variant agent3` | `get_frames` | 否 | 查询结束后执行一次 `env.step()` |
 | `--agent_variant agent4` | `get_frames` | 是 | 查询结束后执行完整动作列表 |
 
-内部使用 `AgentMode(sequence, frames)` 两个能力开关，启动时通过四个模式选择。四组共用提示词生成器、参数校验、模型适配层和任务运行器。Agent 1/2 不向 API 注册任何工具，也不接受意外工具调用。
+内部使用 `AgentMode(sequence, frames)` 两个能力开关，启动时通过四个模式选择。四组共用提示词生成器、参数校验、模型适配层和任务运行器。四组都会向 API 注册 `computer_*` 动作工具；只有 Agent 3/4 额外注册历史帧工具 `get_frames`。四组都不接受未注册的工具调用。
 
 ## 已接入的代码
 
@@ -327,13 +327,14 @@ python scripts/python/build_realtime_vm_image.py \
 python -m pytest -q \
   tests/test_realtime_agents.py tests/test_fmp4_live.py \
   tests/test_realtime_runner.py tests/test_recording_log_download.py \
-  tests/test_realtime_gui_bench_results.py tests/test_realtime_result_layout.py
+  tests/test_realtime_gui_bench_manifest.py tests/test_realtime_gui_getter.py \
+  tests/test_realtime_gui_metric.py tests/test_realtime_result_layout.py
 ```
 
-实时视频测试需要 FFmpeg；测试主机没有 FFmpeg 时可安装 `imageio-ffmpeg`，VM 使用自己的 FFmpeg。测试覆盖四组、三种消息协议、JSON 工具请求、多次查询、动作预算、只截一次图、未完成片段、乱序时间查询、非均匀时间戳和正在写入/结束后独立解码一致性。
+实时视频测试需要 FFmpeg；测试主机没有 FFmpeg 时可安装 `imageio-ffmpeg`，VM 使用自己的 FFmpeg。测试覆盖四组、native tool 调用、多次历史帧查询、100 个决策回合预算、每回合动作上限、只截一次图、未完成片段、乱序时间查询、非均匀时间戳和正在写入/结束后独立解码一致性。
 
 真实 VM 与中转站的本次联调证据位于 `validation/realtime_agents/`。联调只检查接入链路，不是四组的完整 benchmark 成绩。Chat/Responses 的协议测试不代表当前 Packy 密钥已获相应模型通道权限。
 
-本轮最终结果：46 项自动化检查通过；四组均通过真实 Claude 接口检查；实时 fMP4 帧与结束后读取的结果一致，帧时间与采集 PTS 逐帧对齐。详细证据与失败重试记录见 `validation/realtime_agents/VALIDATION.md`。
+实时 GUI 相关本地测试与 69 个 Docker 初始状态复验分别记录测试通过数和任务结果；二者都不等同于三模型 × 四 Agent 的完整模型成绩。
 
 协议和容器依据：[OpenAI Function Calling](https://developers.openai.com/api/docs/guides/function-calling)、[Claude 工具定义](https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools)、[FFmpeg Fragmentation](https://ffmpeg.org/ffmpeg-formats.html#Fragmentation)。
