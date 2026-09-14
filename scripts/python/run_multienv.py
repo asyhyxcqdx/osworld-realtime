@@ -371,6 +371,9 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                 thinking_enabled=args.thinking_enabled,
                 thinking_effort=args.thinking_effort,
                 thinking_summary=args.thinking_summary,
+                coordinate_mapping=args.realtime_config.get("api", {}).get(
+                    "coordinate_mapping"
+                ),
                 system_prompt_text=args.realtime_config["system_prompt"],
             )
         else:
