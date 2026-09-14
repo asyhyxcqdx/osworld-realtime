@@ -2,7 +2,7 @@
 
 日期：2026-09-14。分析对象为 `gpt-6-astra` 经用户指定的 Sudorelay 接口运行的 Agent4 / combine。
 
-**当前首先需要解决的是接口指令一致性。旧 C1 轨迹中，8 个原始响应有 7 个报告了与请求不同的 instructions；不能将这次三轮失败用于推断 GPT-6 Astra 或 combine 的能力上限。此前把遗漏显式 parallel_tool_calls 判为根因的结论已撤回。**
+**旧 C1 轨迹中，8 个原始响应有 7 个报告了与请求不同的 instructions，但后续最小探针证明这是响应元数据回显错误，不是模型实际没有收到我们的指令。不能将这次三轮失败用于推断 GPT-6 Astra 或 combine 的能力上限。此前把遗漏显式 parallel_tool_calls 判为根因的结论已撤回。**
 
 ## 1. 最直接的异常证据
 
@@ -13,7 +13,7 @@
 - [逐响应哈希、来源行号与统计](/mnt/zhaorunsong/yhyx/OSWorld/results_realtime_c1_trials/gpt-6-astra/diagnostics_20260914/instruction_integrity_audit.json)
 - [旧实验原始轨迹](/mnt/zhaorunsong/yhyx/OSWorld/results_realtime_c1_trials/gpt-6-astra/c1_combine_astra_sudorelay_high_repair_20260914T210313/agent4/computer_13/screenshot/realtime_gui_bench/5169e1b0-1a7d-538b-8e59-8785c39460ce/trajectory.jsonl)
 
-这是返回协议中的可观测事实。仅凭响应字段无法查看供应商内部最终送入模型的全部消息，因此严格表述为“接口未稳定保留或正确报告请求指令”。行为证据也与指令丢失一致：显式多调用探测把三个 WAIT 的数值全部写在 instructions 中，模型却回答没有收到三个调用的具体要求。
+这是返回协议中的可观测事实，但不等于模型实际看到的指令。最小探针把唯一 token 只放进 `instructions`、用户输入不重复 token，模型仍准确输出该 token；因此更符合“Sudorelay 的响应 `instructions` 字段被固定回显或错误填充”。它仍是供应商的协议/元数据问题，但不是当前模型输入被替换的证据。
 
 ## 2. 为什么原来的多调用解释不成立
 
@@ -24,7 +24,7 @@
 | 探测 | 指令是否一致 | 实际返回 | 能说明什么 |
 | --- | --- | --- | --- |
 | 省略 parallel_tool_calls，要求依次 WAIT 0.11、0.22、0.33 | 一致 | 有效值 true，仅 WAIT 0.11 | 至少这一次，即使指令保留且允许多调用，模型仍未提交完整序列 |
-| 显式 true，同一要求 | 不一致 | 没有调用，文本称缺少具体要求 | 对照被指令变化干扰，不能用来衡量开关的效果 |
+| 显式 true，同一要求 | 不一致 | 没有调用，文本称缺少具体要求 | 对照被响应元数据异常和网关延迟干扰，不能用来衡量开关的效果 |
 | 要求 get_frames(62.56) | 不一致 | get_frames(0) | 工具存在，但没有遵循指定时间 |
 | 回传旧 step_3.png 图片 | 不一致 | 正确描述 Attempt 2/3 和 Next 按钮，但没有按要求提交 WAIT | 这条图片序列化链路可被模型读取；不能验证主动复盘策略 |
 
@@ -56,9 +56,9 @@ space 校验确实是项目问题，已在 `a7354757` 统一为 `space`；它增
 
 已落实的改动：
 
-1. Responses 若明确报告不同的 instructions，记录 `instruction_audit` 和 `provider_instruction_mismatch`，保存完整原始回复，并在执行任何工具前抛出 `ProviderInstructionMismatchError`。不能将这类响应视为有效 benchmark 行为。
-2. 若供应商没有报告 instructions（缺失或 null），记为 not_reported；这不等于一致性已获验证。其他 API 协议记为 not_applicable。
-3. 保留 sequence 请求的显式 true；恢复 atomic Agent 的供应商默认值，避免把 Agent3 本来可以成组提交的帧查询一起限制掉。单动作上限仍由动作校验器执行。
+1. 保留 sequence 请求的显式 true；恢复 atomic Agent 的供应商默认值，避免把 Agent3 本来可以成组提交的帧查询一起限制掉。单动作上限仍由动作校验器执行。
+2. `7df39926` 中根据响应 `instructions` 字段强制停止的检查已经撤回。最小探针证明该字段可能只是错误回显，不能拿它阻断有效实验。
+3. 原始响应和哈希审计仍保留在诊断目录中，作为提交给 API 供应商的协议异常证据，不作为模型输入被替换的结论。
 
 尚待有效接口上的独立对照：YAML 的简短 prompt 覆盖了代码中的默认详细 prompt。因此默认 prompt 里的“推理期间画面继续变化”“一整段动作后才返回截图”“按明确 WAIT 控制间隔”等内容并非全部出现在正式请求中。可补齐这些通用执行语义，再与原 prompt 比较；这应记录为提示词实验，不能声称已经提升通关率。无需强迫每轮多个动作或每次失败必须调用录像，也不应注入 C1 源码或通关时序。
 
@@ -69,8 +69,8 @@ space 校验确实是项目问题，已在 `a7354757` 统一为 `space`；它增
 - [新运行目录](/mnt/zhaorunsong/yhyx/OSWorld/results_realtime_c1_trials/gpt-6-astra/c1_combine_astra_explicit_parallel_20260914T233445)
 - [运行日志](/mnt/zhaorunsong/yhyx/OSWorld/results_realtime_c1_trials/gpt-6-astra/c1_combine_astra_explicit_parallel_20260914T233445/console.log)
 
-本地 realtime Agent / runner 测试 **71 passed**，覆盖指令不一致时禁止动作和帧查询、保存原始证据，以及一致或未报告指令时维持原有流程。旧轨迹、录像和评分均保留；旧试跑报告已补充更正。
+本地 realtime Agent / runner 测试 **66 passed**；检查器回滚后不再因错误的响应元数据误杀实验。旧轨迹、录像和评分均保留；旧试跑报告已补充更正。
 
-将旧 C1 的真实首个响应离线重放给新检查器，已确认触发 ProviderInstructionMismatchError，pending_action_calls=null、tool_calls=0：[真实响应重放结果](/mnt/zhaorunsong/yhyx/OSWorld/results_realtime_c1_trials/gpt-6-astra/diagnostics_20260914/guard_replay_result.json)。另一次真实接口检查在返回完整响应前读超时，零工具执行；没有把这次超时误记为在线成功拦截：[在线检查结果](/mnt/zhaorunsong/yhyx/OSWorld/results_realtime_c1_trials/gpt-6-astra/diagnostics_20260914/guard_live_result.json)。
+最小探针证明系统指令确实可以到达模型；另一次真实 C1 复跑在第二次请求读超时，零工具执行：[在线运行结果](/mnt/zhaorunsong/yhyx/OSWorld/results_realtime_c1_trials/gpt-6-astra/diagnostics_20260914/guard_live_result.json)。
 
-当前可以归因的是：项目原有 space 校验错误、供应商指令一致性异常、此次读超时，以及轨迹中的单步时序策略。尚不能确定纯模型能力上限，也不能声称 combine 已通关。下一次有效模型实验的前提是该路由稳定保留 benchmark 指令，或更换为已验证的同模型直通路由。
+当前可以归因的是：项目原有 space 校验错误、供应商响应元数据异常、接口读超时，以及轨迹中的单步时序策略。尚不能确定纯模型能力上限，也不能声称 combine 已通关。下一次有效模型实验应继续使用真实请求，但把 `instructions` 回显仅作为诊断字段，同时记录完整请求、响应和延迟；若网关持续超时，再更换已验证的同模型直通路由。

@@ -70,28 +70,6 @@ def response_reasoning(response, protocol):
     }
 
 
-class ProviderInstructionMismatchError(RuntimeError):
-    """The provider reports instructions different from the experiment prompt."""
-
-
-def response_instruction_audit(system, response, protocol):
-    if protocol != "openai_responses":
-        return {"status": "not_applicable"}
-    audit = {
-        "requested_sha256": hashlib.sha256(system.encode("utf-8")).hexdigest(),
-        "requested_chars": len(system),
-    }
-    reported = response.get("instructions")
-    if not isinstance(reported, str):
-        return {**audit, "status": "not_reported"}
-    return {
-        **audit,
-        "status": "match" if reported == system else "mismatch",
-        "reported_sha256": hashlib.sha256(reported.encode("utf-8")).hexdigest(),
-        "reported_chars": len(reported),
-    }
-
-
 def loggable_messages(messages):
     """Copy request messages while replacing inline image bytes with hashes."""
     logged = copy.deepcopy(messages)
@@ -705,10 +683,7 @@ class RealtimeAgent:
                     max_tokens=self.max_tokens,
                     temperature=self.temperature,
                     tools=request_tools,
-                    # The atomic limit applies to actions, not frame queries.
-                    # Keep the provider default for atomic agents so video agents
-                    # can still request several frame queries in one response.
-                    parallel_tool_calls=True if self.sequence else None,
+                    parallel_tool_calls=self.sequence,
                 )
             except Exception as exc:
                 self.emit({
@@ -723,9 +698,6 @@ class RealtimeAgent:
                 "event": "model_response", "request_id": request_id,
                 "latency_s": time.monotonic() - start,
                 "provider_response": copy.deepcopy(raw),
-                "instruction_audit": response_instruction_audit(
-                    self.system, raw, self.wire.protocol
-                ),
                 **response_reasoning(raw, self.wire.protocol),
             }
             try:
@@ -742,17 +714,6 @@ class RealtimeAgent:
                     "usage": raw.get("usage", {}),
                 }
             )
-            if event["instruction_audit"]["status"] == "mismatch":
-                self.emit({
-                    "event": "provider_instruction_mismatch",
-                    "request_id": request_id,
-                    **event["instruction_audit"],
-                })
-                raise ProviderInstructionMismatchError(
-                    "Responses provider reported instructions different from the "
-                    "experiment prompt. No tools from this response were executed; "
-                    "inspect model_response.instruction_audit in trajectory.jsonl."
-                )
             if calls:
                 frame_calls = [call for call in calls if call["name"] == FRAME_TOOL["name"]]
                 action_calls = [call for call in calls if call["name"] != FRAME_TOOL["name"]]

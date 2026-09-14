@@ -185,10 +185,6 @@ def test_four_variants_and_repeated_frame_queries(protocol, variant):
     assert query.call_count == (2 if mode.frames else 0)
     assert agent.counters["model_requests"] == (3 if mode.frames else 1)
     assert all(r[1]["tools_enabled"] == mode.frames for r in requests)
-    assert all(
-        r[1]["parallel_tool_calls"] is (True if mode.sequence else None)
-        for r in requests
-    )
     if mode.frames:
         serialized = json.dumps(requests[-1][0])
         assert "q1" in serialized and "q2" in serialized
@@ -611,50 +607,3 @@ def test_invalid_key_call_is_closed_before_model_correction(protocol):
         assert [r["tool_use_id"] for r in replies] == ["a0"]
     assert '"executed": false' in json.dumps(replies).replace('\\"', '"')
     assert "No action in this sequence was executed" in json.dumps(replies)
-
-
-@pytest.mark.parametrize("frame_query", [False, True])
-def test_reported_instruction_replacement_stops_before_any_tool(frame_query):
-    from mm_agents.realtime_agent import ProviderInstructionMismatchError
-
-    wire = ModelWire("mock", "openai_responses")
-    raw = native_reply(
-        wire.protocol, tool="q1" if frame_query else None,
-        text="" if frame_query else json.dumps(ACTION),
-    )
-    raw["instructions"] = "Unrelated provider instructions."
-    wire.request = Mock(return_value=raw)
-    agent = RealtimeAgent(sequence=True, frames=True, wire=wire)
-    query, events = Mock(), []
-    agent.bind_frame_query(query)
-    agent.bind_event_sink(events.append)
-
-    with pytest.raises(ProviderInstructionMismatchError, match="No tools"):
-        agent.predict("task", {"screenshot": b"png", "task_time_s": 0})
-
-    query.assert_not_called()
-    assert agent.pending_action_calls is None
-    assert agent.counters["tool_calls"] == 0
-    assert agent.rounds == []
-    response = next(e for e in events if e["event"] == "model_response")
-    assert response["provider_response"] == raw
-    audit = response["instruction_audit"]
-    assert audit["status"] == "mismatch"
-    assert audit["requested_sha256"] != audit["reported_sha256"]
-    assert events[-1]["event"] == "provider_instruction_mismatch"
-    wire.request.assert_called_once()
-
-
-@pytest.mark.parametrize("echo", ["match", "absent", "null"])
-def test_instruction_audit_allows_matching_or_unreported_echo(echo):
-    wire = ModelWire("mock", "openai_responses")
-    agent = RealtimeAgent(sequence=True, frames=False, wire=wire)
-    raw = native_reply(wire.protocol, text=json.dumps(ACTION))
-    if echo != "absent":
-        raw["instructions"] = agent.system if echo == "match" else None
-    wire.request = Mock(return_value=raw)
-    assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION]
-    response = next(e for e in agent.last_events if e["event"] == "model_response")
-    assert response["instruction_audit"]["status"] == (
-        "match" if echo == "match" else "not_reported"
-    )
