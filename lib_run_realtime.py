@@ -45,7 +45,6 @@ def run_realtime_example(
         "max_decision_rounds": max_steps,
         "max_sequence_actions": args.max_sequence_actions,
         "max_frame_queries_per_decision": args.max_frame_queries,
-        "coordinate_mapping": getattr(agent, "coordinate_mapping", None),
         "frame_queries_unlimited": args.max_frame_queries == 0,
         "thinking_enabled": getattr(agent.wire, "thinking_enabled", False),
         "thinking_effort": getattr(agent.wire, "thinking_effort", None),

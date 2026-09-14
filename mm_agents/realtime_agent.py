@@ -6,13 +6,11 @@ call IDs and provider reasoning blocks. History is pruned only at round boundari
 import base64
 import copy
 import hashlib
-import io
 import json
 import os
 import time
 
 import requests
-from PIL import Image
 
 from mm_agents.realtime_protocol import (
     ACTION_TOOLS,
@@ -27,15 +25,6 @@ from mm_agents.realtime_protocol import (
 
 def text_block(text):
     return {"type": "text", "text": text}
-
-
-def resize_image_bytes(image_bytes, size):
-    """Resize a screenshot to the exact coordinate space used by a vision model."""
-    with Image.open(io.BytesIO(image_bytes)) as image:
-        image = image.convert("RGB").resize(size, Image.Resampling.LANCZOS)
-        output = io.BytesIO()
-        image.save(output, format="PNG")
-        return output.getvalue()
 
 
 def result_blocks(result):
@@ -480,7 +469,6 @@ class RealtimeAgent:
         thinking_enabled=None,
         thinking_effort=None,
         thinking_summary=False,
-        coordinate_mapping=None,
         system_prompt_text=None,
         wire=None,
     ):
@@ -498,7 +486,6 @@ class RealtimeAgent:
         if max_frame_queries < 0:
             raise ValueError("max_frame_queries must be nonnegative (0 means unlimited)")
         self.max_actions, self.max_queries = max_sequence_actions, max_frame_queries
-        self.coordinate_mapping = coordinate_mapping
         self.tool_format = tool_format
         self.wire = wire or ModelWire(
             model,
@@ -511,10 +498,7 @@ class RealtimeAgent:
         base_system = system_prompt_text or system_prompt(
             self.sequence, self.frames, self.max_actions, self.max_queries
         )
-        # Claude's image-coordinate conversion is an adapter concern. Keep it
-        # out of the model prompt so the model is not asked to reason about an
-        # implementation detail that the runtime handles deterministically.
-        coordinate_guidance = "" if self.coordinate_mapping else (
+        coordinate_guidance = (
             "\nThe VM screen and screenshots use the native 1920x1080 pixel coordinate system. "
             "Always submit x/y action parameters in native screen pixels measured from the "
             "top-left corner. Do not rescale or multiply coordinates."
@@ -614,7 +598,6 @@ class RealtimeAgent:
             if arguments is None:
                 arguments = {}
             action = {"action_type": action_type, "parameters": arguments}
-            action = self._map_action_coordinates(action)
             try:
                 validate_action(action)
             except ForbiddenShortcutError:
@@ -629,24 +612,6 @@ class RealtimeAgent:
             raise ValueError("DONE must be the last action.")
         return actions
 
-    def _map_action_coordinates(self, action):
-        """Map model-image coordinates back to the native VM screen when configured."""
-        mapping = self.coordinate_mapping
-        if not mapping:
-            return action
-        params = action.get("parameters", {})
-        if not isinstance(params, dict) or not {"x", "y"} <= set(params):
-            return action
-        mapped = copy.deepcopy(action)
-        mapped_params = mapped["parameters"]
-        mapped_params["x"] = round(
-            mapped_params["x"] * mapping["target_width"] / mapping["source_width"], 3
-        )
-        mapped_params["y"] = round(
-            mapped_params["y"] * mapping["target_height"] / mapping["source_height"], 3
-        )
-        return mapped
-
     def predict(self, instruction, obs):
         self.last_events = []
         observation = {
@@ -660,22 +625,13 @@ class RealtimeAgent:
                 "This timestamp describes the screenshot, not the time your reply will execute."
             )
         ]
-        screenshot = obs["screenshot"]
-        if self.coordinate_mapping:
-            screenshot = resize_image_bytes(
-                screenshot,
-                (
-                    self.coordinate_mapping["source_width"],
-                    self.coordinate_mapping["source_height"],
-                ),
-            )
         blocks.append(
             {
                 "type": "image",
                 "source": {
                     "type": "base64",
                     "media_type": "image/png",
-                    "data": base64.b64encode(screenshot).decode("ascii"),
+                    "data": base64.b64encode(obs["screenshot"]).decode("ascii"),
                 },
             }
         )

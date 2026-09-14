@@ -42,7 +42,6 @@ def load_realtime_config(path, *, variant=None):
     constraints = config["constraints"]
     protocol = api.get("protocol")
     thinking = api.get("thinking")
-    coordinate_mapping = api.get("coordinate_mapping")
     if action.get("allow_done") is not True or action.get("allow_fail") is not False:
         raise ValueError("Realtime Agents allow DONE and forbid FAIL.")
     if action.get("mode") not in {"atomic", "sequence"}:
@@ -68,23 +67,6 @@ def load_realtime_config(path, *, variant=None):
         efforts.add("xhigh")
     if thinking.get("effort") not in efforts:
         raise ValueError(f"api.thinking.effort must be one of {sorted(efforts)}.")
-    if coordinate_mapping is not None:
-        if not isinstance(coordinate_mapping, dict):
-            raise ValueError("api.coordinate_mapping must be a mapping.")
-        required_mapping = {"source_width", "source_height", "target_width", "target_height"}
-        if set(coordinate_mapping) != required_mapping:
-            raise ValueError(
-                "api.coordinate_mapping must contain exactly: "
-                + ", ".join(sorted(required_mapping))
-            )
-        if any(
-            not isinstance(coordinate_mapping[key], int)
-            or coordinate_mapping[key] <= 0
-            for key in required_mapping
-        ):
-            raise ValueError("api.coordinate_mapping dimensions must be positive integers.")
-        if protocol != "anthropic_messages":
-            raise ValueError("api.coordinate_mapping is only supported for Anthropic Messages.")
     if api.get("context_window_tokens", 0) < 128000 or api.get("max_output_tokens", 0) < 128000:
         raise ValueError("Realtime API limits must be at least 128000 tokens.")
     if context.get("history_policy") != "full" or context.get("include_screenshots") is not True:
@@ -116,6 +98,5 @@ def agent_kwargs(config):
         "thinking_enabled": thinking["enabled"],
         "thinking_effort": thinking["effort"],
         "thinking_summary": thinking["summary"],
-        "coordinate_mapping": config["api"].get("coordinate_mapping"),
         "system_prompt_text": config["system_prompt"],
     }

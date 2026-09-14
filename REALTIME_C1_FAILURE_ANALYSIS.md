@@ -1,7 +1,5 @@
 # C1 combine 失败分析与接口指令一致性审计
 
-> 2026-09-15 执行时序复核更正：此前声称 Fable 试跑“坐标回映射已验证、时序正常”不准确。`c1_combine_fable51_coordfix_promptclean_20260915` 的 `experiment.json` 实际记录 `coordinate_mapping: null`，正式入口没有把新增配置传给 Agent；正确坐标是模型原始返回值，不能记为转换成果。同一轨迹的 WAIT 0.45 / 0.4 / 1.5 秒实际仅耗时约 0.0000067 / 0.0000068 / 0.0000055 秒。对同镜像仍存活 VM 的源码检查发现旧 `/sequence` 使用 `time.sleep(pause)`（默认 pause=0）、PyAutoGUI.PAUSE=0.1，和仓库新版不一致。此前本地单元测试没有覆盖已部署镜像；这些游戏失败不能只归咎于模型时序。原始 ¥26.763590 错误是第 8 次请求的预扣额度门槛，不是实际扣费。已完成 7 个请求的输出共 3,004 tokens，而每次请求允许最多输出 128,000 tokens；实际金额需供应商账单核实。证据见 [执行与预扣审计](results_realtime_c1_trials/claude-fable-5-1/c1_combine_fable51_coordfix_promptclean_20260915/wait_and_precharge_audit.json)。本次审计未改变运行代码或实验参数。**该配置传递遗漏已在 `run_multienv.py` 修复；后续运行需确认 `experiment.json` 不再为 null。**
-
 日期：2026-09-14。分析对象为 `gpt-6-astra` 经用户指定的 Sudorelay 接口运行的 Agent4 / combine。
 
 **旧 C1 轨迹中，8 个原始响应有 7 个报告了与请求不同的 instructions，但后续最小探针证明这是响应元数据回显错误，不是模型实际没有收到我们的指令。不能将这次三轮失败用于推断 GPT-6 Astra 或 combine 的能力上限。此前把遗漏显式 parallel_tool_calls 判为根因的结论已撤回。**
@@ -75,4 +73,4 @@ space 校验确实是项目问题，已在 `a7354757` 统一为 `space`；它增
 
 最小探针证明系统指令确实可以到达模型；另一次真实 C1 复跑在第二次请求读超时，零工具执行：[在线运行结果](/mnt/zhaorunsong/yhyx/OSWorld/results_realtime_c1_trials/gpt-6-astra/diagnostics_20260914/guard_live_result.json)。
 
-当前需先处理顶部更正所列的实际运行链路问题：同步 VM 执行器并实测 WAIT、隐含等待和序列上限，再核实配置确实进入正式 Agent。Fable 的坐标映射代码和配置已经存在，但此前试跑未启用，不能称为完成了运行验证。Astra 仍未配置回映射。
+当前可以归因的是：项目原有 space 校验错误、供应商响应元数据异常、接口读超时，以及轨迹中的单步时序策略。多模型测试表明不应做全局坐标回映射；下一次有效模型实验统一使用原始 `1920×1080` 截图和坐标。

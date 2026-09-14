@@ -32,11 +32,6 @@ api:
     summary: true
   # Claude standard-tier vision resizes a 1920x1080 image to 1456x819;
   # map returned image coordinates back to the native VM screen.
-  coordinate_mapping:
-    source_width: 1456
-    source_height: 819
-    target_width: 1920
-    target_height: 1080
 constraints:
   forbid_refresh: true
   forbid_navigation: true
