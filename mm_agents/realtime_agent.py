@@ -92,7 +92,36 @@ def loggable_messages(messages):
                     image_url["url"] = "data:image/png;base64,[omitted]"
                     image_url["url_sha256"] = hashlib.sha256(url.encode("ascii")).hexdigest()
                     image_url["url_length"] = len(url)
+            elif isinstance(image_url, str) and image_url.startswith("data:"):
+                block["image_url"] = "data:image/png;base64,[omitted]"
+                block["image_url_sha256"] = hashlib.sha256(image_url.encode("ascii")).hexdigest()
+                block["image_url_length"] = len(image_url)
     return logged
+
+
+def completed_responses_stream(response):
+    """Collect a complete Responses SSE turn before dispatching any actions."""
+    data = []
+    try:
+        for line in response.iter_lines():
+            if isinstance(line, bytes):
+                line = line.decode("utf-8")
+            if line.startswith("data:"):
+                data.append(line[5:].lstrip())
+            elif not line and data:
+                encoded, data = "\n".join(data), []
+                if encoded == "[DONE]":
+                    break
+                event = json.loads(encoded)
+                kind = event.get("type")
+                if kind == "response.completed":
+                    return event["response"]
+                if kind in {"response.failed", "response.incomplete", "error"}:
+                    detail = event.get("response", {}).get("error") or event.get("message")
+                    raise RuntimeError(f"Responses stream {kind}: {str(detail)[:300]}")
+        raise RuntimeError("Responses stream ended before response.completed; no actions dispatched.")
+    finally:
+        response.close()
 
 
 class ModelWire:
@@ -120,12 +149,15 @@ class ModelWire:
             raise ValueError("Unsupported model API protocol")
         if thinking_enabled is None:
             thinking_enabled = thinking_summary
-        if thinking_enabled and self.protocol != "anthropic_messages":
-            raise ValueError("thinking requires the Anthropic Messages protocol")
+        if thinking_enabled and self.protocol not in {"anthropic_messages", "openai_responses"}:
+            raise ValueError("thinking requires Anthropic Messages or OpenAI Responses")
         if thinking_summary and not thinking_enabled:
             raise ValueError("thinking_summary requires thinking_enabled")
-        if thinking_effort is not None and thinking_effort not in {"low", "medium", "high", "max"}:
-            raise ValueError("thinking_effort must be low, medium, high, or max")
+        efforts = {"low", "medium", "high", "max"}
+        if self.protocol == "openai_responses":
+            efforts.add("xhigh")
+        if thinking_effort is not None and thinking_effort not in efforts:
+            raise ValueError(f"thinking_effort must be one of {sorted(efforts)}")
         self.thinking_enabled = bool(thinking_enabled)
         self.thinking_summary = thinking_summary
         self.thinking_effort = thinking_effort
@@ -246,8 +278,15 @@ class ModelWire:
                     input=messages,
                     max_output_tokens=max_tokens,
                     store=False,
+                    stream=True,
                     include=["reasoning.encrypted_content"],
                 )
+                if self.thinking_enabled:
+                    payload["reasoning"] = {}
+                    if self.thinking_effort:
+                        payload["reasoning"]["effort"] = self.thinking_effort
+                    if self.thinking_summary:
+                        payload["reasoning"]["summary"] = "auto"
                 if send_tools:
                     payload["tools"] = [
                         {
@@ -292,7 +331,8 @@ class ModelWire:
         for attempt in range(3):
             try:
                 response = self.session.post(
-                    url, headers=headers, json=payload, timeout=self.timeout
+                    url, headers=headers, json=payload, timeout=self.timeout,
+                    stream=self.protocol == "openai_responses",
                 )
                 if response.status_code not in {429, 500, 502, 503, 504}:
                     break
@@ -316,6 +356,8 @@ class ModelWire:
             raise RuntimeError(
                 f"Model API HTTP {response.status_code} ({self.protocol}): {detail or 'request failed'}"
             )
+        if self.protocol == "openai_responses" and "text/event-stream" in getattr(response, "headers", {}).get("content-type", ""):
+            return completed_responses_stream(response)
         return response.json()
 
     def unpack(self, response):
@@ -688,6 +730,15 @@ class RealtimeAgent:
                         )
                         if errors > 2:
                             raise
+                        # Rejected calls still need matching native tool results
+                        # before the provider can accept a corrected response.
+                        round_messages.extend(self.wire.tool_results([
+                            (call, {
+                                "status": "error", "executed": False,
+                                "message": f"Invalid tool call: {exc}. No action in this sequence was executed.",
+                            })
+                            for call in action_calls
+                        ]))
                         round_messages.append(
                             self.wire.user(
                                 [text_block(f"Invalid tool call: {exc}. Correct it; no action was executed.")]

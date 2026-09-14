@@ -190,7 +190,7 @@ def system_prompt(sequence, frames, max_actions, max_queries):
         "You control a desktop using native computer action tools. The VM screen is 1920x1080, "
         "and all x/y action parameters use that native full-screen pixel coordinate system. "
         "Always submit native screen pixels measured from the top-left corner; do not rescale or multiply coordinates. "
-        "Use key names exactly as listed (a space character ' ' is the space bar). "
+        "Use key names exactly as listed; 'space' is the space bar. "
         "Do not invent action parameters or execute Python. Never refresh, reload, reopen, or navigate away from the game page. "
         "DONE is the only terminal action; submit it only when the game is visibly successful or has exhausted its attempts. "
         "Use the registered tool schemas exactly. No hidden delay is inserted between actions. "

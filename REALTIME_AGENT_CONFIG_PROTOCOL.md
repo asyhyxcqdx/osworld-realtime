@@ -136,18 +136,22 @@ api:
 | 字段 | 类型 | 允许值 | 含义 |
 | --- | --- | --- | --- |
 | `model` | 字符串 | 非空模型标识 | 本配置使用的模型名称。模型名属于实验配置，必须写入配置并记录到结果；API 密钥不能写入配置。 |
-| `protocol` | 字符串 | `anthropic_messages`、`openai_chat`、`openai_responses` | 使用的供应商 API 消息协议。 |
+| `protocol` | 字符串 | `anthropic_messages`、`openai_responses` | 正式 realtime 配置支持的 API 消息协议；底层 `openai_chat` 兼容代码不用于这些配置。 |
 | `tool_format` | 字符串 | 必须为 `native` | 工具调用格式。正式实验必须使用供应商原生 tool use。 |
 | `context_window_tokens` | 整数 | 不小于 `128000` | 供应商声明的单次请求最大上下文 token 数，必须足以容纳完整历史消息和截图。 |
 | `max_output_tokens` | 整数 | 不小于 `128000` 的正整数 | 单次模型响应允许生成的最大 token 数。它是输出上限，不是上下文窗口大小；供应商不支持该上限时必须显式报错，不能静默降低。 |
 | `temperature` | 数字或空值 | `0` 到 `2` 或 `null` | 采样温度。使用自适应 thinking 且供应商不允许温度参数时必须为 `null`。 |
 | `thinking.enabled` | 布尔值 | 必须为 `true` | 是否请求供应商启用 thinking。正式实验必须开启。 |
-| `thinking.effort` | 字符串 | `low`、`medium`、`high`、`max` | 实验规定的固定 thinking effort。不同供应商的适配器必须尽量映射到相同等级；不支持时显式报错。 |
+| `thinking.effort` | 字符串 | `low`、`medium`、`high`、`max`；Responses 另支持 `xhigh` | 实验规定的固定 thinking effort。不同供应商的适配器必须尽量映射到相同等级；不支持时显式报错。 |
 | `thinking.summary` | 布尔值 | 必须为 `true` | 是否请求供应商返回可读 thinking summary。它不代表可以获取隐藏的完整思维链。 |
 
 配置对实验使用固定的 `thinking.effort`，不把供应商内部的 adaptive 或 enabled 实现方式当作实验变量。Anthropic 等供应商如果只能通过 adaptive thinking 实现固定 effort，由 API 适配器负责映射；这不改变配置中的 effort 等级。其他协议不支持该 effort 时必须拒绝配置，而不是静默降低等级。
 
 模型名称必须写入 Agent 配置文件，以便配置自包含和实验复现。命令行可以选择性覆盖模型，但覆盖值必须写入 `experiment.json` 和 `trajectory.jsonl`；API 密钥只从环境变量读取。
+
+`combine-gpt-6-astra.yaml` 使用 Responses 协议，保持 `high` 思考档位和摘要开启：适配器发送 `reasoning: {effort: high, summary: auto}`，保留返回的 reasoning 内容及 encrypted content，并省略 temperature。接口地址通过 `--api_base_url` 指定，密钥通过 `OPENAI_API_KEY` 注入。参数依据：[GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[reasoning summaries](https://developers.openai.com/api/docs/guides/reasoning#reasoning-summaries)。
+
+Responses 使用流式传输，收到完整的 `response.completed` 才解析和提交动作序列。流中断、失败或截断时不执行半段动作；流式传输不改变四组的回合和行动定义。
 
 `max_output_tokens` 与上下文窗口是两个不同概念。配置还必须记录供应商声明的上下文窗口大小；正式实验要求上下文窗口至少为 `128000`，更大的窗口（例如 1M）不自动改变输出上限。模型的实际输出上限和上下文窗口都必须写入实验元数据。
 

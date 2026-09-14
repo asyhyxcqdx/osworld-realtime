@@ -40,6 +40,7 @@ def load_realtime_config(path, *, variant=None):
     observation = config["observation"]
     context = config["context"]
     constraints = config["constraints"]
+    protocol = api.get("protocol")
     thinking = api.get("thinking")
     if action.get("allow_done") is not True or action.get("allow_fail") is not False:
         raise ValueError("Realtime Agents allow DONE and forbid FAIL.")
@@ -53,16 +54,19 @@ def load_realtime_config(path, *, variant=None):
         raise ValueError("current_screenshot must be enabled.")
     if api.get("tool_format") != "native":
         raise ValueError("Realtime configs must use native tool use.")
+    if protocol not in {"anthropic_messages", "openai_responses"}:
+        raise ValueError("Realtime configs require Anthropic Messages or OpenAI Responses.")
     if not isinstance(thinking, dict):
         raise ValueError("api.thinking must be a mapping.")
     if thinking.get("enabled") is not True:
         raise ValueError("api.thinking.enabled must be true for realtime experiments.")
     if thinking.get("summary") is not True:
         raise ValueError("api.thinking.summary must be true for realtime experiments.")
-    if thinking.get("effort") not in {"low", "medium", "high", "max"}:
-        raise ValueError("api.thinking.effort must be low, medium, high, or max.")
-    if api.get("protocol") != "anthropic_messages":
-        raise ValueError("Thinking configuration currently requires Anthropic Messages.")
+    efforts = {"low", "medium", "high", "max"}
+    if protocol == "openai_responses":
+        efforts.add("xhigh")
+    if thinking.get("effort") not in efforts:
+        raise ValueError(f"api.thinking.effort must be one of {sorted(efforts)}.")
     if api.get("context_window_tokens", 0) < 128000 or api.get("max_output_tokens", 0) < 128000:
         raise ValueError("Realtime API limits must be at least 128000 tokens.")
     if context.get("history_policy") != "full" or context.get("include_screenshots") is not True:

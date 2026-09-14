@@ -16,7 +16,7 @@ from mm_agents.realtime_protocol import (
 )
 
 
-ACTION = {"action_type": "PRESS", "parameters": {"key": " "}}
+ACTION = {"action_type": "PRESS", "parameters": {"key": "space"}}
 CAPABILITIES = {
     "agent1": SimpleNamespace(sequence=False, frames=False),
     "agent2": SimpleNamespace(sequence=True, frames=False),
@@ -33,6 +33,8 @@ IMAGE = {
 def test_action_validation_uses_registered_pydantic_models():
     assert validate_action(ACTION) == ACTION
     with pytest.raises(ValueError):
+        validate_action({"action_type": "PRESS", "parameters": {"key": " "}})
+    with pytest.raises(ValueError):
         validate_action({"action_type": "WAIT", "parameters": {}})
     with pytest.raises(ValueError):
         validate_action({"action_type": "FAIL"})
@@ -47,6 +49,11 @@ def test_action_tools_are_generated_from_pydantic_models():
     assert move["parameters"]["properties"]["duration_s"]["maximum"] == 10
     assert wait["parameters"]["required"] == ["duration_s"]
     assert "computer_fail" not in {tool["name"] for tool in ACTION_TOOLS}
+
+    press = next(tool for tool in ACTION_TOOLS if tool["name"] == "computer_press")
+    key_enum = press["parameters"]["properties"]["key"]["enum"]
+    assert "space" in key_enum
+    assert " " not in key_enum
 
 
 @pytest.mark.parametrize(
@@ -491,3 +498,89 @@ def test_openai_native_tool_schema_is_sent_without_text_fallback(monkeypatch, pr
     else:
         assert payload["max_tokens"] == 128000
         assert payload["messages"][0] == {"role": "system", "content": "system prompt"}
+
+
+def test_astra_config_preserves_thinking_and_combine_tools(monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    path = Path(__file__).resolve().parents[1] / "configs/realtime_agents/combine-gpt-6-astra.yaml"
+    agent = RealtimeAgent(**agent_kwargs(load_realtime_config(path, variant="agent4")))
+    agent.wire.session.post = Mock(return_value=SimpleNamespace(
+        status_code=200,
+        json=lambda: native_reply("openai_responses", text=json.dumps(ACTION)),
+    ))
+    assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION]
+    payload = agent.wire.session.post.call_args.kwargs["json"]
+    assert payload["model"] == "gpt-6-astra"
+    assert payload["reasoning"] == {"effort": "high", "summary": "auto"}
+    assert payload["store"] is False
+    assert payload["include"] == ["reasoning.encrypted_content"]
+    assert "temperature" not in payload
+    assert {tool["name"] for tool in payload["tools"]} == {
+        "get_frames", *(tool["name"] for tool in ACTION_TOOLS)
+    }
+    assert agent.max_actions == 100
+
+
+def test_responses_image_logging_omits_bytes_without_changing_request():
+    from mm_agents.realtime_agent import loggable_messages
+
+    wire = ModelWire("gpt-6-astra", "openai_responses")
+    messages = [wire.user([{"type": "image", "source": IMAGE}])]
+    original = copy.deepcopy(messages)
+    logged = loggable_messages(messages)
+    block = logged[0]["content"][0]
+    assert block["image_url"] == "data:image/png;base64,[omitted]"
+    assert len(block["image_url_sha256"]) == 64
+    assert block["image_url_length"] == len(original[0]["content"][0]["image_url"])
+    assert messages == original
+
+
+@pytest.mark.parametrize("complete", [False, True])
+def test_responses_stream_requires_complete_turn_before_action_dispatch(monkeypatch, complete):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    reply = native_reply("openai_responses", text=json.dumps([ACTION, ACTION]))
+    events = [{"type": "response.output_item.done", "item": reply["output"][0]}]
+    if complete:
+        events.append({"type": "response.completed", "response": reply})
+    lines = [line for event in events for line in [b"data: " + json.dumps(event).encode(), b""]]
+    response = SimpleNamespace(
+        status_code=200, headers={"content-type": "text/event-stream"},
+        iter_lines=lambda: iter(lines), close=Mock(),
+    )
+    wire = ModelWire("gpt-6-astra", "openai_responses")
+    wire.session.post = Mock(return_value=response)
+    agent = RealtimeAgent(sequence=True, frames=False, wire=wire)
+    if complete:
+        assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION, ACTION]
+    else:
+        with pytest.raises(RuntimeError, match="ended before response.completed"):
+            agent.predict("task", {"screenshot": b"png", "task_time_s": 0})
+        assert agent.pending_action_calls is None
+    assert wire.session.post.call_args.kwargs["json"]["stream"] is True
+    response.close.assert_called_once()
+
+
+@pytest.mark.parametrize("protocol", ["anthropic_messages", "openai_chat", "openai_responses"])
+def test_invalid_key_call_is_closed_before_model_correction(protocol):
+    wire = ModelWire("mock", protocol)
+    invalid = {"action_type": "PRESS", "parameters": {"key": "not-a-registered-key"}}
+    wire.request = Mock(side_effect=[
+        native_reply(protocol, text=json.dumps(invalid)),
+        native_reply(protocol, text=json.dumps(ACTION)),
+    ])
+    agent = RealtimeAgent(sequence=True, frames=False, wire=wire)
+    assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION]
+    messages = wire.request.call_args_list[1].args[1]
+    if protocol == "openai_responses":
+        replies = [m for m in messages if m.get("type") == "function_call_output"]
+        assert [r["call_id"] for r in replies] == ["a0"]
+    elif protocol == "openai_chat":
+        replies = [m for m in messages if m.get("role") == "tool"]
+        assert [r["tool_call_id"] for r in replies] == ["a0"]
+    else:
+        replies = [b for m in messages for b in m.get("content", []) if b.get("type") == "tool_result"]
+        assert [r["tool_use_id"] for r in replies] == ["a0"]
+    assert '"executed": false' in json.dumps(replies).replace('\\"', '"')
+    assert "No action in this sequence was executed" in json.dumps(replies)

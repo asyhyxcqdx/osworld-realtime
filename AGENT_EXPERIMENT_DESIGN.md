@@ -59,20 +59,20 @@ DONE()
 单动作示例：
 
 ```json
-{"action_type":"PRESS","parameters":{"key":" "}}
+{"action_type":"PRESS","parameters":{"key":"space"}}
 ```
 
 序列示例：
 
 ```json
 [
-  {"action_type":"PRESS","parameters":{"key":" "}},
+  {"action_type":"PRESS","parameters":{"key":"space"}},
   {"action_type":"WAIT","parameters":{"duration_s":1.0}},
-  {"action_type":"PRESS","parameters":{"key":" "}}
+  {"action_type":"PRESS","parameters":{"key":"space"}}
 ]
 ```
 
-这里空格字符 `" "` 是当前 `KEYBOARD_KEYS` 中的空格键表示。不要把前面的概念示例 `SPACE` 当成已存在的键名。
+空格键统一写为 `"space"`；不要使用字面空格或其他未注册别名。
 
 ## env.step、序列和等待
 

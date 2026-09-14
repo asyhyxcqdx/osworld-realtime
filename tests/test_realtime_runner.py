@@ -163,12 +163,12 @@ def test_vm_sequence_has_no_intermediate_observation_or_implicit_sleep(monkeypat
     monkeypatch.setattr("desktop_env.server.realtime.time.sleep", sleep)
     groups = [
         {
-            "action": {"action_type": "PRESS", "parameters": {"key": " "}},
+            "action": {"action_type": "PRESS", "parameters": {"key": "space"}},
             "commands": ['pyautogui.events.append("a")'],
         },
         {"action": {"action_type": "WAIT", "parameters": {"duration_s": 0.5}}, "commands": []},
         {
-            "action": {"action_type": "PRESS", "parameters": {"key": " "}},
+            "action": {"action_type": "PRESS", "parameters": {"key": "space"}},
             "commands": ['pyautogui.events.append("b")'],
         },
     ]
