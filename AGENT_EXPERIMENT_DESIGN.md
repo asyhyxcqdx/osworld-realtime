@@ -312,7 +312,7 @@ python scripts/python/run_multienv.py \
 ```bash
 python scripts/python/build_realtime_vm_image.py \
   --source docker_vm_data/Ubuntu-realtime-gui.qcow2 \
-  --output docker_vm_data/Ubuntu-realtime-gui-fmp4.qcow2
+  --output docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2
 ```
 
 脚本会启动临时 VM，使用同一套安装逻辑写入临时 overlay，关闭 VM 后用 Docker 镜像内的 `qemu-img` 生成新的 qcow2。原镜像只读且不会被修改；需要替换输出时显式加 `--force`。VM 要求 sudo 密码时从 `OSWORLD_VM_PASSWORD` 读取。生成成功后，把四组命令的 `--path_to_vm` 换成新文件，并省略 `--install_realtime_server`。

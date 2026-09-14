@@ -12,6 +12,8 @@
 
 任务 JSON、统一任务清单和 HTML 目录均为 69 个，manifest benchmark_id 与任务/网页编号一一对应；仓库 `tests/test_realtime_gui_bench_manifest.py` 通过 5 项。当前环境层以该最终包为准，历史验收段落保留用于追溯。
 
+实时执行镜像已重新烘焙为 `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`，原同用途的 `Ubuntu-realtime-gui-fmp4.qcow2` 已移除。新镜像启动后报告 `fmp4=true`、`sequence=true`、`version=1`；镜像内 `realtime.py` SHA-256 与仓库一致，并以真实 `/realtime/sequence` 请求验证 `WAIT 0.25` 实际耗时 `0.250364` 秒。镜像验证记录在 `/mnt/zhaorunsong/yhyx/realtime-game-final-validation-20260915/final_image_check.json`。后续 realtime Agent 运行必须使用该 final 镜像。
+
 2026-09-08 按用户要求，用 `RealtimeGame(1).zip` 整套替换原来的 107 道任务。
 当前版本是 **69 道**，全部属于 `realtime_gui_bench`，不补齐跳号、不另分变体组。68 道按新包编号导入；Random Enemy 按用户转达的学长意见，任务编号确认为 **D1**。其压缩包文件夹前缀仍为 C2，保留这一来源差异记录，不按该前缀改归 C 类。
 
