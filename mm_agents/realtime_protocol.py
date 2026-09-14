@@ -1,11 +1,11 @@
 """The four ablations share the existing computer_13 action vocabulary."""
-import json
-import math
-import re
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field
-from desktop_env.actions import ACTION_SPACE, KEYBOARD_KEYS
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from desktop_env.actions import (
+    ACTION_DEFINITION_BY_TYPE,
+    ACTION_DEFINITIONS,
+)
 
 
 class GetFramesArgs(BaseModel):
@@ -32,58 +32,46 @@ FRAME_TOOL = {
 }
 
 
-def _json_parameter_schema(rule):
-    kind = rule.get("type")
-    if kind is float:
-        schema = {"type": "number"}
-    elif kind is int:
-        schema = {"type": "integer"}
-    elif kind is str:
-        schema = {"type": "string"}
-    elif kind is list:
-        schema = {"type": "array", "items": {"type": "string"}}
-        values = rule.get("range")
-        if values and len(values) == 1 and isinstance(values[0], list):
-            schema["items"]["enum"] = values[0]
-    else:
-        raise ValueError(f"Unsupported computer action parameter type: {kind!r}")
-    values = rule.get("range")
-    if values and kind is str:
-        schema["enum"] = values
-    if values and kind in {float, int} and len(values) == 2:
-        schema["minimum"], schema["maximum"] = values
-    return schema
-
-
 def _action_tool_name(action_type):
     return f"computer_{action_type.lower()}"
+
+
+def _provider_parameters_schema(model):
+    schema = model.model_json_schema()
+
+    def clean(node):
+        if isinstance(node, dict):
+            node.pop("title", None)
+            node.pop("default", None)
+            nullable = node.get("anyOf")
+            if isinstance(nullable, list) and len(nullable) == 2:
+                non_null = [item for item in nullable if item.get("type") != "null"]
+                if len(non_null) == 1:
+                    node.clear()
+                    node.update(clean(non_null[0]))
+                    return node
+            for value in node.values():
+                clean(value)
+        elif isinstance(node, list):
+            for value in node:
+                clean(value)
+        return node
+
+    return clean(schema)
 
 
 def _build_action_tools():
     tools = []
     names = {}
-    for spec in ACTION_SPACE:
-        action_type = spec["action_type"]
-        if action_type == "FAIL":
-            continue
-        properties = {}
-        required = []
-        for name, rule in spec.get("parameters", {}).items():
-            properties[name] = _json_parameter_schema(rule)
-            if not rule.get("optional", False):
-                required.append(name)
-        parameters = {
-            "type": "object",
-            "properties": properties,
-            "required": required,
-            "additionalProperties": False,
-        }
+    for definition in ACTION_DEFINITIONS:
+        action_type = definition.action_type
+        parameters = _provider_parameters_schema(definition.parameters_model)
         tool_name = _action_tool_name(action_type)
         names[tool_name] = action_type
         tools.append(
             {
                 "name": tool_name,
-                "description": spec.get("note", action_type),
+                "description": definition.note,
                 "parameters": parameters,
             }
         )
@@ -93,93 +81,104 @@ def _build_action_tools():
 ACTION_TOOLS, ACTION_TOOL_TYPES = _build_action_tools()
 
 
-def load_output(text):
-    """One JSON payload only; never silently execute multiple fenced blocks."""
-    text = text.strip()
-    blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if blocks:
-        if len(blocks) != 1:
-            raise ValueError("Return one JSON block; put a sequence in one JSON array.")
-        text = blocks[0].strip()
-    if text in {"DONE", "FAIL", "WAIT"}:
-        return {"action_type": text}
+class ForbiddenShortcutError(ValueError):
+    """Raised when an action would leave or inspect the game page."""
 
-    def reject_constant(value):
-        raise ValueError(f"Non-finite JSON number: {value}")
 
-    return json.loads(text, parse_constant=reject_constant)
+_BLOCKED_SINGLE_KEYS = {
+    "f5",
+    "f12",
+    "browserrefresh",
+    "browserback",
+    "browserforward",
+    "browserhome",
+}
+_BLOCKED_COMBINATIONS = {
+    frozenset({"ctrl", "r"}),
+    frozenset({"ctrl", "shift", "r"}),
+    frozenset({"ctrl", "shift", "i"}),
+    frozenset({"ctrl", "shift", "j"}),
+    frozenset({"ctrl", "shift", "c"}),
+    frozenset({"ctrl", "u"}),
+    frozenset({"ctrl", "l"}),
+    frozenset({"ctrl", "s"}),
+    frozenset({"ctrl", "p"}),
+    frozenset({"alt", "left"}),
+    frozenset({"alt", "right"}),
+}
+
+
+def _normalise_key(key):
+    value = str(key).lower()
+    modifier_aliases = {
+        "ctrlleft": "ctrl",
+        "ctrlright": "ctrl",
+        "shiftleft": "shift",
+        "shiftright": "shift",
+        "altleft": "alt",
+        "altright": "alt",
+        "winleft": "win",
+        "winright": "win",
+        "optionleft": "option",
+        "optionright": "option",
+    }
+    return modifier_aliases.get(value, value)
+
+
+def _is_blocked_key_sequence(keys):
+    normalised = {_normalise_key(key) for key in keys}
+    return bool(normalised & _BLOCKED_SINGLE_KEYS) or any(
+        combination <= normalised for combination in _BLOCKED_COMBINATIONS
+    )
 
 
 def validate_action(action):
     if not isinstance(action, dict) or set(action) - {"action_type", "parameters"}:
         raise ValueError("An action has action_type and optional parameters only.")
-    spec = next(
-        (s for s in ACTION_SPACE if s["action_type"] == action.get("action_type")), None
-    )
-    if spec is None:
+    action_type = action.get("action_type")
+    definition = ACTION_DEFINITION_BY_TYPE.get(action_type)
+    if definition is None:
+        if action_type == "FAIL":
+            raise ValueError("FAIL is not an agent action; submit DONE only after terminal game state.")
         raise ValueError("Unknown action_type.")
     params = action.get("parameters", {})
-    specs = spec.get("parameters", {})
-    if not isinstance(params, dict) or set(params) - set(specs):
-        raise ValueError("Unknown action parameter (WAIT has no duration parameter).")
-    for name, rule in specs.items():
-        if name not in params:
-            if not rule["optional"]:
-                raise ValueError(f"Missing {name} for {spec['action_type']}.")
-            continue
-        value = params[name]
-        kind = rule["type"]
-        valid_type = (
-            isinstance(value, (int, float))
-            if kind is float
-            else isinstance(value, kind)
-        )
-        if isinstance(value, bool) or not valid_type:
-            raise ValueError(f"Invalid type for {name}.")
-        if kind in {float, int} and not math.isfinite(value):
-            raise ValueError(f"Non-finite {name}.")
-        limits = rule.get("range")
-        if kind is float and limits and not limits[0] <= value <= limits[1]:
-            raise ValueError(f"Coordinate {name} outside screen bounds.")
-        if name in {"button", "num_clicks", "key"} and value not in limits:
-            raise ValueError(f"Invalid {name}; use the existing action vocabulary.")
-        if name == "keys" and (not value or any(k not in KEYBOARD_KEYS for k in value)):
-            raise ValueError("Invalid HOTKEY keys.")
-    if ("x" in params) != ("y" in params):
-        raise ValueError("Supply x and y together.")
-    action_type = action["action_type"]
-    if action_type == "FAIL":
-        raise ValueError("FAIL is not an agent action; submit DONE only after terminal game state.")
-    if action_type == "PRESS" and params.get("key") in {
-        "browserrefresh",
-        "browserback",
-        "browserforward",
-        "browserhome",
-        "f5",
-    }:
-        raise ValueError("Refreshing or navigating away from the game page is forbidden.")
+    if not isinstance(params, dict):
+        raise ValueError("Action parameters must be an object.")
+    try:
+        definition.parameters_model.model_validate(params)
+    except ValidationError as exc:
+        raise ValueError(str(exc)) from exc
+    if action_type == "PRESS" and _is_blocked_key_sequence([params["key"]]):
+        raise ForbiddenShortcutError("Refreshing or navigating away from the game page is forbidden.")
     if action_type == "HOTKEY":
-        keys = {str(key).lower() for key in params.get("keys", [])}
-        if "browserrefresh" in keys or "f5" in keys or (
-            "ctrl" in keys and ("r" in keys or "shift" in keys)
-        ):
-            raise ValueError("Refreshing or navigating away from the game page is forbidden.")
+        if _is_blocked_key_sequence(params.get("keys", [])):
+            raise ForbiddenShortcutError("Refreshing or navigating away from the game page is forbidden.")
     return action
 
 
-def parse_actions(text, *, sequence=False, max_actions=100):
-    value = load_output(text)
-    actions = value if isinstance(value, list) else [value]
-    if not 1 <= len(actions) <= (max_actions if sequence else 1):
-        raise ValueError("Invalid action count for this agent group.")
-    for i, action in enumerate(actions):
+def validate_action_sequence(actions):
+    """Validate actions and reject blocked shortcuts split across key events."""
+    held = set()
+    for action in actions:
         validate_action(action)
-        if action["action_type"] == "DONE" and i != len(actions) - 1:
-            raise ValueError("DONE must be the last action.")
+        action_type = action["action_type"]
+        params = action.get("parameters", {})
+        if action_type == "KEY_DOWN":
+            held.add(_normalise_key(params["key"]))
+            if _is_blocked_key_sequence(held):
+                raise ForbiddenShortcutError("Refreshing or navigating away from the game page is forbidden.")
+        elif action_type == "PRESS":
+            if _is_blocked_key_sequence(held | {_normalise_key(params["key"])}):
+                raise ForbiddenShortcutError("Refreshing or navigating away from the game page is forbidden.")
+        elif action_type == "HOTKEY":
+            if _is_blocked_key_sequence(held | {_normalise_key(key) for key in params["keys"]}):
+                raise ForbiddenShortcutError("Refreshing or navigating away from the game page is forbidden.")
+        elif action_type == "KEY_UP":
+            held.discard(_normalise_key(params["key"]))
     return actions
 
 
-def system_prompt(sequence, frames, pause, max_actions, max_queries):
+def system_prompt(sequence, frames, max_actions, max_queries):
     output = (
         f"Submit 1-{max_actions} native computer action tool calls. "
         "The calls execute consecutively in the VM with one final screenshot. "
@@ -188,17 +187,15 @@ def system_prompt(sequence, frames, pause, max_actions, max_queries):
         else "Submit exactly one native computer action tool call per decision. "
     )
     prompt = (
-        "You control a desktop using native computer action tools. Coordinates are screen pixels. "
+        "You control a desktop using native computer action tools. The VM screen is 1920x1080, "
+        "and all x/y action parameters use that full-screen pixel coordinate system. "
+        "If the vision provider displays the image resized to 768x432, multiply its displayed "
+        "coordinates by 2.5 before submitting the action (for example, displayed (400, 300) "
+        "means action (1000, 750)). Do not submit coordinates from the resized image directly. "
         "Use key names exactly as listed (a space character ' ' is the space bar). "
         "Do not invent action parameters or execute Python. Never refresh, reload, reopen, or navigate away from the game page. "
         "DONE is the only terminal action; submit it only when the game is visibly successful or has exhausted its attempts. "
-        f"WAIT has no parameters. pause={pause} seconds. "
-        + (
-            f"WAIT sleeps once for {pause} seconds. "
-            if sequence
-            else f"Ordinary actions sleep {pause} seconds before observation; legacy WAIT sleeps twice. "
-        )
-        + "MOVE_TO duration stays random 0.5-1 seconds; DRAG_TO stays 1 second. "
+        "Use the registered tool schemas exactly. No hidden delay is inserted between actions. "
         + output
         + "Do not finish with a text-only response."
     )

@@ -37,25 +37,24 @@
 继续使用 `desktop_env/actions.py` 中的定义：
 
 ```text
-MOVE_TO(x, y)
+MOVE_TO(x, y, duration_s)
 CLICK(button?, x?, y?, num_clicks?)
 MOUSE_DOWN(button?)
 MOUSE_UP(button?)
 RIGHT_CLICK(x?, y?)
 DOUBLE_CLICK(x?, y?)
-DRAG_TO(x, y)
+DRAG_TO(x, y, duration_s)
 SCROLL(dx, dy)
 TYPING(text)
 PRESS(key)
 KEY_DOWN(key)
 KEY_UP(key)
 HOTKEY(keys)
-WAIT()
+WAIT(duration_s)
 DONE()
-FAIL()
 ```
 
-不增加 `WAIT.duration_s`、`delay_after_s` 或其他动作字段。单动作组返回一个对象；序列组返回一个 JSON 数组，数组内仍然是原来的动作对象。`DONE`/`FAIL` 只能出现在末尾。
+`WAIT.duration_s` 是等待动作的必需参数，取值范围为 0–60 秒。`MOVE_TO.duration_s` 和 `DRAG_TO.duration_s` 也是必需参数，取值范围为 0–10 秒。不再使用全局 action pause、随机移动时长或其他隐含等待字段。Agent 不提供 `FAIL`；单动作组返回一个对象，序列组返回一个 JSON 数组，`DONE` 只能出现在末尾。
 
 单动作示例：
 
@@ -68,7 +67,7 @@ FAIL()
 ```json
 [
   {"action_type":"PRESS","parameters":{"key":" "}},
-  {"action_type":"WAIT"},
+  {"action_type":"WAIT","parameters":{"duration_s":1.0}},
   {"action_type":"PRESS","parameters":{"key":" "}}
 ]
 ```
@@ -77,13 +76,13 @@ FAIL()
 
 ## env.step、序列和等待
 
-现有 `env.step(action, pause)` 包含：
+实时模式的 `env.step(action)` 和 `env.step_sequence(actions)` 包含：
 
 ```text
-控制器执行动作 → 等待 pause → 取观测 → 返回 observation/reward/done/info
+控制器执行动作 → 取观测 → 返回 observation/reward/done/info
 ```
 
-当前 `reward` 固定初始化为 0；`done` 默认 False，`DONE`/`FAIL` 把它设为 True；`info` 保存相应结束标记。真实任务评分仍在任务结束时由 `evaluate()` 完成，并非每个动作都会获得一次游戏评分。
+当前 `reward` 固定初始化为 0；`done` 默认 False，`DONE` 把它设为 True；`info` 保存结束标记。真实任务评分仍在任务结束时由 `evaluate()` 完成，并非每个动作都会获得一次游戏评分。
 
 序列组先在主机上用现有控制器生成完整命令列表，然后只向虚拟机发送一次：
 
@@ -91,13 +90,11 @@ FAIL()
 动作 1 → 动作 2 → 动作 3 → 返回整组执行记录 → 取一次最终观测
 ```
 
-动作之间没有截图或网络往返，不自动插入 0.5 秒。`MOVE_TO` 的随机 0.5～1 秒、`DRAG_TO` 的约 1 秒、PyAutoGUI 原有的调用间停顿均保留。遇到 `WAIT` 才按 `pause` 等待一次。
-
-`pause` 来自 `--sleep_after_execution`，不是动作字段。默认值为 0。旧的单动作 `WAIT` 会等待两次 `pause`，序列路径中的 `WAIT` 等待一次；采用默认 0 时两者都没有额外睡眠。若实验改为非零，必须在报告中保留这个执行语义差异，不能称为同样的实际等待时长。
+动作之间没有截图或网络往返，也不自动插入间隔。`MOVE_TO`、`DRAG_TO` 和 `WAIT` 的持续时间由各自动作参数明确给出，并由 VM 执行、计入录屏时间轴；普通动作之间没有隐含等待。
 
 序列执行记录每个动作的开始/结束任务时间，不再使用绝对定时动作计划，也没有模型指定的精确动作开始时刻。网络超时或部分执行错误不自动重发整组动作，避免重复点击/按键；错误中记录已执行的部分。
 
-这里的“动作回合”按实际键鼠动作计算：一个 `PRESS`、一个 `WAIT` 或一个 `CLICK` 各算一个原子动作。一次模型回复可以包含多个原子动作；它们在序列路径中连续执行。`get_frames` 查询和模型思考不是动作回合，但会分别记入模型请求数和工具调用数。
+这里区分两个计数：一个 `PRESS`、一个 `WAIT` 或一个 `CLICK` 各算一个原子动作；一次模型从当前观测到提交动作的过程算一个决策回合。一次序列回复可以包含多个原子动作，但只计一个决策回合。`get_frames` 查询和模型思考不增加决策回合数，但会分别记入模型请求数和工具调用数。
 
 ## 时间零点与持续录像
 
@@ -187,13 +184,7 @@ Anthropic 接口把这些内容放在一个 `tool_result` 的内容数组里；C
 - `--api_format openai_responses`：`/v1/responses`，保留 `function_call` 和推理项，回传 `function_call_output`。
 - `auto` 仅按 Claude 名称选择 Anthropic，否则选择 Chat；不根据一次错误响应擅自改变协议。Packy 的 GPT 组若使用 Responses，必须显式配置，通道权限仍由中转站决定。
 
-`--tool_format json` 为普通 content JSON 协议：
-
-```json
-{"tool_call":{"tool_name":"get_frames","times_s":[3.0]}}
-```
-
-由应用校验并分发；这不表示接口已经启用了服务端强制 Structured Output。`GetFramesArgs.model_json_schema()` 只生成参数说明，不负责执行 Python 函数。
+实时 Agent 只接受 `--tool_format native`。旧的 content JSON tool protocol 不属于当前实验接口；`GetFramesArgs.model_json_schema()` 仅用于生成原生工具参数说明，不负责执行 Python 函数。
 
 Agent 3/4 的循环：
 
@@ -210,9 +201,10 @@ Agent 3/4 的循环：
 
 ## 预算、日志和结果
 
-- `--max_steps`：四组都按原子动作数限制，包括 `WAIT`/`DONE`/`FAIL`，不按模型回复数计数。
-- 多动作序列不能超过剩余动作预算，也不会被程序静默截断。
-- `--max_sequence_actions` 默认 16；`--max_frame_queries` 默认 0（不限查询次数）。
+- `--max_steps`：四组都按决策回合数限制，默认 100；一次 sequence 中的多个原子动作只计一个决策回合。
+- `--max_sequence_actions`：仅限制单个决策回合内的原子动作数量，默认 100；不改变决策回合预算。
+- 单个多动作序列不能超过 `max_sequence_actions`，也不会被程序静默截断；序列中的动作不会按数量扣减 `--max_steps` 的决策回合预算。
+- `--max_sequence_actions` 默认 100；`--max_frame_queries` 默认 0（不限查询次数）。
 - 每次模型请求、每次工具调用、返回图片数量、动作数、动作决策次数分别记录。
 - 格式错误最多纠正两次；纠正请求也计入模型调用数，错误输出不执行。
 - 结果自动按模型、实验批次和 agent 隔离到 `result_dir/<model>/<run_id>/agent1`～`agent4`，恢复运行时不会串用另一组成绩。
@@ -297,7 +289,7 @@ python scripts/python/run_multienv.py \
   --api_format anthropic_messages \
   --api_base_url https://www.packyapi.ai \
   --test_all_meta_path evaluation_examples/test_realtime_gui_bench.json \
-  --max_steps 15 \
+  --max_steps 100 \
   --sleep_after_execution 0 \
   --num_envs 1 \
   --install_realtime_server \

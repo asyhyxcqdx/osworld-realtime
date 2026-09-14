@@ -223,9 +223,9 @@ def _normalize_realtime_gui_bench_state(
     pass_at_1 = state["pass_at_1"]
     pass_at_3 = state["pass_at_3"]
 
-    if protocol_version != "realtime-gui-bench/1.0":
+    if protocol_version != "realtime-gui-bench/1.1":
         raise ValueError(
-            "window.BENCH.protocol_version must be realtime-gui-bench/1.0"
+            "window.BENCH.protocol_version must be realtime-gui-bench/1.1"
         )
     if not isinstance(task, str) or not task.strip():
         raise ValueError("window.BENCH.task must be a non-empty string")

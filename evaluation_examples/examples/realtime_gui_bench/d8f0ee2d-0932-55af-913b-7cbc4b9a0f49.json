@@ -79,9 +79,9 @@
       "type": "realtime_gui_bench_state",
       "benchmark_id": "A1",
       "target_url_contains": "127.0.0.1:8765/a1/index.html",
+      "poll_attempts": 3,
       "retry_interval": 0.5,
-      "timeout": 10.0,
-      "poll_attempts": 3
+      "timeout": 10.0
     }
   },
   "proxy": false,

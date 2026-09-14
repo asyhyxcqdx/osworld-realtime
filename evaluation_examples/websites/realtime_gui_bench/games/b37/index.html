@@ -157,9 +157,19 @@ body{
   const GOLD_Y = 300;                   // 金块高度（杆末端摆动范围下方，勾爪竖直下伸可到达）
   const EXTEND_MS = 450, RETRACT_MS = 420, STEADY_MS = 400, COLLECT_MS = 700;
 
-  const BENCH = { task:"claw_grab", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "claw_grab",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const stage=document.getElementById("stage"), arena=document.getElementById("arena");
   const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
@@ -179,7 +189,7 @@ body{
   let goldX = 380, targetAlpha = 0;         // 金块 x + 目标摆角
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+" 第"+BENCH.attempts+"/"+MAX_ATTEMPTS+"次"; }
+  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts_completed+" / "+MAX_ATTEMPTS+" 第"+BENCH.attempts_completed+"/"+MAX_ATTEMPTS+"次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
   function setFeedback(t,c){ feedback.textContent=t; feedback.className="feedback "+(c||""); }
   function easeOutCubic(t){ return 1 - Math.pow(1-t,3); }
@@ -232,15 +242,26 @@ body{
   }
   function collectDone(){
     phase="done";
-    BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+    BENCH.results.push(true);
+    BENCH.attempts_completed += 1;                       // 协议 1.1：成功也计入
+    BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+    BENCH.pass_at_3 = 1;
+    BENCH.passed=true; BENCH.status="passed";
     setStatus("Grabbed! 抓住了","win"); syncURL(); celebrate();
   }
   function failAfterAnim(){
     phase="done";
-    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    BENCH.results.push(false);
+    BENCH.attempts_completed+=1; setHint();
     setStatus("Missed 未命中","lose");
-    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
-    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    if(BENCH.attempts_completed>=MAX_ATTEMPTS){
+      BENCH.attempts_completed=MAX_ATTEMPTS;
+      BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
+      BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return;
+    }
+    BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
+    BENCH.status="running"; syncURL();
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次";
     document.getElementById("retryOverlay").classList.add("show");
   }
 
@@ -384,6 +405,8 @@ body{
     sizeCanvas(); draw(0);
   }
   function arm(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";               // 第一次尝试：ready → running（不消耗机会）
     phase="swing"; startBtn.disabled=true; armNow=performance.now(); grabbed=false; armLen=0;
     lastT=performance.now();
     setStatus("Grab over the gold! 摆到金块上方下抓！","action");
@@ -410,12 +433,14 @@ body{
 
   // 空格：intro/retry/idle = Start/Next；swing = 下抓
   function onIntroStart(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("intro").classList.add("hidden");
     resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
   }
   function onNext(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("retryOverlay").classList.remove("show");
-    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
   function onSpaceKey(e){
     if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
@@ -439,7 +464,7 @@ body{
       targetDeg:Math.round(targetAlpha*180/Math.PI*10)/10,
       goldX:Math.round(goldX), armLen:Math.round(armLen), grabbed,
       inTarget:Math.abs(alpha - targetAlpha)<=ANGLE_EPS_RAD,
-      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+      attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status };
   };
 
   sizeCanvas();

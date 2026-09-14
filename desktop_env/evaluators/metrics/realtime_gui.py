@@ -151,7 +151,7 @@ def realtime_gui_bench_result(result: Any) -> float:
         raise ValueError(
             f"RealtimeGUI-Bench result is missing fields: {', '.join(missing)}"
         )
-    if result["protocol_version"] != "realtime-gui-bench/1.0":
+    if result["protocol_version"] != "realtime-gui-bench/1.1":
         raise ValueError("RealtimeGUI-Bench protocol_version is invalid")
     if not isinstance(result["task"], str) or not result["task"].strip():
         raise ValueError("RealtimeGUI-Bench task must be a non-empty string")

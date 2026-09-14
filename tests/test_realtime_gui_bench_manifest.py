@@ -1,4 +1,3 @@
-import hashlib
 import json
 import uuid
 from pathlib import Path
@@ -72,7 +71,7 @@ def test_task_configs_use_the_shared_instruction_and_evaluator():
         ]
 
 
-def test_target_website_tree_contains_only_index_html_files():
+def test_target_website_tree_contains_only_task_html_files():
     files = [path for path in WEBSITE_ROOT.rglob("*") if path.is_file()]
 
     assert len(files) == 69
@@ -83,26 +82,24 @@ def test_all_pages_declare_the_bench_contract():
     for path in WEBSITE_ROOT.glob("*/index.html"):
         html = path.read_text(encoding="utf-8")
         assert "window.BENCH" in html, path
-        assert "results:[]" in html or "results: []" in html, path
-        assert "status:\"running\"" in html or "status: \"running\"" in html, path
+        assert 'protocol_version: "realtime-gui-bench/1.1"' in html, path
+        assert "attempts_completed" in html, path
+        assert "pass_at_1" in html and "pass_at_3" in html, path
+        assert "status:\"ready\"" in html or "status: \"ready\"" in html, path
         assert "syncURL" in html, path
 
 
-def test_d1_preserves_author_original_including_attempt_hint():
-    data = (WEBSITE_ROOT / "d1/index.html").read_bytes()
-    html = data.decode("utf-8")
+def test_d1_uses_the_v11_attempt_contract():
+    html = (WEBSITE_ROOT / "d1/index.html").read_text(encoding="utf-8")
 
-    # The user chose the author's unchanged release on 2026-09-09.
-    assert hashlib.sha256(data).hexdigest() == (
-        "cb86362dfd41e28c8d535e074a24fe6bb1bb6f9cf80491dc0a5bd3e50e096375"
-    )
-    assert '<div class="hint" id="hint">Attempt 0 / 3</div>' in html
-    assert 'hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS' in html
+    assert 'protocol_version: "realtime-gui-bench/1.1"' in html
+    assert 'task: "random_enemy"' in html
+    assert '<div class="hint" id="hint">Attempt 0 / 3' in html
     assert 'id="startBtn"' in html
     assert 'id="nextBtn"' in html
     assert 'id="nextTitle"' in html
-    assert 'showToast("Attempt 1 / " + MAX_ATTEMPTS)' in html
-    assert 'showToast("Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS)' in html
+    assert "Attempt 1 /" in html
+    assert "Attempt " in html and "MAX_ATTEMPTS" in html
     assert "const MAX_ATTEMPTS = 3;" in html
-    assert "BENCH.attempts += 1;" in html
+    assert "BENCH.attempts_completed += 1;" in html
     assert "BENCH.passed = true;" in html

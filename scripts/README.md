@@ -32,7 +32,6 @@ python scripts/python/run_multienv.py \
 
 - `python/` 下的 `run_*.py` 用于其他模型或 OSWorld 运行模式。
 - `bash/` 下的 `run_*.sh` 是预设参数示例。
-- `generate_realtime_gui_bench.py` 用于生成 69 道实时任务的 OSWorld 配置。
 - `validate_realtime_gui_bench.py` 用于检查实时任务接入和评分路径。
 - `install_realtime_server.py` 用于将实时录像与历史帧服务安装到当前 VM。
 

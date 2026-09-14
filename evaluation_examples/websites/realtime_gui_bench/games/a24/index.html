@@ -130,9 +130,19 @@
   const BALL_R = 16;
   const DROP_MS = 380, HIDE_MS = 380;
 
-  const BENCH = { task:"plinko", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "plinko_drop",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                     // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   const statusEl = document.getElementById("status");
@@ -149,10 +159,10 @@
   let sink = 0;              // 球滚进槽底暗格进度
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function setHint(){ const n = BENCH.attempts_completed + 1; hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+" · 第 "+n+" / "+MAX_ATTEMPTS+" 次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
-  window.__dbg = function(){ return { phase, targetIdx, ballX: SLOTS[targetIdx], attempts: BENCH.attempts, passed: BENCH.passed }; };
+  window.__dbg = function(){ return { phase, targetIdx, ballX: SLOTS[targetIdx], attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status }; };
 
   function pinX(row, col){
     return (row % 2 === 0) ? 70 + col*60 : 100 + col*60;
@@ -160,6 +170,8 @@
 
   function onDrop(){
     if (phase !== "idle") return;
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";                // 点 Reveal 开始第一次尝试：ready → running（不消耗机会）
     let x = 400;
     const path = [{x: 400, y: 56}];
     for (const py of PIN_ROWS){
@@ -286,6 +298,10 @@
     BENCH.results.push(ok);
     if (ok){
       phase = "done";
+      // 协议 1.1：判定瞬间先原子写 BENCH，再播动画；成功也计入 attempts_completed
+      BENCH.attempts_completed += 1;
+      BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+      BENCH.pass_at_3 = 1;
       BENCH.passed = true; BENCH.status = "passed";
       setStatus("Success! 成功","win"); syncURL(); celebrate();
       return;
@@ -295,21 +311,30 @@
   });
 
   function nextAttempt(){
-    BENCH.attempts += 1; setHint();
-    if (BENCH.attempts >= MAX_ATTEMPTS){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：不接受会改变结果的操作
+    // 协议 1.1：失败也计入 attempts_completed
+    BENCH.attempts_completed += 1; setHint();
+    if (BENCH.attempts_completed >= MAX_ATTEMPTS){
+      BENCH.attempts_completed = MAX_ATTEMPTS;
+      BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
       BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
       return;
     }
-    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    BENCH.status = "running"; syncURL();
+    const n = BENCH.attempts_completed + 1;
+    document.getElementById("retryText").textContent = "Attempt " + n + " / " + MAX_ATTEMPTS + " · 第 " + n + " / " + MAX_ATTEMPTS + " 次";
     document.getElementById("retryOverlay").classList.add("show");
   }
 
   function startRound(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：重试入口失效
     ballX = 400; ballY = 56; targetIdx = 0; segs = []; phase = "idle"; sink = 0;
     revealBtn.disabled = false;
     setStatus("Watch the ball fall, then tap the slot it lands in · 看球下落，点它滚进的槽","");
     syncURL();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+    const n = BENCH.attempts_completed + 1;
+    showToast("Attempt "+n+" / "+MAX_ATTEMPTS+" · 第 "+n+" / "+MAX_ATTEMPTS+" 次");
   }
 
   function celebrate(){ overlay.classList.add("show"); launchConfetti(); }

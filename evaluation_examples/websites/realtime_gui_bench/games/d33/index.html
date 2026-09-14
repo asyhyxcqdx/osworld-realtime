@@ -118,11 +118,23 @@
   const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
   const confettiCv = document.getElementById("confetti");
 
-  const BENCH = { task:"random_drumroll", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  // ==== Realtime GUI Bench 1.1 接口（checker 只读本对象评分）====
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "random_drumroll",
+    max_attempts: MAX_ATTEMPTS,      // 恒为 3（与内部常量同源）
+    attempts_completed: 0,           // 已结算的完整尝试数（成功也 +1）
+    passed: false,
+    status: "ready",                 // 初始必须 ready（点 Start 才转 running）
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: [],                     // 诊断字段（不参与评分）
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3); }catch(e){} }
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+"  尝试 "+BENCH.attempts+" / "+MAX_ATTEMPTS; }
+  function attemptLabel(){ return Math.min(BENCH.attempts_completed + 1, MAX_ATTEMPTS); }   // 当前尝试序号（本游戏原来漏了 +1，顺带修正）
+  function setHint(){ const n=attemptLabel(); hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+"  尝试 "+n+" / "+MAX_ATTEMPTS; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   // 状态机：idle(等待下一拍) | beat(拍点弹出，200ms 判定窗口) | hit | miss
@@ -136,7 +148,7 @@
   let lastT = performance.now();
   let missLock = false;
 
-  window.__dbg = function(){ return { phase, beatCount, totalBeats, nextIn:+Math.max(0, nextBeatAt - performance.now()).toFixed(0), attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status }; };
+  window.__dbg = function(){ return { phase, beatCount, totalBeats, nextIn:+Math.max(0, nextBeatAt - performance.now()).toFixed(0), attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status }; };
 
   function resetRound(){
     phase = "idle";
@@ -161,9 +173,12 @@
       phase = "hit";
       beatCount += 1;
       if (beatCount >= totalBeats) {
-        // 全连击成功
-        BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
-        setStatus("Full combo! 全连击！","win"); syncURL(); celebrate();
+        // 全连击成功：判定瞬间先原子写完 BENCH，再播动画
+        BENCH.results.push("hit");
+        BENCH.attempts_completed += 1;                                   // 成功也 +1
+        BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;      // 仅「第一次就成功」记 1
+        BENCH.pass_at_3 = 1; BENCH.passed = true; BENCH.status = "passed";
+        setHint(); setStatus("Full combo! 全连击！","win"); syncURL(); celebrate();
         return;
       }
       // 下一拍间隔独立随机（200~1000ms），无预告
@@ -181,16 +196,23 @@
     missLock = true;
     phase = "miss";
     missAt = performance.now();
+    // —— 判定瞬间先原子写完 BENCH，再播动画 ——
     BENCH.results.push("miss");
-    BENCH.attempts += 1; setHint();
-    setStatus("Missed! 漏拍！","lose"); syncURL();
-    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
-      setTimeout(()=>{ BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show"); }, 700);
+    BENCH.attempts_completed += 1;
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    const exhausted = BENCH.attempts_completed >= MAX_ATTEMPTS;
+    if (exhausted) BENCH.attempts_completed = MAX_ATTEMPTS;
+    BENCH.status = exhausted ? "failed" : "running";
+    setHint(); syncURL();
+    setStatus("Missed! 漏拍！","lose");
+    if (exhausted) {
+      setTimeout(()=>{ failOverlay.classList.add("show"); }, 700);
       return;
     }
     setTimeout(()=>{
       document.getElementById("retrySub").textContent = "Missed a note! 漏拍了！";
-      document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+      const n = attemptLabel();
+      document.getElementById("retryTitle").textContent = "Attempt "+n+" / "+MAX_ATTEMPTS+"  尝试 "+n+" / "+MAX_ATTEMPTS;
       document.getElementById("retryOverlay").classList.remove("hidden");
     }, 700);
   }
@@ -325,15 +347,18 @@
   let frameStarted = false;
 
   function startGame(){
+    if (BENCH.status !== "ready") return;                  // 只有 ready 能开局
     introEl.classList.add("hidden");
+    BENCH.status = "running"; syncURL();                    // 开始第一次尝试（不消耗机会）
     resetRound();
     showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
     if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
   }
   function nextRound(){
+    if (BENCH.status !== "running") return;                 // 终态冻结：没有第四次入口
     retryEl.classList.add("hidden");
     resetRound();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+    showToast("Attempt "+attemptLabel()+" / "+MAX_ATTEMPTS+"  尝试 "+attemptLabel()+" / "+MAX_ATTEMPTS);
   }
 
   document.getElementById("introStart").addEventListener("click", startGame);

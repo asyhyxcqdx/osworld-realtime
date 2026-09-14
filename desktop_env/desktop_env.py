@@ -428,19 +428,34 @@ class DesktopEnv(gym.Env):
         info = {}
         logger.info(f"Step {self._step_no} in trajectory {self._traj_no} with action: {action}")
         # handle the special actions
-        if action in ['WAIT', 'FAIL', 'DONE'] or (type(action) == dict and action['action_type'] in ['WAIT', 'FAIL', 'DONE']):
-            if action == 'WAIT' or (type(action) == dict and action.get('action_type') == 'WAIT'):
-                time.sleep(pause)
-            elif action == 'FAIL' or (type(action) == dict and action.get('action_type') == 'FAIL'):
+        action_type = action.get("action_type") if isinstance(action, dict) else action
+        realtime_session = getattr(self.controller, "realtime_session", None)
+        if action_type in ['WAIT', 'FAIL', 'DONE']:
+            if action_type == 'WAIT':
+                duration = (
+                    action.get("parameters", {}).get("duration_s", pause)
+                    if isinstance(action, dict)
+                    else pause
+                )
+                if not realtime_session:
+                    time.sleep(duration)
+            elif action_type == 'FAIL':
                 done = True
                 info = {"fail": True}
-            elif action == 'DONE' or (type(action) == dict and action.get('action_type') == 'DONE'):
+            elif action_type == 'DONE':
                 done = True
                 info = {"done": True}
 
         if self.action_space == "computer_13":
-            # the set of all possible actions defined in the action representation
-            self.controller.execute_action(action)
+            if realtime_session:
+                # Route realtime actions through the VM executor so WAIT and
+                # action timing share the recorder's clock.
+                result = self.controller.execute_sequence([action])
+                done = result["done"]
+                info = {**result["info"], "sequence_actions": result["actions"]}
+            else:
+                # the set of all possible actions defined in the action representation
+                self.controller.execute_action(action)
         elif self.action_space in ["pyautogui", "claude_computer_use", "gemini_computer_use"]:
             if action in ['WAIT', 'FAIL', 'DONE'] or (type(action) == dict and action.get('action_type') in ['WAIT', 'FAIL', 'DONE']):
                 self.controller.execute_action(action)
@@ -453,18 +468,19 @@ class DesktopEnv(gym.Env):
                     command = action['command']
                     self.controller.execute_python_command(command)
 
-        time.sleep(pause)
+        if self.action_space != "computer_13":
+            time.sleep(pause)
         observation = self._get_obs()
 
         return observation, reward, done, info
 
-    def step_sequence(self, actions, pause=0):
+    def step_sequence(self, actions, pause=None):
         """Send the complete list once; observe only after the VM finishes it."""
         if self.action_space != "computer_13":
             raise ValueError("Realtime sequences require the existing computer_13 action space")
         from desktop_env.controllers.python import SequenceExecutionError
         try:
-            result = self.controller.execute_sequence(actions, pause)
+            result = self.controller.execute_sequence(actions)
         except SequenceExecutionError as exc:
             attempted = [entry["action"] for entry in exc.details.get("actions", [])]
             self.action_history.extend(attempted)

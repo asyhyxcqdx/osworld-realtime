@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Target</title>
+<title>Timed Target 限时靶</title>
 <style>
   :root { --bg1:#131a26; --ok:#34d399; --bad:#ff5c7a; --arm:#ff5f4a; --gold:#ffd166; }
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -81,9 +81,9 @@
 </style>
 </head>
 <body>
-  <div class="status" id="status">Press Start</div>
+  <div class="status" id="status">Press Start 按开始</div>
   <div class="stage">
-    <button class="btn" id="startBtn">Start</button>
+    <button class="btn" id="startBtn">Start 开始</button>
     <div class="target-wrap">
       <svg class="timer-ring" id="timerRing" width="278" height="278" viewBox="0 0 278 278">
         <circle cx="139" cy="139" r="132"></circle>
@@ -94,35 +94,35 @@
       </div>
     </div>
   </div>
-  <div class="hint" id="hint">Attempt 0 / 3</div>
-  <div style="font-size:12px;color:#7d86ab;letter-spacing:.4px;">Click Start, then click the target before it fades</div>
+  <div class="hint" id="hint">Attempt 0 / 3 第0/3次</div>
+  <div style="font-size:12px;color:#7d86ab;letter-spacing:.4px;">Click Start, then click the target before it fades 点 Start 后，在它消失前点击靶</div>
 
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay">
     <div class="celeb-box">
       <div class="celeb-check ok">✓</div>
-      <div class="celeb-title">Success!</div>
-      <div class="celeb-sub">Task completed</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
     </div>
   </div>
   <div class="overlay" id="failOverlay">
     <div class="celeb-box">
       <div class="celeb-check fail">✗</div>
-      <div class="celeb-title">Failed</div>
-      <div class="celeb-sub">Out of attempts</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
     </div>
   </div>
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
-      <div class="celeb-title" id="retryText">Attempt 2 / 3</div>
-      <button class="intro-start" id="nextBtn">Next</button>
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
-      <div class="intro-title">Target</div>
-      <div class="intro-rule">A target appears. Press Start, then click the target before it fades.</div>
-      <button class="intro-start" id="introStart">Start</button>
+      <div class="intro-title">Timed Target 限时靶</div>
+      <div class="intro-rule">A target appears. Press Start, then click the target <b>before it fades</b> (within 1 second). The golden ring shows the remaining time.<br>出现一个靶：先按 <b>Start</b> 开始，然后在它消失前（<b>1 秒内</b>）点击靶。金色圆环显示剩余时间。</div>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -135,9 +135,19 @@
   const RESET_MS = 700;
   const RING_C = 2 * Math.PI * 132;
 
-  const BENCH = { task:"timed_target", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "timed_target",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
   const btn=document.getElementById("startBtn"), target=document.getElementById("target");
@@ -149,17 +159,19 @@
 
   let phase="idle", timer=null, raf=null, armStart=0;
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS; }
+  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts_completed+" / "+MAX_ATTEMPTS+" 第"+BENCH.attempts_completed+"/"+MAX_ATTEMPTS+"次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   function resetToIdle(){
     phase="idle"; btn.disabled=false; target.classList.remove("armed","hit");
     ring.classList.remove("on");
-    setStatus("Press Start",""); syncURL();
+    setStatus("Press Start 按开始",""); syncURL();
   }
   function arm(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";               // 第一次尝试：ready → running（不消耗机会）
     phase="armed"; btn.disabled=true; target.classList.add("armed"); ring.classList.add("on");
-    setStatus("Hit!","action"); armStart=performance.now();
+    setStatus("Hit! 击打！","action"); armStart=performance.now();
     timer=setTimeout(miss, WINDOW_MS);
     (function tick(now){
       const el=(now-armStart)/WINDOW_MS;
@@ -172,16 +184,27 @@
     clearTimeout(timer); cancelAnimationFrame(raf);
     phase="done"; target.classList.remove("armed"); target.classList.add("hit");
     ring.classList.remove("on");
-    BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
-    setStatus("Success","win"); syncURL(); celebrate();
+    BENCH.results.push(true);
+    BENCH.attempts_completed += 1;                       // 协议 1.1：成功也计入
+    BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+    BENCH.pass_at_3 = 1;
+    BENCH.passed = true; BENCH.status = "passed";
+    setStatus("Success 成功","win"); syncURL(); celebrate();
   }
   function miss(){
     cancelAnimationFrame(raf);
     phase="done"; target.classList.remove("armed"); ring.classList.remove("on");
-    BENCH.results.push(false); BENCH.attempts+=1; setHint();
-    setStatus("Missed","lose");
-    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
-    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS;
+    BENCH.results.push(false);
+    BENCH.attempts_completed += 1; setHint();
+    setStatus("Missed 未命中","lose");
+    if(BENCH.attempts_completed >= MAX_ATTEMPTS){
+      BENCH.attempts_completed = MAX_ATTEMPTS;
+      BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+      BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return;
+    }
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    BENCH.status = "running"; syncURL();
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts_completed+1) + " / " + MAX_ATTEMPTS + " 第" + (BENCH.attempts_completed+1) + "/" + MAX_ATTEMPTS + "次";
     document.getElementById("retryOverlay").classList.add("show");
   }
 
@@ -204,13 +227,27 @@
   btn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
   target.addEventListener("click",hit);
   document.getElementById("introStart").addEventListener("click",()=>{
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("intro").classList.add("hidden");
-    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS);
+    resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
   });
   document.getElementById("nextBtn").addEventListener("click",()=>{
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("retryOverlay").classList.remove("show");
-    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   });
+
+  // 只读调试接口（反作弊：只返回诊断量，不提供任何写状态/自动成功/改 BENCH 的函数）
+  window.__dbg = function(){
+    const el = phase==="armed" ? (performance.now()-armStart) : 0;
+    const progress = Math.min(1, el/WINDOW_MS);
+    return {
+      phase, windowMs:WINDOW_MS,
+      elapsedMs:Math.round(el), remainingMs:Math.round(Math.max(0, WINDOW_MS-el)),
+      ringProgress:Math.round(progress*1000)/1000, armed:phase==="armed",
+      attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status
+    };
+  };
 
   setHint(); syncURL();
 })();

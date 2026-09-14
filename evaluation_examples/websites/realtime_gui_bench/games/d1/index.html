@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Reflex</title>
+<title>Random Enemy 随机迎敌</title>
 <style>
   :root { --bg1:#0f1520; }
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -59,38 +59,38 @@
 </style>
 </head>
 <body>
-  <div class="status" id="status">Get ready…</div>
+  <div class="status" id="status">Get ready… 准备…</div>
   <canvas id="cv" width="800" height="460"></canvas>
-  <div class="tip">Click the enemy when it appears</div>
-  <div class="hint" id="hint">Attempt 0 / 3</div>
+  <div class="tip">Click the enemy when it appears  敌人出现时点击</div>
+  <div class="hint" id="hint">Attempt 0 / 3 尝试 0 / 3</div>
 
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay">
     <div class="celeb-box">
       <div class="celeb-check ok">✓</div>
-      <div class="celeb-title">Success!</div>
-      <div class="celeb-sub">Task completed</div>
+      <div class="celeb-title">Success! 成功！</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
     </div>
   </div>
   <div class="overlay" id="failOverlay">
     <div class="celeb-box">
       <div class="celeb-check fail">✗</div>
-      <div class="celeb-title">Failed</div>
-      <div class="celeb-sub">Out of attempts</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
     </div>
   </div>
   <div class="intro" id="rulesOverlay">
     <div class="intro-box">
-      <div class="intro-title">Random Enemy</div>
-      <div class="intro-rule">An enemy pops up from behind a cover and aims at you. Click it before it shoots. Click the enemy when it appears.</div>
-      <button class="intro-start" id="startBtn">Start</button>
+      <div class="intro-title">Random Enemy 随机迎敌</div>
+      <div class="intro-rule">敌人从掩体后随机冒头并瞄准你，在他开枪前点中他；每次冒头只停留 1 秒。<br>An enemy pops up from behind a random cover and aims at you. Click him before he shoots — each enemy only stays up for 1 second.</div>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
     <div class="overlay" id="nextOverlay">
     <div class="celeb-box">
-      <div class="celeb-title" id="nextTitle">Attempt 2 / 3</div>
+      <div class="celeb-title" id="nextTitle">Attempt 2 / 3 尝试 2 / 3</div>
       <div class="next-dots" id="nextDots"></div>
-      <button class="intro-start" id="nextBtn">Next</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -122,18 +122,30 @@
   const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
   const confettiCv = document.getElementById("confetti");
 
-  const BENCH = { task:"random_enemy", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  // ==== Realtime GUI Bench 1.1 接口（checker 只读本对象评分）====
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "random_enemy",
+    max_attempts: MAX_ATTEMPTS,      // 恒为 3（与 MAX_ATTEMPTS 同源，避免两处漂移）
+    attempts_completed: 0,           // 已结算的完整尝试数（成功也 +1）
+    passed: false,
+    status: "ready",                 // 初始必须 ready（点 Start 才转 running）
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: [],                     // 诊断字段（不参与评分）
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3); }catch(e){} }
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS; }
+  function attemptLabel(){ return Math.min(BENCH.attempts_completed + 1, MAX_ATTEMPTS); }   // 当前这次尝试的序号（终态不外溢成 4）
+  function setHint(){ const n = attemptLabel(); hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+"  尝试 "+n+" / "+MAX_ATTEMPTS; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   let phase = "waiting";   // waiting | popping | out | shot | hit
   let enemyBox = null, enemyVis = 0, windowEnd = 0, popStart = 0, appearAt = 0, shotAt = 0;
   let mouseX = 400, mouseY = 200;
 
-  window.__dbg = function(){ return { phase, enemyX: enemyBox?enemyBox.x:null, enemyVis, attempts: BENCH.attempts, rect: enemyBox&&phase==="out"?enemyRect():null }; };
+  window.__dbg = function(){ return { phase, enemyX: enemyBox?enemyBox.x:null, enemyVis, rect: enemyBox&&phase==="out"?enemyRect():null, attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status }; };
 
   function pickBox(){
     // 避免与上一次出现在同一位置（且 3 次尝试内尽量不重复）
@@ -148,31 +160,48 @@
   function scheduleEnemy(){
     phase = "waiting"; enemyBox = pickBox(); enemyVis = 0;
     appearAt = performance.now() + 600 + Math.random()*900;
-    setStatus("Get ready…","");
+    setStatus("Get ready… 准备…","");
   }
   function popEnemy(){ phase = "popping"; popStart = performance.now(); }
-  function enemyOut(){ phase = "out"; windowEnd = performance.now() + WINDOW_MS; setStatus("Shoot!","alert"); }
+  function enemyOut(){ phase = "out"; windowEnd = performance.now() + WINDOW_MS; setStatus("Shoot! 开枪！","alert"); }
 
   function enemyShoot(){
     // 单次失败：敌人开枪（本轮 miss）
     phase = "shot"; shotAt = performance.now();
     BENCH.results.push(false);
-    BENCH.attempts += 1; setHint();
-    setStatus("Got hit","lose");
-    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
-      // 全部失败
-      setTimeout(()=>{ BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show"); }, 800);
+    // —— 判定瞬间先原子写完 BENCH，再播动画（动画只影响显示，不影响评分状态）——
+    BENCH.attempts_completed += 1;
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    const exhausted = BENCH.attempts_completed >= MAX_ATTEMPTS;
+    if (exhausted) BENCH.attempts_completed = MAX_ATTEMPTS;   // 第三次失败：钳到 3
+    BENCH.status = exhausted ? "failed" : "running";
+    setHint(); syncURL();
+    setStatus("Got hit 被击中！","lose");
+    if (exhausted) {
+      // 全部失败：已定稿为 failed，仅延迟显示失败画面（不提供第四次入口）
+      setTimeout(()=>{ failOverlay.classList.add("show"); }, 800);
       return;
     }
-    // 下一轮（新的敌人）
-    setTimeout(()=>{ document.getElementById("nextTitle").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS; const _d = document.getElementById("nextDots"); _d.innerHTML = ""; for (let _i = 0; _i < MAX_ATTEMPTS; _i++) { const _s = document.createElement("span"); _s.className = "next-dot" + (_i < BENCH.attempts ? " on" : ""); _d.appendChild(_s); } document.getElementById("nextOverlay").classList.add("show"); }, 800);
+    // 下一轮（新的敌人）：BENCH 已写为 running，仅延迟显示重试入口
+    setTimeout(()=>{
+      const n = attemptLabel();
+      document.getElementById("nextTitle").textContent = "Attempt " + n + " / " + MAX_ATTEMPTS + "  尝试 " + n + " / " + MAX_ATTEMPTS;
+      const _d = document.getElementById("nextDots"); _d.innerHTML = "";
+      for (let _i = 0; _i < MAX_ATTEMPTS; _i++) { const _s = document.createElement("span"); _s.className = "next-dot" + (_i < BENCH.attempts_completed ? " on" : ""); _d.appendChild(_s); }
+      document.getElementById("nextOverlay").classList.add("show");
+    }, 800);
   }
 
   function onHit(){
-    if (phase !== "out") return;
+    if (phase !== "out" || BENCH.status !== "running") return;   // 终态冻结：不再接受会改变结果的操作
     phase = "hit";
-    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
-    setStatus("Success","win"); syncURL(); celebrate();
+    BENCH.results.push(true);
+    BENCH.attempts_completed += 1;                                  // 成功也 +1
+    BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;     // 仅「第一次就成功」记 1
+    BENCH.pass_at_3 = 1;
+    BENCH.passed = true;
+    BENCH.status = "passed";
+    setStatus("Success 成功！","win"); syncURL(); celebrate();
   }
 
   function update(now){
@@ -282,7 +311,7 @@
       ctx.fillStyle="rgba(255,40,40,"+(a*0.35)+")"; ctx.fillRect(0,0,800,460);
       // 单次失败提示
       ctx.fillStyle="rgba(255,255,255,"+a+")"; ctx.font="700 42px Arial"; ctx.textAlign="center";
-      ctx.fillText("MISS", 400, 120);
+      ctx.fillText("MISS 未命中", 400, 120);
     }
     drawCrosshair();
   }
@@ -293,7 +322,7 @@
   cv.addEventListener("mousemove",(e)=>{ const p=canvasPos(e); mouseX=p.x; mouseY=p.y; });
   cv.addEventListener("click",(e)=>{
     const p=canvasPos(e); mouseX=p.x; mouseY=p.y;
-    if (phase==="out"){ const r=enemyRect(); if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h) onHit(); }
+    if (phase==="out" && BENCH.status === "running"){ const r=enemyRect(); if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h) onHit(); }
   });
 
   function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
@@ -319,16 +348,19 @@
   });
 
   setHint(); syncURL();
-    document.getElementById("startBtn").addEventListener("click", () => {
+  document.getElementById("startBtn").addEventListener("click", () => {
+    if (BENCH.status !== "ready") return;                  // 只有 ready 能开局
     document.getElementById("rulesOverlay").classList.add("hidden");
+    BENCH.status = "running"; syncURL();                    // 开始第一次尝试（不消耗机会）
     scheduleEnemy();
-    showToast("Attempt 1 / " + MAX_ATTEMPTS);
+    showToast("Attempt 1 / " + MAX_ATTEMPTS + "  尝试 1 / " + MAX_ATTEMPTS);
     requestAnimationFrame(frame);
   });
   document.getElementById("nextBtn").addEventListener("click", () => {
+    if (BENCH.status !== "running") return;                 // 终态冻结：没有第四次入口
     document.getElementById("nextOverlay").classList.remove("show");
     scheduleEnemy();
-    showToast("Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS);
+    showToast("Attempt " + attemptLabel() + " / " + MAX_ATTEMPTS + "  尝试 " + attemptLabel() + " / " + MAX_ATTEMPTS);
   });
 })();
 </script>

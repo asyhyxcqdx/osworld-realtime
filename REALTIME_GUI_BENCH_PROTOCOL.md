@@ -1,6 +1,6 @@
 # Realtime GUI Bench 游戏接口协议
 
-版本：`realtime-gui-bench/1.0`
+版本：`realtime-gui-bench/1.1`
 
 本文是游戏制作 Agent 的正式接口规范。每个游戏网页必须在浏览器全局对象中暴露统一的 `window.BENCH` 状态，OSWorld checker 只读取这个状态中的正式字段评分。游戏内部可以有任意玩法和内部状态，但不能改变本协议规定的字段语义。
 
@@ -23,7 +23,7 @@
 
 ```javascript
 window.BENCH = {
-  protocol_version: "realtime-gui-bench/1.0",
+  protocol_version: "realtime-gui-bench/1.1",
   task: "wall_jump",
   max_attempts: 3,
   attempts_completed: 0,
@@ -38,7 +38,7 @@ window.BENCH = {
 
 | 字段 | 类型 | 必需值或范围 | 明确定义 | 是否评分来源 |
 | --- | --- | --- | --- | --- |
-| `protocol_version` | 字符串 | 必须为 `realtime-gui-bench/1.0` | 当前网页遵循的协议版本。整个游戏生命周期内不可改变。 | 否 |
+| `protocol_version` | 字符串 | 必须为 `realtime-gui-bench/1.1` | 当前网页遵循的协议版本。整个游戏生命周期内不可改变。 | 否 |
 | `task` | 字符串 | 非空、建议使用小写 snake_case | 游戏的内部稳定名称，例如 `wall_jump`。用于日志和诊断，不用于决定分数。 | 否 |
 | `max_attempts` | 整数 | 当前基准必须为 `3` | 该游戏允许的最大完整尝试次数。不可在运行中改变。 | 间接校验 |
 | `attempts_completed` | 整数 | `0` 到 `max_attempts` | 已经结束并得到结果的完整尝试次数。成功或失败都算一次；当前尚未结束的尝试不计入。该字段单调递增，不能回退。 | 否 |
@@ -70,7 +70,7 @@ window.BENCH = {
     "pass_at_3"
   ],
   "properties": {
-    "protocol_version": {"const": "realtime-gui-bench/1.0"},
+    "protocol_version": {"const": "realtime-gui-bench/1.1"},
     "task": {"type": "string", "minLength": 1},
     "max_attempts": {"type": "integer", "const": 3},
     "attempts_completed": {"type": "integer", "minimum": 0, "maximum": 3},
@@ -92,8 +92,8 @@ window.BENCH = {
 4. `status === "passed"` 时，`passed === true` 且 `pass_at_3 === 1`。
 5. `status === "failed"` 时，`passed === false`、`pass_at_1 === 0`、`pass_at_3 === 0` 且 `attempts_completed === 3`。
 6. `status === "ready"` 时，`attempts_completed === 0`、`passed === false`、`pass_at_1 === 0`、`pass_at_3 === 0`。
-7. `status === "running"` 时，游戏尚未进入终态；`passed`、`pass_at_1`、`pass_at_3` 必须仍为 `false`/`0`，除非游戏刚刚结算并同步切换到 `passed`。
-8. 一旦 `status` 变为 `passed` 或 `failed`，所有必需字段冻结，不能重新开始或继续消耗机会；如需重置，必须重新加载网页。
+7. `status === "running"` 时，游戏尚未进入终态；它可以表示当前尝试进行中，也可以表示失败结算后正在等待下一次尝试入口。`passed`、`pass_at_1`、`pass_at_3` 必须仍为 `false`/`0`。
+8. 一旦 `status` 变为 `passed` 或 `failed`，所有必需字段冻结，不能重新开始或继续消耗机会。重新加载只用于创建新的 OSWorld `run_id` 实例；同一 `run_id` 内的刷新、导航和复制页面由环境标记为无效运行。
 
 ## 3. 状态机
 
@@ -112,8 +112,8 @@ running --第三次失败--> failed
 
 ### 3.2 `running`
 
-- 当前有一个已经开始但尚未结算的尝试。
-- `attempts_completed` 只统计此前已经结算的尝试，不包含当前尝试。
+- 游戏尚未进入终态，可以是当前尝试进行中，也可以是一次失败已经结算、页面正在等待下一次尝试入口。
+- `attempts_completed` 只统计已经结算的尝试，不包含尚未开始的下一次尝试。
 - Agent 可以继续观察和操作。
 
 ### 3.3 `passed`
@@ -203,7 +203,7 @@ checker 通过 Chrome DevTools Protocol 执行 `window.BENCH` 的只读表达式
 2. 校验第 2 节的必需字段、类型、范围和不变量。
 3. 只读取 `pass_at_1` 和 `pass_at_3` 作为分数。
 4. 将完整的 `BENCH` 对象原样保存到详细结果，便于复查。
-5. 对 `status=ready` 或 `status=running` 的任务标记为未完成/未评分，不能把它们自动改成游戏失败。
+5. 对 `status=ready` 或 `status=running` 的任务标记为未完成；如果 Agent 已耗尽运行预算仍未提交 `DONE`，运行器将其作为 Agent 未完成并按主统计口径计 0 分。接口错误或运行级失效仍单列为 `unscored`。
 6. 对 `status=passed` 或 `status=failed` 的任务记录终态和游戏直接提供的两个分数。
 
 checker **不得**：
@@ -225,7 +225,7 @@ OSWorld 的兼容标量结果可以使用游戏提供的 `pass_at_3`；详细结
 
 普通文字回复、停止调用模型、点击网页上的成功提示或等待超时，都不能替代 `DONE`。`DONE` 由 OSWorld 运行器解释为“停止当前任务并读取最终评分”。
 
-`FAIL` 只用于 Agent 无法继续时的主动放弃，不代表游戏已经进入 `failed` 状态；如果网页仍为 `ready` 或 `running`，该任务应记录为未完成或未评分。
+实时基准动作空间不提供 `FAIL`。Agent 只能使用 `DONE` 结束任务；如果网页仍为 `ready` 或 `running` 就提交 `DONE`，运行器按 Agent 未完成处理。
 
 ## 8. 可选诊断接口
 
@@ -255,7 +255,7 @@ window.__dbg = function () {
 };
 ```
 
-`__dbg()` 中的 `phase`、坐标、目标、随机状态等字段只用于验收和诊断，不属于正式评分接口。不要把隐藏答案、自动成功函数或修改 `BENCH` 的函数暴露给 Agent。
+`__dbg()` 是测试专用只读接口。离线验收脚本可以通过 CDP 读取 `phase`、坐标、目标和随机状态等内部字段；正式 Agent 工具和上下文不会提供该接口，正式评分也不读取它。不得提供自动成功函数或修改 `BENCH` 的函数。
 
 ## 9. 游戏制作 Agent 验收清单
 
@@ -269,7 +269,7 @@ window.__dbg = function () {
 - [ ] 成功后 `passed=true` 且状态冻结为 `passed`。
 - [ ] 三次失败后状态冻结为 `failed`，不能开始第四次尝试。
 - [ ] `results`、DOM 文本和调试字段不会成为 checker 的必要依赖。
-- [ ] `window.__dbg()`（如果提供）不会泄露答案或提供自动通关入口。
+- [ ] `window.__dbg()`（如果提供）为只读接口，不提供自动通关或修改 `BENCH` 的入口。
 - [ ] 使用真实鼠标/键盘事件可以完成一次成功路径和一次三次失败路径。
 - [ ] 页面没有依赖外部网络才能创建或更新 `window.BENCH`。
 
@@ -285,4 +285,4 @@ window.__dbg = function () {
 4. 不要为了兼容旧 checker 同时维护两套可能不一致的计数。
 5. 任务配置、checker 测试和网页完成迁移后，再删除旧 getter 中的推导逻辑。
 
-协议变更必须升级 `protocol_version`，并使用新的实验 `run_id`。
+协议变更必须升级 `protocol_version`，并使用新的实验 `run_id`。`realtime-gui-bench/1.1` 的变更记录见 `REALTIME_GUI_BENCH_PROTOCOL_CHANGELOG.md`。

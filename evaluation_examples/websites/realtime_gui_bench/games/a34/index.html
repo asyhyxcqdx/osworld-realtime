@@ -164,9 +164,19 @@
   const VENT_TOP = 310;      // 通风管口 y 位置（角色从这里探出）
   const PEEK_RANGE = 104;    // 探出↔缩回的垂直位移（探出露出头+肩，缩回完全入管）
 
-  const BENCH = { task:"vent_peek_id", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "vent_peek_id",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                     // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   const statusEl = document.getElementById("status");
@@ -182,23 +192,27 @@
   let readyDelay = 0, phaseStart = 0;
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function setHint(){ const n = BENCH.attempts_completed + 1; hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
-  window.__dbg = function(){ return { phase, target, targetId: ROLES[target].id, clickedIdx, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status }; };
+  window.__dbg = function(){ return { phase, target, targetId: ROLES[target].id, clickedIdx, attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status }; };
 
   function startRound(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：重试入口失效
     target = Math.floor(Math.random()*ROLES.length);
     clickedIdx = -1;
     phase = "idle";
     revealBtn.disabled = false;
     setStatus("Wait for the impostor to peek 等待内鬼探头","");
     setHint(); syncURL();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第 "+(BENCH.attempts+1)+" 次");
+    const n = BENCH.attempts_completed + 1;
+    showToast("Attempt "+n+" / "+MAX_ATTEMPTS+" 第 "+n+" 次");
   }
 
   function onReveal(){
     if (phase !== "idle") return;
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";                // 点 Reveal 开始第一次尝试：ready → running（不消耗机会）
     phase = "ready"; phaseStart = performance.now();
     readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
     revealBtn.disabled = true;
@@ -218,6 +232,10 @@
     else if (phase === "winning"){
       if (now - phaseStart >= SETTLE_MS){
         phase = "done";
+        // 协议 1.1：判定瞬间先原子写 BENCH，再播动画；成功也计入 attempts_completed
+        BENCH.attempts_completed += 1;
+        BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+        BENCH.pass_at_3 = 1;
         BENCH.passed = true; BENCH.status = "passed";
         setStatus("Success 成功","win"); syncURL(); celebrate();
       }
@@ -371,12 +389,19 @@
   });
 
   function nextAttempt(){
-    BENCH.attempts += 1; setHint();
-    if (BENCH.attempts >= MAX_ATTEMPTS){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：不接受会改变结果的操作
+    // 协议 1.1：失败也计入 attempts_completed
+    BENCH.attempts_completed += 1; setHint();
+    if (BENCH.attempts_completed >= MAX_ATTEMPTS){
+      BENCH.attempts_completed = MAX_ATTEMPTS;
+      BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
       BENCH.status = "failed"; setStatus("Out of attempts 尝试用完","lose"); syncURL(); failOverlay.classList.add("show");
       return;
     }
-    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    BENCH.status = "running"; syncURL();
+    const n = BENCH.attempts_completed + 1;
+    document.getElementById("retryText").textContent = "Attempt " + n + " / " + MAX_ATTEMPTS;
     document.getElementById("retryOverlay").classList.remove("hidden");
   }
 

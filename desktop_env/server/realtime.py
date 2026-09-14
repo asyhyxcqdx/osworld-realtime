@@ -1,7 +1,6 @@
 """Optional real-time endpoints for the existing OSWorld VM server (Linux/X11)."""
 import base64
 import json
-import math
 import os
 import re
 import signal
@@ -242,16 +241,8 @@ def register_realtime(app, capture, pyautogui):
     def sequence():
         data = check_session()
         groups = data.get("groups")
-        pause = data.get("pause", 0)
         if not isinstance(groups, list) or not 1 <= len(groups) <= 100:
             raise ValueError("Sequence must contain 1-100 actions")
-        if (
-            isinstance(pause, bool)
-            or not isinstance(pause, (int, float))
-            or not math.isfinite(pause)
-            or pause < 0
-        ):
-            raise ValueError("Invalid pause")
         # Validate the entire envelope before executing anything.
         for i, group in enumerate(groups):
             if not isinstance(group.get("commands"), list) or not all(
@@ -259,14 +250,14 @@ def register_realtime(app, capture, pyautogui):
             ):
                 raise ValueError("Commands must be strings")
             kind = group["action"]["action_type"]
+            if kind == "FAIL":
+                raise ValueError("FAIL is not available in the realtime action space")
             if kind in {"DONE", "FAIL"} and i != len(groups) - 1:
                 raise ValueError("Terminal action must be last")
         results, done, info = [], False, {}
         with action_lock:
-            # Legacy actions run in fresh PyAutoGUI subprocesses, whose PAUSE is
-            # 0.1. Do not inherit main.py's in-process PAUSE=0 for the sequence group.
             original_pause, original_failsafe = pyautogui.PAUSE, pyautogui.FAILSAFE
-            pyautogui.PAUSE, pyautogui.FAILSAFE = 0.1, False
+            pyautogui.PAUSE, pyautogui.FAILSAFE = 0, False
             namespace = {"pyautogui": pyautogui, "time": time}
             try:
                 for group in groups:
@@ -276,7 +267,7 @@ def register_realtime(app, capture, pyautogui):
                     started = recorder.elapsed()
                     started_monotonic = time.monotonic()
                     if kind == "WAIT":
-                        time.sleep(pause)
+                        time.sleep(params["duration_s"])
                     elif kind in {"DONE", "FAIL"}:
                         done, info = True, {kind.lower(): True}
                     else:

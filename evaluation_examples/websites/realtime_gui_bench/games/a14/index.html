@@ -131,9 +131,19 @@
   const BEAN_HIDE_Y = 336;    // 豆子钻进荷叶下的深度
   const SHOW_MS = 900, JUMP_MS = 440, HIDE_MS = 360, MOVES_N = 4;
 
-  const BENCH = { task:"bowl_hopper", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "lily_pad_hopper",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                     // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   const statusEl = document.getElementById("status");
@@ -153,10 +163,10 @@
   let ripples = [];
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function setHint(){ const n = BENCH.attempts_completed + 1; hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+" · 第 "+n+" / "+MAX_ATTEMPTS+" 次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
-  window.__dbg = function(){ return { phase, ballBowl: beanLeaf, ballX: SLOTS[beanLeaf], moves: moves.slice(), attempts: BENCH.attempts, passed: BENCH.passed }; };
+  window.__dbg = function(){ return { phase, ballBowl: beanLeaf, ballX: SLOTS[beanLeaf], moves: moves.slice(), attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status }; };
 
   function genMoves(){
     const m = [];
@@ -183,6 +193,8 @@
 
   function onStart(){
     if (phase !== "idle") return;
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";                // 点 Reveal 开始第一次尝试：ready → running（不消耗机会）
     beanLeaf = Math.floor(Math.random()*6);
     moves = genMoves();
     jumpIdx = 0;
@@ -366,6 +378,10 @@
     BENCH.results.push(ok);
     if (ok){
       phase = "done";
+      // 协议 1.1：判定瞬间先原子写 BENCH，再播动画；成功也计入 attempts_completed
+      BENCH.attempts_completed += 1;
+      BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+      BENCH.pass_at_3 = 1;
       BENCH.passed = true; BENCH.status = "passed";
       setStatus("Success! 成功","win"); syncURL(); celebrate();
       return;
@@ -375,22 +391,31 @@
   });
 
   function nextAttempt(){
-    BENCH.attempts += 1; setHint();
-    if (BENCH.attempts >= MAX_ATTEMPTS){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：不接受会改变结果的操作
+    // 协议 1.1：失败也计入 attempts_completed
+    BENCH.attempts_completed += 1; setHint();
+    if (BENCH.attempts_completed >= MAX_ATTEMPTS){
+      BENCH.attempts_completed = MAX_ATTEMPTS;
+      BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
       BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
       return;
     }
-    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    BENCH.status = "running"; syncURL();
+    const n = BENCH.attempts_completed + 1;
+    document.getElementById("retryText").textContent = "Attempt " + n + " / " + MAX_ATTEMPTS + " · 第 " + n + " / " + MAX_ATTEMPTS + " 次";
     document.getElementById("retryOverlay").classList.add("show");
   }
 
   function startRound(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：重试入口失效
     beanLeaf = 0; moves = []; phase = "idle"; beanX = SLOTS[0]; beanY = BEAN_FLOAT_Y;
     clearRipples();
     revealBtn.disabled = false;
     setStatus("Watch the golden bean, then tap the leaf it hides under · 看金色魔法豆在哪片荷叶下","");
     syncURL();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+    const n = BENCH.attempts_completed + 1;
+    showToast("Attempt "+n+" / "+MAX_ATTEMPTS+" · 第 "+n+" / "+MAX_ATTEMPTS+" 次");
   }
 
   function celebrate(){ overlay.classList.add("show"); launchConfetti(); }

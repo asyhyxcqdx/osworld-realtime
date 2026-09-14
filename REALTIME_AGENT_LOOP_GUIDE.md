@@ -48,7 +48,7 @@ configs/realtime_agents/vanilla-claude-sonnet-5.yaml
 
 ## 3. 工具 schema 如何生成
 
-[realtime_protocol.py](/mnt/zhaorunsong/yhyx/OSWorld/mm_agents/realtime_protocol.py#L50) 从 OSWorld 现有的 `ACTION_SPACE` 自动生成动作工具：
+[realtime_protocol.py](/mnt/zhaorunsong/yhyx/OSWorld/mm_agents/realtime_protocol.py#L50) 从 [desktop_env/actions.py](/mnt/zhaorunsong/yhyx/OSWorld/desktop_env/actions.py#L20) 中的 Pydantic 动作模型自动生成动作工具：
 
 ```text
 MOVE_TO    → computer_move_to
@@ -59,7 +59,7 @@ WAIT       → computer_wait
 DONE       → computer_done
 ```
 
-工具参数的类型、枚举值和坐标范围来自 `computer_13`，配置文件不重复定义这些参数。`FAIL` 不会注册为工具。
+工具参数的类型、枚举值和坐标范围由 Pydantic 模型定义，配置文件不重复定义这些参数。`FAIL` 不会注册为工具。
 
 历史帧工具固定名为 `get_frames`，参数是一个长度为 1–8 的 `times_s` 数组。只有 Video Agent 和 combine Agent 注册该工具。
 
@@ -133,6 +133,8 @@ env.step_sequence(actions)    # sequence
 
 序列动作在 VM 内一次发送，并由 [desktop_env/server/realtime.py](/mnt/zhaorunsong/yhyx/OSWorld/desktop_env/server/realtime.py#L241) 按顺序执行。VM sequence 的最大长度是 100。
 
+单动作回合也通过同一个 VM sequence 接口发送一个动作。因此实时模式不会在宿主机额外 `sleep`；`WAIT` 的 `duration_s` 由 VM 执行并计入录屏时间轴，普通动作之间没有隐含间隔。运行器保留的环境启动等待和评估收尾等待只属于生命周期同步，不属于动作执行。
+
 执行完成后，环境返回：
 
 - 新截图；
@@ -145,7 +147,7 @@ env.step_sequence(actions)    # sequence
 
 ## 8. 回合历史和轨迹
 
-每个回合的消息会保存到 `self.rounds`。正式配置使用完整上下文，因此运行器传递 `max_trajectory_length=None`，不按固定回合数主动删除历史。
+每个决策回合的消息会保存到 `self.rounds`。正式配置使用完整上下文，因此运行器传递 `max_trajectory_length=None`，不按固定回合数主动删除历史。运行器的 `--max_steps` 是决策回合上限，默认 100；序列中的多个原子动作不额外消耗回合预算。
 
 环境侧将所有事件按时间顺序写入一个文件：
 
@@ -184,6 +186,6 @@ Agent loop 已经完成代码闭环，但全量实验前仍需验证：
 1. `computer_13` 的实时持续时间和动作间隔是否满足 69 个游戏；
 2. 真实 VM 是否正确返回动作执行结果；
 3. 各商业 API 是否完整返回 usage 和 reasoning summary；
-4. 69 个游戏是否全部符合统一的 `BENCH` 和 `pass_at_1/pass_at_3` 协议。
+4. 游戏侧报告显示 69 个游戏均符合统一的 `BENCH` 和 `pass_at_1/pass_at_3` 协议；OSWorld 侧仍需完成全量 Docker/环境复验。
 
 因此，当前适合先运行单个游戏的真实 VM 测试，再进行全量实验。

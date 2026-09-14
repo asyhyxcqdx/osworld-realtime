@@ -121,11 +121,23 @@
   const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
   const confettiCv = document.getElementById("confetti");
 
-  const BENCH = { task:"random_claw_grab", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  // ==== Realtime GUI Bench 1.1 接口（checker 只读本对象评分）====
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "random_claw_grab",
+    max_attempts: MAX_ATTEMPTS,      // 恒为 3（与内部常量同源）
+    attempts_completed: 0,           // 已结算的完整尝试数（成功也 +1）
+    passed: false,
+    status: "ready",                 // 初始必须 ready（点 Start 才转 running）
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: [],                     // 诊断字段（不参与评分）
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3); }catch(e){} }
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+BENCH.attempts+" / "+MAX_ATTEMPTS+"  尝试 "+BENCH.attempts+" / "+MAX_ATTEMPTS; }
+  function attemptLabel(){ return Math.min(BENCH.attempts_completed + 1, MAX_ATTEMPTS); }   // 当前尝试序号（本游戏原来漏了 +1，顺带修正）
+  function setHint(){ const n=attemptLabel(); hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+"  尝试 "+n+" / "+MAX_ATTEMPTS; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   // 状态机：swing(缩着旋转) | extend(爪子伸出) | retract(爪子收回) | collect(收获动画) | explode(炸弹爆炸) | hit(成功)
@@ -140,7 +152,7 @@
   let missLock = false;
   let grabbed = false;                // 已经抓住宝物
 
-  window.__dbg = function(){ return { phase, ang:+ang.toFixed(3), angV:+angV.toFixed(3), armLen:+armLen.toFixed(0), timeLeft:+Math.max(0, BOMB_TIME-(performance.now()-roundStart)).toFixed(0), attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status }; };
+  window.__dbg = function(){ return { phase, ang:+ang.toFixed(3), angV:+angV.toFixed(3), armLen:+armLen.toFixed(0), timeLeft:+Math.max(0, BOMB_TIME-(performance.now()-roundStart)).toFixed(0), attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status }; };
 
   function resetRound(){
     phase = "swing";
@@ -180,8 +192,12 @@
   }
   function collectDone(){
     phase = "hit";
-    BENCH.results.push("hit"); BENCH.passed = true; BENCH.status = "passed";
-    setStatus("Rescued! 获救了！","win"); syncURL(); celebrate();
+    // —— 判定瞬间先原子写完 BENCH，再播动画 ——
+    BENCH.results.push("hit");
+    BENCH.attempts_completed += 1;                                   // 成功也 +1
+    BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;      // 仅「第一次就成功」记 1
+    BENCH.pass_at_3 = 1; BENCH.passed = true; BENCH.status = "passed";
+    setHint(); setStatus("Rescued! 获救了！","win"); syncURL(); celebrate();
   }
   function explode(){
     if (missLock) return;
@@ -189,17 +205,20 @@
     phase = "explode";
     phaseT = 0;
     setStatus("BOOM! 爆炸！","danger");
+    // —— 判定瞬间先原子写完 BENCH，爆炸动画只影响显示 ——
+    BENCH.results.push("miss");
+    BENCH.attempts_completed += 1;
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    const exhausted = BENCH.attempts_completed >= MAX_ATTEMPTS;
+    if (exhausted) BENCH.attempts_completed = MAX_ATTEMPTS;
+    BENCH.status = exhausted ? "failed" : "running";
+    setHint(); syncURL();
     const doSettle = () => {
-      BENCH.results.push("miss");
-      BENCH.attempts += 1; setHint(); syncURL();
-      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
-        BENCH.status = "failed"; syncURL();
-        failOverlay.classList.add("show");
-      } else {
-        document.getElementById("retrySub").textContent = "Boom! The treasure was destroyed. 宝物被炸没了！";
-        document.getElementById("retryTitle").textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
-        document.getElementById("retryOverlay").classList.remove("hidden");
-      }
+      if (exhausted) { failOverlay.classList.add("show"); return; }
+      document.getElementById("retrySub").textContent = "Boom! The treasure was destroyed. 宝物被炸没了！";
+      const n = attemptLabel();
+      document.getElementById("retryTitle").textContent = "Attempt "+n+" / "+MAX_ATTEMPTS+"  尝试 "+n+" / "+MAX_ATTEMPTS;
+      document.getElementById("retryOverlay").classList.remove("hidden");
     };
     setTimeout(()=>{ if (phase === "explode") doSettle(); }, 1200);
   }
@@ -469,15 +488,18 @@
   let frameStarted = false;
 
   function startGame(){
+    if (BENCH.status !== "ready") return;                  // 只有 ready 能开局
     introEl.classList.add("hidden");
+    BENCH.status = "running"; syncURL();                    // 开始第一次尝试（不消耗机会）
     resetRound();
     showToast("Attempt 1 / "+MAX_ATTEMPTS+"  尝试 1 / "+MAX_ATTEMPTS);
     if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
   }
   function nextRound(){
+    if (BENCH.status !== "running") return;                 // 终态冻结：没有第四次入口
     retryEl.classList.add("hidden");
     resetRound();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+    showToast("Attempt "+attemptLabel()+" / "+MAX_ATTEMPTS+"  尝试 "+attemptLabel()+" / "+MAX_ATTEMPTS);
   }
 
   document.getElementById("introStart").addEventListener("click", startGame);

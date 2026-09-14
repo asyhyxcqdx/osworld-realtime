@@ -17,8 +17,7 @@ from mm_agents.realtime_protocol import (
     ACTION_TOOL_TYPES,
     FRAME_TOOL,
     GetFramesArgs,
-    load_output,
-    parse_actions,
+    ForbiddenShortcutError,
     system_prompt,
     validate_action,
 )
@@ -97,7 +96,16 @@ def loggable_messages(messages):
 
 
 class ModelWire:
-    def __init__(self, model, api_format="auto", base_url=None, timeout=120, thinking_summary=False):
+    def __init__(
+        self,
+        model,
+        api_format="auto",
+        base_url=None,
+        timeout=120,
+        thinking_summary=False,
+        thinking_enabled=None,
+        thinking_effort=None,
+    ):
         self.model = model
         self.protocol = (
             ("anthropic_messages" if model.startswith("claude") else "openai_chat")
@@ -110,9 +118,17 @@ class ModelWire:
             "openai_responses",
         }:
             raise ValueError("Unsupported model API protocol")
-        if thinking_summary and self.protocol != "anthropic_messages":
-            raise ValueError("thinking_summary requires the Anthropic Messages protocol")
+        if thinking_enabled is None:
+            thinking_enabled = thinking_summary
+        if thinking_enabled and self.protocol != "anthropic_messages":
+            raise ValueError("thinking requires the Anthropic Messages protocol")
+        if thinking_summary and not thinking_enabled:
+            raise ValueError("thinking_summary requires thinking_enabled")
+        if thinking_effort is not None and thinking_effort not in {"low", "medium", "high", "max"}:
+            raise ValueError("thinking_effort must be low, medium, high, or max")
+        self.thinking_enabled = bool(thinking_enabled)
         self.thinking_summary = thinking_summary
+        self.thinking_effort = thinking_effort
         anthropic = self.protocol == "anthropic_messages"
         self.base_url = (
             base_url
@@ -170,15 +186,18 @@ class ModelWire:
         if tools is None:
             tools = [FRAME_TOOL] if tools_enabled or has_tool_history else []
         send_tools = native and bool(tools)
-        key = (
-            os.getenv("PACKY_API_KEY")
-            or os.getenv(
+        key_name = "PACKY_API_KEY"
+        key = os.getenv(key_name)
+        if not key:
+            key_name = (
                 "ANTHROPIC_API_KEY"
                 if self.protocol == "anthropic_messages"
                 else "OPENAI_API_KEY"
             )
-            or os.getenv("ANTHROPIC_AUTH_TOKEN")
-        )
+            key = os.getenv(key_name)
+        if not key and self.protocol == "anthropic_messages":
+            key_name = "ANTHROPIC_AUTH_TOKEN"
+            key = os.getenv(key_name)
         if not key:
             raise RuntimeError(
                 "Set PACKY_API_KEY or the selected provider's API key in the environment."
@@ -187,16 +206,23 @@ class ModelWire:
         payload = {"model": self.model}
         if self.protocol == "anthropic_messages":
             path = "messages"
-            headers.update({"x-api-key": key, "anthropic-version": "2023-06-01"})
+            if key_name == "ANTHROPIC_AUTH_TOKEN":
+                headers["Authorization"] = f"Bearer {key}"
+            else:
+                headers["x-api-key"] = key
+            headers["anthropic-version"] = "2023-06-01"
             payload.update(
                 system=system,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
-            if self.thinking_summary:
-                payload["thinking"] = {"type": "adaptive", "display": "summarized"}
-                # Adaptive thinking controls its own sampling configuration.
+            if self.thinking_enabled:
+                payload["thinking"] = {"type": "adaptive"}
+                if self.thinking_summary:
+                    payload["thinking"]["display"] = "summarized"
+                if self.thinking_effort:
+                    payload["output_config"] = {"effort": self.thinking_effort}
                 payload.pop("temperature")
             if send_tools:
                 payload["tools"] = [
@@ -261,9 +287,22 @@ class ModelWire:
                     ):
                         payload["tool_choice"] = "none"
         url = self.base_url + ("/" if self.base_url.endswith("/v1") else "/v1/") + path
-        response = self.session.post(
-            url, headers=headers, json=payload, timeout=self.timeout
-        )
+        response = None
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = self.session.post(
+                    url, headers=headers, json=payload, timeout=self.timeout
+                )
+                if response.status_code not in {429, 500, 502, 503, 504}:
+                    break
+                last_error = RuntimeError(f"HTTP {response.status_code}")
+            except requests.RequestException as exc:
+                last_error = exc
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+        if response is None:
+            raise last_error
         if response.status_code != 200:
             detail = ""
             try:
@@ -377,16 +416,19 @@ class RealtimeAgent:
         max_tokens=128000,
         temperature=1.0,
         max_trajectory_length=3,
-        pause=0.0,
         max_sequence_actions=100,
         max_frame_queries=0,
         tool_format="native",
+        thinking_enabled=None,
+        thinking_effort=None,
         thinking_summary=False,
         system_prompt_text=None,
         wire=None,
     ):
         if sequence is None or frames is None:
             raise ValueError("sequence and frames must come from a validated Agent config")
+        if tool_format != "native":
+            raise ValueError("Realtime Agents require native tool use")
         self.variant = variant
         self.sequence = bool(sequence)
         self.frames = bool(frames)
@@ -399,16 +441,24 @@ class RealtimeAgent:
         self.max_actions, self.max_queries = max_sequence_actions, max_frame_queries
         self.tool_format = tool_format
         self.wire = wire or ModelWire(
-            model, api_format, api_base_url, thinking_summary=thinking_summary
+            model,
+            api_format,
+            api_base_url,
+            thinking_summary=thinking_summary,
+            thinking_enabled=thinking_enabled,
+            thinking_effort=thinking_effort,
         )
-        self.system = system_prompt_text or system_prompt(
-            self.sequence, self.frames, pause, self.max_actions, self.max_queries
+        base_system = system_prompt_text or system_prompt(
+            self.sequence, self.frames, self.max_actions, self.max_queries
         )
-        if self.frames and tool_format == "json":
-            self.system += (
-                '\nTo query instead of acting, return {"tool_call":{"tool_name":"get_frames","times_s":[3.0]}}.\n'
-                + json.dumps(FRAME_TOOL)
-            )
+        coordinate_guidance = (
+            "\nThe VM screen is 1920x1080 and all x/y action parameters use that full-screen "
+            "pixel coordinate system. If the vision provider displays the screenshot resized "
+            "to 768x432, multiply displayed coordinates by 2.5 before submitting them "
+            "(for example, displayed (400, 300) means action (1000, 750)). Do not submit "
+            "coordinates from the resized image directly."
+        )
+        self.system = base_system + coordinate_guidance
         self.frame_query = None
         self.event_sink = None
         self.reset()
@@ -482,10 +532,9 @@ class RealtimeAgent:
         self.active_round_messages = None
 
     def _decode_action_calls(self, calls, obs):
-        max_allowed = min(
-            self.max_actions,
-            obs.get("remaining_actions", self.max_actions),
-        )
+        # ``max_actions`` limits actions within one decision. The overall
+        # max_steps budget is enforced by the runner in decision rounds.
+        max_allowed = self.max_actions
         if not self.sequence:
             max_allowed = 1
         if len(calls) > max_allowed:
@@ -503,8 +552,22 @@ class RealtimeAgent:
                     raise ValueError("Action tool arguments are not valid JSON.") from exc
             if arguments is None:
                 arguments = {}
+            if isinstance(arguments, dict) and "x" in arguments and "y" in arguments:
+                x, y = arguments["x"], arguments["y"]
+                if isinstance(x, (int, float)) and isinstance(y, (int, float)) and x <= 768 and y <= 432:
+                    arguments = dict(arguments)
+                    arguments["x"] = round(x * 2.5, 3)
+                    arguments["y"] = round(y * 2.5, 3)
             action = {"action_type": action_type, "parameters": arguments}
-            validate_action(action)
+            try:
+                validate_action(action)
+            except ForbiddenShortcutError:
+                self.emit({
+                    "event": "action_rejected",
+                    "reason": "forbidden_browser_shortcut",
+                    "action": action,
+                })
+                raise
             actions.append(action)
         if any(action["action_type"] == "DONE" for action in actions[:-1]):
             raise ValueError("DONE must be the last action.")
@@ -520,8 +583,7 @@ class RealtimeAgent:
         blocks = [
             text_block(
                 f"Task: {instruction}\nScreenshot task time: {obs['task_time_s']:.6f} seconds. "
-                "This timestamp describes the screenshot, not the time your reply will execute. "
-                f"Remaining action budget: {obs.get('remaining_actions', self.max_actions)}."
+                "This timestamp describes the screenshot, not the time your reply will execute."
             )
         ]
         blocks.append(
@@ -562,9 +624,14 @@ class RealtimeAgent:
                 "observation": observation, "history_observations": list(self.observations),
                 "tools_enabled": tools_enabled,
                 "protocol": self.wire.protocol,
-                "model": self.wire.model,
+                    "model": self.wire.model,
                     "max_tokens": self.max_tokens,
                     "temperature": self.temperature,
+                    "thinking": {
+                        "enabled": self.wire.thinking_enabled,
+                        "effort": self.wire.thinking_effort,
+                        "summary": self.wire.thinking_summary,
+                    },
                     "tools": [tool["name"] for tool in request_tools],
                     "request_messages": loggable_messages(history + round_messages),
             })
@@ -607,32 +674,12 @@ class RealtimeAgent:
                     "usage": raw.get("usage", {}),
                 }
             )
-            structured = False
-            if not calls and self.tool_format != "native":
-                try:
-                    value = load_output(text)
-                    if isinstance(value, dict) and "tool_call" in value:
-                        tool = value["tool_call"]
-                        calls = [
-                            {
-                                "id": f"json_{queries}",
-                                "name": tool["tool_name"],
-                                "arguments": {
-                                    k: v for k, v in tool.items() if k != "tool_name"
-                                },
-                            }
-                        ]
-                        structured = True
-                except (ValueError, KeyError, TypeError):
-                    pass
             if calls:
                 frame_calls = [call for call in calls if call["name"] == FRAME_TOOL["name"]]
                 action_calls = [call for call in calls if call["name"] != FRAME_TOOL["name"]]
                 if frame_calls and action_calls:
                     raise ValueError("A model response cannot mix frame queries and actions.")
                 if action_calls:
-                    if self.tool_format != "native":
-                        raise ValueError("Native action tools are required for action calls.")
                     self.counters["tool_calls"] += len(action_calls)
                     try:
                         actions = self._decode_action_calls(action_calls, obs)
@@ -709,60 +756,19 @@ class RealtimeAgent:
                         }
                     )
                     results.append((call, result))
-                if structured:
-                    for call, result in results:
-                        round_messages.append(
-                            self.wire.user(
-                                [text_block(f"Result of {call['name']}")]
-                                + result_blocks(result)
-                            )
-                        )
-                else:
-                    round_messages.extend(self.wire.tool_results(results))
+                round_messages.extend(self.wire.tool_results(results))
                 continue
-            if self.tool_format == "native":
-                errors += 1
-                message = "Native tool use is required; return a computer action tool call."
-                self.emit(
-                    {
-                        "event": "format_error",
-                        "request_id": request_id,
-                        "message": message,
-                        "correction": errors,
-                        "will_retry": errors <= 2,
-                    }
-                )
-                if errors > 2:
-                    raise ValueError(message)
-                round_messages.append(self.wire.user([text_block(message)]))
-                continue
-            try:
-                actions = parse_actions(
-                    text,
-                    sequence=self.sequence,
-                    max_actions=min(
-                        self.max_actions, obs.get("remaining_actions", self.max_actions)
-                    ),
-                )
-            except ValueError as exc:
-                errors += 1
-                self.emit({
-                    "event": "format_error", "request_id": request_id,
-                    "message": str(exc), "correction": errors, "will_retry": errors <= 2,
-                })
-                if errors > 2:
-                    raise
-                round_messages.append(
-                    self.wire.user(
-                        [
-                            text_block(
-                                f"Invalid output: {exc}. Correct it; no action was executed."
-                            )
-                        ]
-                    )
-                )
-                continue
-            self.rounds.append(round_messages)
-            self.observations.append(observation)
-            self._retain_history()
-            return text, actions
+            errors += 1
+            message = "Native tool use is required; return a computer action tool call."
+            self.emit(
+                {
+                    "event": "format_error",
+                    "request_id": request_id,
+                    "message": message,
+                    "correction": errors,
+                    "will_retry": errors <= 2,
+                }
+            )
+            if errors > 2:
+                raise ValueError(message)
+            round_messages.append(self.wire.user([text_block(message)]))

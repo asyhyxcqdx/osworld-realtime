@@ -112,11 +112,23 @@
   const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
   const confettiCv = document.getElementById("confetti");
 
-  const BENCH = { task:"catch_star", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  // ==== Realtime GUI Bench 1.1 接口（checker 只读本对象评分）====
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "catch_the_star",
+    max_attempts: MAX_ATTEMPTS,      // 恒为 3（与内部常量同源）
+    attempts_completed: 0,           // 已结算的完整尝试数（成功也 +1）
+    passed: false,
+    status: "ready",                 // 初始必须 ready（点 Start 才转 running）
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: [],                     // 诊断字段（不参与评分）
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3); }catch(e){} }
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function attemptLabel(){ return Math.min(BENCH.attempts_completed + 1, MAX_ATTEMPTS); }   // 当前尝试序号（终态不外溢成 4）
+  function setHint(){ const n=attemptLabel(); hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+"  尝试 "+n+" / "+MAX_ATTEMPTS; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   let phase = "waiting";   // waiting | falling | hit | miss
@@ -127,7 +139,7 @@
 
   window.__dbg = function(){
     return { phase, starX, starY: phase==="falling" ? STAR_Y0 + VY*(performance.now()-fallStart)/1000 : (phase==="waiting" ? STAR_Y0 : CATCH_Y),
-             basketX, basketHalfW: BASKET_W/2, attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status };
+             basketX, basketHalfW: BASKET_W/2, attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status };
   };
 
   function pickStarX(){
@@ -150,29 +162,38 @@
     phase = "miss";
     missAt = performance.now();
     setStatus("Dropped 掉了","lose");
+    // —— 判定瞬间先原子写完 BENCH，再播动画（动画只影响显示）——
+    BENCH.results.push(false);
+    BENCH.attempts_completed += 1;
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    const exhausted = BENCH.attempts_completed >= MAX_ATTEMPTS;
+    if (exhausted) BENCH.attempts_completed = MAX_ATTEMPTS;
+    BENCH.status = exhausted ? "failed" : "running";
+    setHint(); syncURL();
     setTimeout(()=>{
-      BENCH.results.push(false);
-      BENCH.attempts += 1; setHint();
-      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
-        BENCH.status = "failed"; syncURL(); failOverlay.classList.add("show");
-        return;
-      }
-      document.getElementById("nextTitle").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + "  尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS;
+      if (exhausted) { failOverlay.classList.add("show"); return; }
+      const n = attemptLabel();
+      document.getElementById("nextTitle").textContent = "Attempt " + n + " / " + MAX_ATTEMPTS + "  尝试 " + n + " / " + MAX_ATTEMPTS;
       const _d = document.getElementById("nextDots"); _d.innerHTML = "";
-      for (let _i = 0; _i < MAX_ATTEMPTS; _i++) { const _s = document.createElement("span"); _s.className = "next-dot" + (_i < BENCH.attempts ? " on" : ""); _d.appendChild(_s); }
+      for (let _i = 0; _i < MAX_ATTEMPTS; _i++) { const _s = document.createElement("span"); _s.className = "next-dot" + (_i < BENCH.attempts_completed ? " on" : ""); _d.appendChild(_s); }
       document.getElementById("nextOverlay").classList.add("show");
     }, 600);
   }
   function hit(){
-    if (phase !== "falling") return;
+    if (phase !== "falling" || BENCH.status !== "running") return;   // 终态冻结
     phase = "hit";
     hitAt = performance.now();
     setStatus("Caught! 接住了！","win");
-    // 结算延迟：先播「星星落入篮子发光」动画，再结算（celebrate）
-    setTimeout(()=>{
-      BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
-      syncURL(); celebrate();
-    }, 600);
+    // —— 判定瞬间先原子写完 BENCH ——
+    BENCH.results.push(true);
+    BENCH.attempts_completed += 1;                                   // 成功也 +1
+    BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;      // 仅「第一次就成功」记 1
+    BENCH.pass_at_3 = 1;
+    BENCH.passed = true;
+    BENCH.status = "passed";
+    setHint(); syncURL();
+    // 结算延迟：先播「星星落入篮子发光」动画，再 celebrate
+    setTimeout(()=>{ celebrate(); }, 600);
   }
 
   function starY(now){ return STAR_Y0 + VY*(now-fallStart)/1000; }
@@ -290,15 +311,18 @@
 
   setHint(); syncURL();
   function startGame(){
+    if (BENCH.status !== "ready") return;                  // 只有 ready 能开局
     document.getElementById("rulesOverlay").classList.add("hidden");
+    BENCH.status = "running"; syncURL();                    // 开始第一次尝试（不消耗机会）
     schedule();
     showToast("Attempt 1 / " + MAX_ATTEMPTS + "  尝试 1 / " + MAX_ATTEMPTS);
     if (!frameStarted) { frameStarted = true; requestAnimationFrame(frame); }
   }
   function nextRound(){
+    if (BENCH.status !== "running") return;                 // 终态冻结：没有第四次入口
     document.getElementById("nextOverlay").classList.remove("show");
     schedule();
-    showToast("Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + "  尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS);
+    showToast("Attempt " + attemptLabel() + " / " + MAX_ATTEMPTS + "  尝试 " + attemptLabel() + " / " + MAX_ATTEMPTS);
   }
   let frameStarted = false;
   document.getElementById("startBtn").addEventListener("click", startGame);

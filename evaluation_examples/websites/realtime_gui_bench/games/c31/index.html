@@ -144,7 +144,17 @@
   const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
   const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
 
-  const BENCH = { task:"cave_collapse", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "cave_collapse",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
 
   let started = false;
@@ -159,15 +169,15 @@
   // 粒子：被砸碎屑 / 尘土
   let particles = [];
 
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   window.__dbg = function(){
     return { phase, beamX:Math.round(beamX), crouching, beamTop:BEAM_TOP, beamBot:BEAM_BOT,
              bodyTop:Math.round(GROUND_Y - bodyH),
-             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+             attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status };
   };
 
   function reset(){
@@ -239,29 +249,35 @@
   function win(){
     if (phase === "over") return;
     phase = "over";
-    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    BENCH.attempts_completed += 1;
+    BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+    BENCH.pass_at_3 = 1; BENCH.passed = true; BENCH.status = "passed"; BENCH.results.push(true);
     setStatus("Dodged! 躲过了！","win"); syncURL(); celebrate();
   }
   function fail(){
     if (phase === "over") return;
     phase = "over";
-    BENCH.attempts += 1; setHint();
+    BENCH.attempts_completed += 1; setHint();
     BENCH.results.push(false);
-    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+    BENCH.status = "running"; BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false; syncURL();
+    if (BENCH.attempts_completed >= MAX_ATTEMPTS) {
+      BENCH.attempts_completed = MAX_ATTEMPTS; BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
       BENCH.status = "failed"; setStatus("Buried 被砸中","lose"); syncURL(); failOverlay.classList.add("show");
       return;
     }
     setStatus("Buried 被砸中","lose");
     setTimeout(()=>{
-      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryText.textContent = "Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 次";
       retryOverlay.classList.remove("hidden");
     }, 900);
   }
 
   function nextRound(){
+
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     retryOverlay.classList.add("hidden");
     reset();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+    showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 次");
   }
   nextBtn.addEventListener("click", nextRound);
 
@@ -489,6 +505,8 @@
 
   setHint(); syncURL();
   function startGame(){
+    if (BENCH.status !== "ready") return;   // 只在 ready 时首次开始（不消耗机会）
+    BENCH.status = "running"; syncURL();
     started = true;
     introEl.classList.add("hidden");
     reset();

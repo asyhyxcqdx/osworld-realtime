@@ -11,6 +11,8 @@
 
 当前状态：**最新版 69 道已完成全量文件核对、逐题初始化、首次/第二次/第三次成功与三次失败的交互和评分落盘验收**。每道均有四条完整路径的通过证据；具体方法和边界见文末“本轮全量复查”。这不代表随机游戏的验收脚本每次都能成功，更不是模型成绩或 69 道 Docker 全流程测试。下方早期补测记录保留其当时的未完成状态，不作为当前覆盖范围。
 
+**与当前 1.1 迁移状态的区别**：上述记录针对 69 道游戏包的网页和基础评分验收；当前工作区只将 69 道 `index.html`、任务 JSON 和统一任务清单纳入 OSWorld 运行树。`test.mjs`、`README.md`、包级清单和自测报告仅作为迁移验收材料，不是任务运行依赖。C1、D14 已在当前 OSWorld 目录中独立复跑通过；其余任务仍需 OSWorld 侧全量 Docker/环境复验，不能把网页自测记录当作 69 道实时 Agent 全流程已经完成。
+
 源包 SHA-256：`257ae6b195d344bf99120780f1077a1160f7e7a4754beae600cd837347676216`。
 
 | 类别 | 数量 | 编号 |
@@ -29,7 +31,7 @@
 - 网页：`evaluation_examples/websites/realtime_gui_bench/games/<小写编号>/index.html`
 - 完整 OSWorld 任务：`evaluation_examples/examples/realtime_gui_bench/<UUID>.json`
 - 运行清单：`evaluation_examples/test_realtime_gui_bench.json`
-- 导入程序：`scripts/python/generate_realtime_gui_bench.py`
+- 任务运行树：`evaluation_examples/websites/realtime_gui_bench/games/<id>/index.html`
 - 浏览器初始化验收：`scripts/python/validate_realtime_gui_bench.py`
 - 评分读取：`desktop_env/evaluators/getters/realtime_gui.py`
 - 单分数 metric：`desktop_env/evaluators/metrics/realtime_gui.py`
@@ -98,7 +100,7 @@ getter 只校验协议字段并读取游戏提供的两个分数。`results`、U
 ```json
 {
   "benchmark_id": "A41",
-  "protocol_version": "realtime-gui-bench/1.0",
+  "protocol_version": "realtime-gui-bench/1.1",
   "task": "kitchen_order_match",
   "max_attempts": 3,
   "attempts_completed": 2,
@@ -108,7 +110,7 @@ getter 只校验协议字段并读取游戏提供的两个分数。`results`、U
   "pass_at_3": 1.0,
   "status": "passed",
   "raw_bench": {
-    "protocol_version": "realtime-gui-bench/1.0",
+    "protocol_version": "realtime-gui-bench/1.1",
     "task": "kitchen_order_match",
     "max_attempts": 3,
     "attempts_completed": 2,

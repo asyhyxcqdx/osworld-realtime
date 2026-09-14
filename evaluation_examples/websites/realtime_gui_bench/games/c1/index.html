@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Platform</title>
+<title>Double Jump 二段跳</title>
 <style>
   :root { --bg1:#0e1520; }
   * { box-sizing:border-box; margin:0; padding:0; }
@@ -82,40 +82,40 @@
 </style>
 </head>
 <body>
-  <div class="status" id="status">Reach the far platform</div>
+  <div class="status" id="status">Reach the far platform 跳到对岸</div>
   <canvas id="cv" width="800" height="460"></canvas>
   <div class="keys">
-    <span class="key">A</span><span class="key">D</span> move &nbsp;·&nbsp;
-    <span class="key">W</span><span class="key">Space</span> jump (double)
+    <span class="key">A</span><span class="key">D</span> move 移动 &nbsp;·&nbsp;
+    <span class="key">W</span><span class="key">Space</span> jump (double) 跳跃（可二段跳）
   </div>
-  <div class="hint" id="hint">Attempt 0 / 3</div>
+  <div class="hint" id="hint">Attempt 1 / 3 第 1 / 3 次</div>
 
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay">
     <div class="celeb-box">
       <div class="celeb-check ok">✓</div>
-      <div class="celeb-title">Success!</div>
-      <div class="celeb-sub">Task completed</div>
+      <div class="celeb-title">Success! 成功！</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
     </div>
   </div>
   <div class="overlay" id="failOverlay">
     <div class="celeb-box">
       <div class="celeb-check fail">✗</div>
-      <div class="celeb-title">Failed</div>
-      <div class="celeb-sub">Out of attempts</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
     </div>
   </div>
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
-      <div class="celeb-title" id="retryText">Attempt 1 / 3</div>
-      <button class="intro-start" id="nextBtn">Next</button>
+      <div class="celeb-title" id="retryText">Attempt 1 / 3 第 1 / 3 次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
     <div class="intro" id="intro">
     <div class="intro-box">
-      <div class="intro-title">Double Jump</div>
-      <div class="intro-rule">Reach the far platform by double-jumping. Jump once, then jump again mid-air to cross the gap.<br>A / D to move &nbsp;·&nbsp; W or Space to jump (twice)</div>
-      <button class="intro-start" id="startBtn">Start</button>
+      <div class="intro-title">Double Jump 二段跳</div>
+      <div class="intro-rule">Reach the far platform by double-jumping. Jump once, then jump again mid-air to cross the gap.<br>连续两次跳跃才能越过深渊、落到对岸：先跳一次，在空中再跳一次。<br><br>A / D to move &nbsp;·&nbsp; W or Space to jump (twice)  A / D 移动 &nbsp;·&nbsp; W 或 Space 跳跃（可跳两次）</div>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
 
@@ -136,15 +136,25 @@
   const overlay = document.getElementById("overlay"), failOverlay = document.getElementById("failOverlay");
   const confettiCv = document.getElementById("confetti");
 
-  const BENCH = { task:"double_jump", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "double_jump",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
   const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
   const introEl = document.getElementById("intro");
   const startBtn = document.getElementById("startBtn");
   let started = false;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function setHint(){ const n = BENCH.attempts_completed + 1; hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+" 第 "+n+" / "+MAX_ATTEMPTS+" 次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   let x = START_X, y = GROUND_L, vx = 0, vy = 0;
@@ -156,12 +166,12 @@
   const keys = { left:false, right:false };
   const particles = [];
 
-  window.__dbg = function(){ return { x:Math.round(x), y:Math.round(y), onGround, state, squash:+squash.toFixed(2), vy:+vy.toFixed(0), prevY:Math.round(prevY) }; };
+  window.__dbg = function(){ return { x:Math.round(x), y:Math.round(y), onGround, state, squash:+squash.toFixed(2), vy:+vy.toFixed(0), prevY:Math.round(prevY), attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status }; };
 
   function reset(){
     x = START_X; y = GROUND_L; vx = 0; vy = 0; prevY = GROUND_L;
     onGround = true; canDouble = false; state = "playing"; facing = 1; squash = 1;
-    setStatus("Reach the far platform","action");
+    setStatus("Reach the far platform 跳到对岸","action");
   }
 
   function jump(e){
@@ -210,8 +220,14 @@
       if (justLanded) { squash = .74; puff(x, y); }
       if (g === GROUND_R && state === "playing") {
         state = "done";
-        BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
-        setStatus("Success","win"); syncURL(); celebrate();
+        // 结算（协议 1.1：成功也计入 attempts_completed；pass_at_1 仅当第一次就成功）
+        BENCH.attempts_completed += 1;
+        BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+        BENCH.pass_at_3 = 1;
+        BENCH.passed = true;
+        BENCH.status = "passed";
+        BENCH.results.push(true);
+        setStatus("Success 成功","win"); syncURL(); celebrate();
       }
       return;
     }
@@ -225,20 +241,33 @@
 
     if (y > BOTTOM) {
       state = "done"; y = BOTTOM;
-      BENCH.results.push(false); BENCH.attempts += 1; setHint();
-      if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) { BENCH.status = "failed"; setStatus("Game over","lose"); syncURL(); failOverlay.classList.add("show"); return; }
-      setStatus("Fell","lose");
+      // 结算（协议 1.1：失败也计入 attempts_completed）
+      BENCH.attempts_completed += 1; BENCH.results.push(false); setHint();
+      if (BENCH.attempts_completed >= MAX_ATTEMPTS) {
+        // 第三次失败 → 冻结终态，不再提供第四次入口
+        BENCH.attempts_completed = MAX_ATTEMPTS;
+        BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+        BENCH.status = "failed";
+        setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show"); return;
+      }
+      // 失败但仍有机会 → 回到 running，等待下一次重试入口
+      BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+      BENCH.status = "running"; syncURL();
+      setStatus("Fell 掉落","lose");
       setTimeout(()=>{
-        retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS;
+        const n = BENCH.attempts_completed + 1;
+        retryText.textContent = "Attempt "+n+" / "+MAX_ATTEMPTS+" 第 "+n+" / "+MAX_ATTEMPTS+" 次";
         retryOverlay.classList.add("show");
       }, 700);
     }
   }
 
   function nextRound(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     retryOverlay.classList.remove("show");
     reset();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+    const n = BENCH.attempts_completed + 1;
+    showToast("Attempt "+n+" / "+MAX_ATTEMPTS+" 第 "+n+" / "+MAX_ATTEMPTS+" 次");
   }
   nextBtn.addEventListener("click", nextRound);
 
@@ -350,10 +379,13 @@
 
   setHint(); syncURL();
   function startGame(){
+    if (BENCH.status !== "ready") return;   // 只在 ready 时首次开始（不消耗机会）
     started = true;
     introEl.style.display = "none";
+    BENCH.status = "running";               // ready → running
     reset();
-    showToast("Attempt 1 / "+MAX_ATTEMPTS);
+    syncURL();
+    showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第 1 / "+MAX_ATTEMPTS+" 次");
   }
   startBtn.addEventListener("click", startGame);
   requestAnimationFrame(frame);

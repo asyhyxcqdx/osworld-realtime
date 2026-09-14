@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Card Game</title>
+<title>Concentration 神经衰弱</title>
 <style>
-  :root { --bg1:#161a2b; --ok:#34d399; --bad:#ff5c7a; --warn:#f6c453; }
+  :root { --bg1:#161a2b; --ok:#34d399; --bad:#ff5c7a; --warn:#f6c453; --gold:#f6c453; }
   * { box-sizing:border-box; margin:0; padding:0; }
   html, body { height:100%; }
   body {
@@ -94,37 +94,37 @@
 </style>
 </head>
 <body>
-  <div class="status bot" id="status">Opponent's turn…</div>
+  <div class="status bot" id="status">Opponent's turn… 对手回合…</div>
   <div class="board" id="board"></div>
-  <div class="hint" id="hint">Attempt 0 / 3</div>
+  <div class="hint" id="hint">Attempt 1 / 3 · 第 1 / 3 次</div>
 
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay">
     <div class="celeb-box">
       <div class="celeb-check ok">✓</div>
-      <div class="celeb-title">Success!</div>
-      <div class="celeb-sub">Task completed</div>
+      <div class="celeb-title">Success! 成功</div>
+      <div class="celeb-sub">Task completed 任务完成</div>
     </div>
   </div>
   <div class="overlay" id="failOverlay">
     <div class="celeb-box">
       <div class="celeb-check fail">✗</div>
-      <div class="celeb-title">Failed</div>
-      <div class="celeb-sub">Out of attempts</div>
+      <div class="celeb-title">Failed 失败</div>
+      <div class="celeb-sub">Out of attempts 尝试用完</div>
     </div>
   </div>
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
-      <div class="celeb-title" id="retryText">Attempt 2 / 3</div>
-      <button class="intro-start" id="nextBtn">Next</button>
+      <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
   <div class="intro" id="intro">
     <div class="intro-box">
-      <div class="intro-title">Concentration</div>
-      <div class="intro-rule">Your opponent flips two cards. Memorize them, then tap two matching cards. Your first card always matches one of the opponent's cards.</div>
-      <button class="intro-start" id="startBtn">Start</button>
+      <div class="intro-title">Concentration 神经衰弱</div>
+      <div class="intro-rule">Your opponent flips two cards. Memorize them, then tap two matching cards. Your first card always matches one of the opponent's cards. 对手会翻开两张牌给你看，记住它们在哪些位置，然后翻出两张内容相同的牌。你翻的第一张牌必定与对手亮过的其中一张内容相同。</div>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
 
@@ -139,9 +139,19 @@
   const SETTLE_MS = 750;
   const RESET_MS = 550;
 
-  const BENCH = { task:"concentration", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "concentration",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                     // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const board = document.getElementById("board");
   const statusEl = document.getElementById("status");
@@ -155,9 +165,9 @@
 
   function shuffle(a){ const r=a.slice(); for(let i=r.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [r[i],r[j]]=[r[j],r[i]]; } return r; }
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function setHint(){ const n = BENCH.attempts_completed + 1; hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+" · 第 "+n+" / "+MAX_ATTEMPTS+" 次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
-  window.__dbg = function(){ return { phase, cards: cards.map(c=>c.value), answerIdx, distractorIdx, X, Y, attempts: BENCH.attempts, passed: BENCH.passed }; };
+  window.__dbg = function(){ return { phase, cards: cards.map(c=>c.value), answerIdx, distractorIdx, X, Y, attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status }; };
 
   function buildBoard(){
     board.innerHTML=""; els=[];
@@ -186,10 +196,10 @@
     cards[p1].value = X;   // 答案
     cards[p2].value = Y;   // 干扰
     answerIdx = p1; distractorIdx = p2;
-    setStatus("Opponent's turn…","bot");
+    setStatus("Opponent's turn… 对手回合…","bot");
     setTimeout(()=> setFlipped(p1, true), 350);
     setTimeout(()=> setFlipped(p2, true), 1350);
-    setTimeout(()=>{ setFlipped(p1,false); setFlipped(p2,false); phase="player"; setStatus("Your turn","action"); }, 2350);
+    setTimeout(()=>{ setFlipped(p1,false); setFlipped(p2,false); phase="player"; setStatus("Your turn 轮到你了","action"); }, 2350);
   }
 
   function randomOther(v){
@@ -219,13 +229,18 @@
   function resolvePick(i, ok){
     BENCH.results.push(ok);
     if(ok){
-      BENCH.passed=true; BENCH.status="passed";
+      // 协议 1.1：判定瞬间先原子写 BENCH，再播动画；成功也计入 attempts_completed
+      BENCH.attempts_completed += 1;
+      BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+      BENCH.pass_at_3 = 1;
+      BENCH.passed = true;
+      BENCH.status = "passed";
       els[i].classList.add("matched"); els[firstPick].classList.add("matched");
-      setStatus("Success","win"); syncURL(); celebrate();
+      setStatus("Success 成功","win"); syncURL(); celebrate();
       return;
     }
     els[i].classList.add("wrong"); els[firstPick].classList.add("wrong");
-    setStatus("No match","lose");
+    setStatus("No match 没有配对","lose");
     setTimeout(()=>{
       setFlipped(i,false); setFlipped(firstPick,false);
       els[i].classList.remove("wrong"); els[firstPick].classList.remove("wrong");
@@ -234,19 +249,31 @@
   }
 
   function nextAttempt(){
-    BENCH.attempts+=1; setHint();
-    if(BENCH.attempts>=MAX_ATTEMPTS){ BENCH.status="failed"; setStatus("Game over","lose"); syncURL(); failOverlay.classList.add("show"); return; }
-    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS;
+    if(BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：不接受会改变结果的操作
+    // 协议 1.1：失败也计入 attempts_completed
+    BENCH.attempts_completed += 1; setHint();
+    if(BENCH.attempts_completed >= MAX_ATTEMPTS){
+      BENCH.attempts_completed = MAX_ATTEMPTS;
+      BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+      BENCH.status="failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show"); return;
+    }
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    BENCH.status = "running"; syncURL();
+    const n = BENCH.attempts_completed + 1;
+    document.getElementById("retryText").textContent = "Attempt " + n + " / " + MAX_ATTEMPTS + " · 第 " + n + " / " + MAX_ATTEMPTS + " 次";
     document.getElementById("retryOverlay").classList.add("show");
   }
 
   function startRound(){
+    if(BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if(BENCH.status === "ready") BENCH.status = "running";                // 点开始第一次尝试：ready → running（不消耗机会）
     // 重置：所有牌重新变空白（内容不预生成）
     cards.forEach((c)=>{ c.value=null; });
     cards.forEach((c,i)=>setFlipped(i,false));
     els.forEach(el=>el.classList.remove("matched","wrong"));
     syncURL();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+    const n = BENCH.attempts_completed + 1;
+    showToast("Attempt "+n+" / "+MAX_ATTEMPTS+" · 第 "+n+" / "+MAX_ATTEMPTS+" 次");
     botTurn();
   }
 

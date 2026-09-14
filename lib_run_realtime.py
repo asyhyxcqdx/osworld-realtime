@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from lib_results_logger import log_task_completion
-from mm_agents.realtime_protocol import FRAME_TOOL
+from mm_agents.realtime_protocol import FRAME_TOOL, ForbiddenShortcutError
 
 
 def run_realtime_example(
@@ -38,14 +38,16 @@ def run_realtime_example(
         "agent_config": getattr(args, "realtime_config_path", None),
         "api_format": agent.wire.protocol,
         "tool_format": agent.tool_format,
-        "pause_s": args.sleep_after_execution,
+        "implicit_action_sleep_s": 0,
         "environment_ready_wait_s": args.environment_ready_wait_s,
         "recording_fragment_ms": args.recording_fragment_ms,
         "recording": record,
-        "max_actions": max_steps,
+        "max_decision_rounds": max_steps,
         "max_sequence_actions": args.max_sequence_actions,
         "max_frame_queries_per_decision": args.max_frame_queries,
         "frame_queries_unlimited": args.max_frame_queries == 0,
+        "thinking_enabled": getattr(agent.wire, "thinking_enabled", False),
+        "thinking_effort": getattr(agent.wire, "thinking_effort", None),
         "thinking_summary_requested": getattr(agent.wire, "thinking_summary", False),
         "instruction": instruction,
         "trajectory_file": "trajectory.jsonl",
@@ -110,8 +112,7 @@ def run_realtime_example(
             },
             decision_id=0,
         )
-        while not done and action_count < max_steps:
-            obs["remaining_actions"] = max_steps - action_count
+        while not done and decision_count < max_steps:
             response, actions = agent.predict(instruction, obs)
             decision_count += 1
             write_event(
@@ -126,13 +127,21 @@ def run_realtime_example(
             try:
                 if agent.sequence:
                     obs, reward, done, info = env.step_sequence(
-                        actions, args.sleep_after_execution
+                        actions
                     )
                 else:
-                    obs, reward, done, info = env.step(
-                        actions[0], args.sleep_after_execution
-                    )
+                    obs, reward, done, info = env.step(actions[0], 0)
             except Exception as exc:
+                if isinstance(exc, ForbiddenShortcutError):
+                    write_event(
+                        {
+                            "event": "action_rejected",
+                            "reason": "forbidden_browser_shortcut",
+                            "action": actions,
+                            "timestamp_s": env.controller.last_observation_time,
+                        },
+                        decision_id=decision_count,
+                    )
                 execution_error = getattr(
                     exc, "details", {"status": "unknown", "message": type(exc).__name__}
                 )

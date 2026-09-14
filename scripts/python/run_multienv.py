@@ -32,6 +32,8 @@ if os.path.exists(".env"):
 
 #  Logger Configs {{{ #
 def config() -> argparse.Namespace:
+    import sys
+
     parser = argparse.ArgumentParser(
         description="Run end-to-end evaluation on the benchmark"
     )
@@ -59,8 +61,16 @@ def config() -> argparse.Namespace:
         default="screenshot",
         help="Observation type",
     )
-    parser.add_argument("--sleep_after_execution", type=float, default=0.0)
-    parser.add_argument("--max_steps", type=int, default=15)
+    parser.add_argument(
+        "--sleep_after_execution",
+        type=float,
+        default=0.0,
+        help="Legacy delay for non-realtime actions; ignored by four-agent realtime runs.",
+    )
+    parser.add_argument(
+        "--max_steps", type=int, default=100,
+        help="Maximum decision rounds per task for realtime Agents",
+    )
 
     # agent config
     parser.add_argument("--max_trajectory_length", type=int, default=3)
@@ -125,47 +135,51 @@ def config() -> argparse.Namespace:
         "--run_id", default=None,
         help="Four-agent experiment ID; reuse it across agents and for resume. Defaults to a new timestamp.",
     )
-    parser.add_argument("--tool_format", choices=["native", "json"], default="native")
+    parser.add_argument("--tool_format", choices=["native"], default="native")
     parser.add_argument("--max_frame_queries", type=int, default=0,
                         help="Frame queries per decision; 0 (default) means unlimited")
-    parser.add_argument("--thinking_summary", action="store_true",
-                        help="Request adaptive thinking summaries from a compatible Anthropic Messages model")
     parser.add_argument("--max_sequence_actions", type=int, default=100)
     parser.add_argument("--recording_fragment_ms", type=int, default=100)
     parser.add_argument("--environment_ready_wait_s", type=float, default=60)
-    parser.add_argument("--evaluation_settle_s", type=float, default=20)
+    parser.add_argument("--evaluation_settle_s", type=float, default=3)
     parser.add_argument("--install_realtime_server", action="store_true", help="Install the realtime extension in the VM after reset")
     args = parser.parse_args()
     if args.agent_variant:
         from mm_agents.realtime_config import agent_kwargs, default_config_path, load_realtime_config
 
+        requested_model = args.model
         config_path = args.agent_config or default_config_path(
-            args.agent_variant, args.model or "claude-sonnet-5"
+            args.agent_variant, requested_model or "claude-sonnet-5"
         )
         try:
             realtime_config = load_realtime_config(config_path, variant=args.agent_variant)
         except (OSError, ValueError) as exc:
-            parser.error(f"Invalid realtime Agent config {config_path}: {exc}")
+            if args.agent_config or not isinstance(exc, FileNotFoundError):
+                parser.error(f"Invalid realtime Agent config {config_path}: {exc}")
+            config_path = default_config_path(args.agent_variant, "claude-sonnet-5")
+            try:
+                realtime_config = load_realtime_config(config_path, variant=args.agent_variant)
+            except (OSError, ValueError) as fallback_exc:
+                parser.error(f"Invalid realtime Agent config {config_path}: {fallback_exc}")
         config_values = agent_kwargs(realtime_config)
         args.realtime_config_path = str(config_path)
         args.realtime_config = realtime_config
-        args.model = config_values["model"]
+        args.model = requested_model or config_values["model"]
         args.api_format = config_values["api_format"]
         args.max_tokens = config_values["max_tokens"]
         args.temperature = config_values["temperature"]
         args.max_trajectory_length = config_values["max_trajectory_length"]
         args.max_sequence_actions = config_values["max_sequence_actions"]
-        args.max_frame_queries = config_values["max_frame_queries"]
+        if "--max_frame_queries" not in sys.argv:
+            args.max_frame_queries = config_values["max_frame_queries"]
         args.tool_format = config_values["tool_format"]
+        args.thinking_enabled = config_values["thinking_enabled"]
+        args.thinking_effort = config_values["thinking_effort"]
         args.thinking_summary = config_values["thinking_summary"]
         if args.action_space != "computer_13" or args.observation_type != "screenshot":
             parser.error("Four-agent experiments require --action_space computer_13 --observation_type screenshot")
         if not 1 <= args.max_sequence_actions <= 100 or args.max_frame_queries < 0:
             parser.error("Invalid sequence/query budget")
-        if args.thinking_summary and not (
-                args.api_format == "anthropic_messages"
-                or (args.api_format == "auto" and args.model.startswith("claude"))):
-            parser.error("--thinking_summary requires Anthropic Messages")
         if min(args.sleep_after_execution, args.environment_ready_wait_s, args.evaluation_settle_s) < 0:
             parser.error("Wait values must be nonnegative")
         started = datetime.datetime.now().astimezone()
@@ -181,9 +195,11 @@ def config() -> argparse.Namespace:
         args.result_dir = os.path.join(
             args.result_dir, args.model, args.run_id, args.agent_variant
         )
-    elif args.run_id is not None:
+    else:
+        args.model = args.model or "gpt-4o"
+    if not args.agent_variant and args.run_id is not None:
         parser.error("run_id is supported by the four-agent runner; set --agent_variant")
-    elif args.api_format == "openai_responses":
+    if not args.agent_variant and args.api_format == "openai_responses":
         parser.error("openai_responses is supported by the four-agent runner; set --agent_variant")
     return args
 
@@ -350,8 +366,10 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                 frames=args.realtime_config["observation"]["historical_video"]["enabled"],
                 temperature=args.temperature, max_trajectory_length=args.max_trajectory_length,
                 api_format=args.api_format, api_base_url=args.api_base_url,
-                pause=args.sleep_after_execution, max_sequence_actions=args.max_sequence_actions,
+                max_sequence_actions=args.max_sequence_actions,
                 max_frame_queries=args.max_frame_queries, tool_format=args.tool_format,
+                thinking_enabled=args.thinking_enabled,
+                thinking_effort=args.thinking_effort,
                 thinking_summary=args.thinking_summary,
                 system_prompt_text=args.realtime_config["system_prompt"],
             )
@@ -627,7 +645,6 @@ def get_result(
         print("New experiment, no result yet.")
         return None
     else:
-        args.model = args.model or "gpt-4o"
         print("Current Success Rate:", sum(all_result) / len(all_result) * 100, "%")
         return all_result
 

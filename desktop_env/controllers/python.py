@@ -327,10 +327,15 @@ class PythonController:
 
         action_type = action["action_type"]
         parameters = action["parameters"] if "parameters" in action else {param: action[param] for param in action if param != 'action_type'}
-        move_mode = random.choice(
-            ["pyautogui.easeInQuad", "pyautogui.easeOutQuad", "pyautogui.easeInOutQuad", "pyautogui.easeInBounce",
-             "pyautogui.easeInElastic"])
-        duration = random.uniform(0.5, 1)
+        explicit_duration = parameters.get("duration_s")
+        if explicit_duration is None:
+            move_mode = random.choice(
+                ["pyautogui.easeInQuad", "pyautogui.easeOutQuad", "pyautogui.easeInOutQuad", "pyautogui.easeInBounce",
+                 "pyautogui.easeInElastic"])
+            duration = random.uniform(0.5, 1)
+        else:
+            move_mode = "pyautogui.linear"
+            duration = explicit_duration
 
         if action_type == "MOVE_TO":
             if parameters == {} or None:
@@ -418,7 +423,7 @@ class PythonController:
                 x = parameters["x"]
                 y = parameters["y"]
                 self.execute_python_command(
-                    f"pyautogui.dragTo({x}, {y}, duration=1.0, button='left', mouseDownUp=True)")
+                    f"pyautogui.dragTo({x}, {y}, duration={duration}, button='left', mouseDownUp=True)")
 
         elif action_type == "SCROLL":
             # todo: check if it is related to the operating system, as https://github.com/TheDuckAI/DuckTrack/blob/main/ducktrack/playback.py pointed out
@@ -518,18 +523,18 @@ class PythonController:
     def get_frames(self, times_s):
         return self._realtime_request("POST", "/frames", {"times_s": times_s}, timeout=180)
 
-    def execute_sequence(self, actions, pause=0):
-        from mm_agents.realtime_protocol import validate_action
-        # Reuse the official action compiler, including random MOVE_TO duration.
+    def execute_sequence(self, actions, pause=None):
+        from mm_agents.realtime_protocol import validate_action_sequence
+        # Reuse the official action compiler, including explicit realtime timing.
         collector = object.__new__(PythonController)
         groups = []
+        validate_action_sequence(actions)
         for action in actions:
-            validate_action(action)
             commands = []
             collector.execute_python_command = lambda code: commands.append(PYAUTOGUI_PKGS_PREFIX.format(command=code))
             collector.execute_action(action)
             groups.append({"action": action, "commands": commands})
-        return self._realtime_request("POST", "/sequence", {"groups": groups, "pause": pause}, timeout=300)
+        return self._realtime_request("POST", "/sequence", {"groups": groups}, timeout=300)
 
     def end_realtime_recording(self, directory):
         self._realtime_request("POST", "/stop")

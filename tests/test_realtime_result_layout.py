@@ -108,7 +108,8 @@ def test_task_evaluation_summaries_stay_with_each_model_and_agent(tmp_path, monk
             class Env:
                 def evaluate(self):
                     self._evaluation_details = {
-                        "benchmark_id": "A1", "pass_at_1": score, "pass_at_3": score
+                        "benchmark_id": "A1", "pass_at_1": score, "pass_at_3": score,
+                        "status": "passed" if score else "failed",
                     }
                     return score
 

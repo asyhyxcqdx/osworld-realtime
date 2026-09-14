@@ -149,7 +149,17 @@
   const retryOverlay = document.getElementById("retryOverlay"), nextBtn = document.getElementById("nextBtn"), retryText = document.getElementById("retryText");
   const introEl = document.getElementById("intro"), startBtn = document.getElementById("introStart");
 
-  const BENCH = { task:"combat_roll", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "combat_roll",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
 
   let started = false;
@@ -161,15 +171,15 @@
   let settleT = 0;       // 结算延迟计时
   let finalPose = null;  // 结算后的最终姿势："stand"(成功站直) | "lie"(失败横躺)，用于 over 阶段保持姿势不瞬移
 
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status); }catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3 }catch(e){} }
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   window.__dbg = function(){
     return { phase, t:+t.toFixed(3), x:Math.round(px), y:Math.round(py),
              tLand:+T_LAND.toFixed(3), windowMs:WINDOW_MS, pressedAt:(pressedAt===null?null:+pressedAt.toFixed(3)),
-             attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+             attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status };
   };
 
   function reset(){
@@ -188,29 +198,35 @@
     if (phase === "over") return;
     phase = "over";
     finalPose = "stand";   // 成功站直（站在滚动终点，位置已在 recover 阶段推进）
-    BENCH.results.push(true); BENCH.passed = true; BENCH.status = "passed";
+    BENCH.attempts_completed += 1;
+    BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+    BENCH.pass_at_3 = 1; BENCH.passed = true; BENCH.status = "passed"; BENCH.results.push(true);
     setStatus("Success 成功","win"); syncURL(); celebrate();
   }
   function fail(){
     if (phase === "over") return;
     phase = "over";
     finalPose = "lie";     // 失败保持横躺（不站起，避免形态瞬移）
-    BENCH.results.push(false); BENCH.attempts += 1; setHint();
-    if (BENCH.attempts >= MAX_ATTEMPTS && !BENCH.passed) {
+    BENCH.attempts_completed += 1; BENCH.results.push(false); setHint();
+    BENCH.status = "running"; BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false; syncURL();
+    if (BENCH.attempts_completed >= MAX_ATTEMPTS) {
+      BENCH.attempts_completed = MAX_ATTEMPTS; BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
       BENCH.status = "failed"; setStatus("Hard knockdown 倒地硬直","lose"); syncURL(); failOverlay.classList.add("show");
       return;
     }
     setStatus("Hard knockdown 倒地硬直","lose");
     setTimeout(()=>{
-      retryText.textContent = "Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次";
+      retryText.textContent = "Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 次";
       retryOverlay.classList.remove("hidden");
     }, 700);
   }
 
   function nextRound(){
+
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     retryOverlay.classList.add("hidden");
     reset();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+    showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+"  第 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 次");
   }
   nextBtn.addEventListener("click", nextRound);
 
@@ -438,6 +454,8 @@
 
   setHint(); syncURL();
   function startGame(){
+    if (BENCH.status !== "ready") return;   // 只在 ready 时首次开始（不消耗机会）
+    BENCH.status = "running"; syncURL();
     started = true;
     introEl.classList.add("hidden");
     reset();

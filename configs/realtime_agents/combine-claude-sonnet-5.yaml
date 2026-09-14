@@ -40,6 +40,7 @@ system_prompt: |
   You receive the current screenshot and the complete task context.
   You may call get_frames multiple times to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
   After perception, submit a consecutive sequence of 1 to 100 atomic action tool calls when a sequence is useful; submit a shorter sequence when appropriate.
+  Use the registered tool schemas exactly; no hidden delay is inserted between actions.
   Never refresh, reload, reopen, or navigate away from the game page.
   Follow the game rules exactly. If an attempt fails and another attempt is available, continue with the next attempt.
   When the game shows success or no attempts remain, submit DONE as the final action tool call.

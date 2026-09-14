@@ -229,9 +229,19 @@
   const HALF_WINDOW_DEG = 10;      // ±10°
   const MISS_MS = PERIOD_MS;       // arm 后转满一圈（6s）未点击 → miss
 
-  const BENCH = { task:"clockface", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "clock_face",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
   const startBtn=document.getElementById("startBtn");
@@ -263,7 +273,7 @@
 
   let phase="idle", armNow=0, missTimer=null, raf=null, angleLocked=0, lastT=0;
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1500); }
 
   // 秒针 rAF：只在 armed 阶段更新旋转（复用 b37 模式：idle/done 静止，armed 才转）
@@ -282,6 +292,8 @@
     setStatus("开始 / Press Start","idle"); syncURL();
   }
   function arm(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";               // 第一次尝试：ready → running（不消耗机会）
     phase="armed"; startBtn.disabled=true;
     armNow=performance.now(); lastT=armNow;
     angleLocked=0;
@@ -299,7 +311,11 @@
     cancelAnimationFrame(raf);
     angleLocked=angle; setHand(angle);   // 结算：秒针停在点击处
     if(absDiff<=HALF_WINDOW_DEG){
-      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      BENCH.results.push(true);
+      BENCH.attempts_completed += 1;                     // 协议 1.1：成功也计入
+      BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+      BENCH.pass_at_3 = 1;
+      BENCH.passed=true; BENCH.status="passed";
       setStatus("Success 成功","win"); syncURL();
       // 结算延迟：先播鸣钟后果动画，再弹 win 框
       setTimeout(()=>{ overlay.classList.add("show"); launchConfetti(); }, 350);
@@ -316,14 +332,19 @@
     failOne();
   }
   function failOne(){
-    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    BENCH.results.push(false);
+    BENCH.attempts_completed+=1; setHint();
     setStatus("Missed 脱靶","lose");
-    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){
+    if(BENCH.attempts_completed>=MAX_ATTEMPTS){
+      BENCH.attempts_completed=MAX_ATTEMPTS;
+      BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
       BENCH.status="failed"; syncURL();
       setTimeout(()=>failOverlay.classList.add("show"), 300);
       return;
     }
-    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + " · 尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS;
+    BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
+    BENCH.status="running"; syncURL();
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts_completed+1) + " / " + MAX_ATTEMPTS + " · 尝试 " + (BENCH.attempts_completed+1) + " / " + MAX_ATTEMPTS;
     document.getElementById("retryOverlay").classList.add("show");
   }
 
@@ -358,12 +379,14 @@
   startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
   dial.addEventListener("click",onDial);
   document.getElementById("introStart").addEventListener("click",()=>{
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("intro").classList.add("hidden");
     resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" · 尝试 1 / "+MAX_ATTEMPTS);
   });
   document.getElementById("nextBtn").addEventListener("click",()=>{
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("retryOverlay").classList.remove("show");
-    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS);
   });
 
   window.__dbg = function(){
@@ -377,7 +400,7 @@
       halfWindowDeg:HALF_WINDOW_DEG, windowMs:2*HALF_WINDOW_DEG/ANG_SPEED,
       angSpeedDegPerSec:ANG_SPEED*1000, periodMs:PERIOD_MS,
       inWindow:absDiff<=HALF_WINDOW_DEG,
-      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status
+      attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status
     };
   };
 

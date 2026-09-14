@@ -16,7 +16,7 @@ CAPABILITIES = {
 
 
 @pytest.mark.parametrize("variant", list(CAPABILITIES))
-def test_runner_counts_actions_not_queries_and_cleans_recording(
+def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
     tmp_path, monkeypatch, variant
 ):
     monkeypatch.setattr("lib_run_realtime.time.sleep", lambda _: None)
@@ -166,14 +166,14 @@ def test_vm_sequence_has_no_intermediate_observation_or_implicit_sleep(monkeypat
             "action": {"action_type": "PRESS", "parameters": {"key": " "}},
             "commands": ['pyautogui.events.append("a")'],
         },
-        {"action": {"action_type": "WAIT"}, "commands": []},
+        {"action": {"action_type": "WAIT", "parameters": {"duration_s": 0.5}}, "commands": []},
         {
             "action": {"action_type": "PRESS", "parameters": {"key": " "}},
             "commands": ['pyautogui.events.append("b")'],
         },
     ]
     response = client.post(
-        "/realtime/sequence", json={"session_id": "s", "groups": groups, "pause": 0.5}
+        "/realtime/sequence", json={"session_id": "s", "groups": groups}
     )
     assert response.status_code == 200
     assert gui.events == ["a", "b"]

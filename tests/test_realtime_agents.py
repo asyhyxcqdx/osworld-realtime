@@ -7,10 +7,12 @@ from unittest.mock import Mock
 import pytest
 
 from mm_agents.realtime_agent import ModelWire, RealtimeAgent, response_reasoning
+from mm_agents.realtime_config import agent_kwargs, load_realtime_config
 from mm_agents.realtime_protocol import (
+    ACTION_TOOLS,
     GetFramesArgs,
-    parse_actions,
     system_prompt,
+    validate_action,
 )
 
 
@@ -28,27 +30,23 @@ IMAGE = {
 }
 
 
-def test_current_vocabulary_and_strict_single_action():
-    assert parse_actions(json.dumps(ACTION)) == [ACTION]
+def test_action_validation_uses_registered_pydantic_models():
+    assert validate_action(ACTION) == ACTION
     with pytest.raises(ValueError):
-        parse_actions(json.dumps([ACTION, ACTION]))
+        validate_action({"action_type": "WAIT", "parameters": {}})
     with pytest.raises(ValueError):
-        parse_actions(
-            "```json\n"
-            + json.dumps(ACTION)
-            + "\n```\n```json\n"
-            + json.dumps(ACTION)
-            + "\n```",
-            sequence=True,
-        )
-    with pytest.raises(ValueError):
-        parse_actions('{"action_type":"WAIT","parameters":{"duration_s":0.5}}')
-    with pytest.raises(ValueError):
-        parse_actions(json.dumps([{"action_type": "DONE"}, ACTION]), sequence=True)
-    assert parse_actions(json.dumps([ACTION, ACTION]), sequence=True) == [
-        ACTION,
-        ACTION,
-    ]
+        validate_action({"action_type": "FAIL"})
+
+
+def test_action_tools_are_generated_from_pydantic_models():
+    from mm_agents.realtime_protocol import ACTION_TOOLS
+
+    move = next(tool for tool in ACTION_TOOLS if tool["name"] == "computer_move_to")
+    wait = next(tool for tool in ACTION_TOOLS if tool["name"] == "computer_wait")
+    assert move["parameters"]["required"] == ["x", "y", "duration_s"]
+    assert move["parameters"]["properties"]["duration_s"]["maximum"] == 10
+    assert wait["parameters"]["required"] == ["duration_s"]
+    assert "computer_fail" not in {tool["name"] for tool in ACTION_TOOLS}
 
 
 def test_legacy_prompt_initialization_preserves_json_braces():
@@ -198,30 +196,12 @@ def test_four_variants_and_repeated_frame_queries(protocol, variant):
         assert agent.counters["images_returned"] == 2
 
 
-def test_json_tool_output_and_query_budget():
+def test_text_json_tool_output_is_rejected():
     wire = ModelWire("mock", "anthropic_messages")
-    replies = [
-        native_reply(
-            wire.protocol, text='{"tool_call":{"tool_name":"get_frames","times_s":[1]}}'
-        ),
-        native_reply(wire.protocol, text=json.dumps(ACTION), force_text=True),
-    ]
-    wire.request = Mock(side_effect=replies)
-    agent = RealtimeAgent(
-        variant="agent3", sequence=False, frames=True, wire=wire, tool_format="json", max_frame_queries=1
-    )
-    agent.bind_frame_query(
-        lambda _: {
-            "frames": [
-                {"status": "not_ready", "requested_time_s": 1, "available_until_s": 0.9}
-            ]
-        }
-    )
-    assert agent.predict("t", {"screenshot": b"png", "task_time_s": 1})[1] == [ACTION]
-    assert not wire.request.call_args.kwargs["tools_enabled"]
-    messages = wire.request.call_args.args[1]
-    assert "not_ready" in json.dumps(messages)
-    assert agent.counters["images_returned"] == 0
+    with pytest.raises(ValueError, match="native tool use"):
+        RealtimeAgent(
+            variant="agent3", sequence=False, frames=True, wire=wire, tool_format="json"
+        )
 
 
 def test_single_action_repair_does_not_execute_first_invalid_action():
@@ -237,7 +217,7 @@ def test_single_action_repair_does_not_execute_first_invalid_action():
     assert agent.counters["model_requests"] == 2
 
 
-def test_action_budget_is_not_silently_truncated():
+def test_sequence_action_limit_is_not_silently_truncated():
     wire = ModelWire("mock", "openai_chat")
     wire.request = Mock(
         side_effect=[
@@ -245,9 +225,12 @@ def test_action_budget_is_not_silently_truncated():
             native_reply(wire.protocol, text=json.dumps(ACTION)),
         ]
     )
-    agent = RealtimeAgent(variant="agent2", sequence=True, frames=False, wire=wire)
+    agent = RealtimeAgent(
+        variant="agent2", sequence=True, frames=False, wire=wire,
+        max_sequence_actions=1,
+    )
     assert agent.predict(
-        "t", {"screenshot": b"png", "task_time_s": 0, "remaining_actions": 1}
+        "t", {"screenshot": b"png", "task_time_s": 0}
     )[1] == [ACTION]
 
 
@@ -269,17 +252,16 @@ def test_sequence_controller_uses_one_http_request_and_original_durations(monkey
     )
     controller.execute_sequence(
         [
-            {"action_type": "MOVE_TO", "parameters": {"x": 10, "y": 20}},
+            {"action_type": "MOVE_TO", "parameters": {"x": 10, "y": 20, "duration_s": 0.25}},
             ACTION,
-            {"action_type": "WAIT"},
-        ],
-        0.5,
+            {"action_type": "WAIT", "parameters": {"duration_s": 0.5}},
+        ]
     )
     assert controller._realtime_request.call_count == 1
     payload = controller._realtime_request.call_args.args[2]
-    assert "0.75" in payload["groups"][0]["commands"][0]
+    assert "0.25" in payload["groups"][0]["commands"][0]
     assert payload["groups"][2]["commands"] == []
-    assert payload["pause"] == 0.5
+    assert "pause" not in payload
 
 
 def test_env_sequence_observes_once():
@@ -287,6 +269,8 @@ def test_env_sequence_observes_once():
 
     env = object.__new__(DesktopEnv)
     env.action_space, env.action_history, env._step_no = "computer_13", [], 0
+    env._traj_no = 0
+    env.is_environment_used = False
     env.controller = SimpleNamespace(
         execute_sequence=Mock(
             return_value={
@@ -300,6 +284,45 @@ def test_env_sequence_observes_once():
     env.step_sequence([ACTION, ACTION])
     assert env._get_obs.call_count == 1
     assert env.action_history == [ACTION, ACTION] and env._step_no == 2
+
+
+def test_realtime_single_wait_is_executed_by_vm_without_host_sleep(monkeypatch):
+    from desktop_env.desktop_env import DesktopEnv
+
+    env = object.__new__(DesktopEnv)
+    env.action_space, env.action_history, env._step_no = "computer_13", [], 0
+    env._traj_no = 0
+    env.is_environment_used = False
+    env.controller = SimpleNamespace(
+        realtime_session="session",
+        execute_sequence=Mock(
+            return_value={"actions": [{"action": {"action_type": "WAIT", "parameters": {"duration_s": 0.5}}}], "done": False, "info": {}}
+        ),
+    )
+    env._get_obs = Mock(return_value={"screenshot": b"png"})
+    host_sleep = Mock()
+    monkeypatch.setattr("desktop_env.desktop_env.time.sleep", host_sleep)
+
+    _, _, done, info = env.step({"action_type": "WAIT", "parameters": {"duration_s": 0.5}}, 0)
+
+    env.controller.execute_sequence.assert_called_once_with([
+        {"action_type": "WAIT", "parameters": {"duration_s": 0.5}}
+    ])
+    host_sleep.assert_not_called()
+    assert not done
+    assert info["sequence_actions"][0]["action"]["action_type"] == "WAIT"
+
+
+def test_drag_to_without_realtime_duration_keeps_legacy_default(monkeypatch):
+    from desktop_env.controllers.python import PythonController
+
+    controller = object.__new__(PythonController)
+    commands = []
+    controller.execute_python_command = commands.append
+    monkeypatch.setattr("desktop_env.controllers.python.random.uniform", lambda *_: 0.75)
+    controller.execute_action({"action_type": "DRAG_TO", "parameters": {"x": 10, "y": 20}})
+
+    assert "duration=0.75" in commands[0]
 
 
 @pytest.mark.parametrize("protocol", ["anthropic_messages", "openai_chat", "openai_responses"])
@@ -325,6 +348,7 @@ def test_default_queries_have_no_query_or_request_count_limit(protocol, variant)
 def test_provider_reasoning_is_logged_and_preserved_in_tool_history(protocol):
     wire = ModelWire("mock", protocol)
     first = native_reply(protocol, tool="q1")
+    first["usage"] = {"input_tokens": 321, "output_tokens": 17}
     if protocol == "anthropic_messages":
         first["content"].insert(0, {"type": "thinking", "thinking": "Query the earlier image.", "signature": "opaque-signature"})
     elif protocol == "openai_responses":
@@ -350,6 +374,7 @@ def test_provider_reasoning_is_logged_and_preserved_in_tool_history(protocol):
     agent.predict("t", {"screenshot": b"png", "task_time_s": 1, "screenshot_file": "initial_state.png"})
     response = next(e for e in events if e["event"] == "model_response")
     assert response["provider_response"] == captured[0]
+    assert response["usage"] == {"input_tokens": 321, "output_tokens": 17}
     assert response["reasoning"] == ["Query the earlier image."]
     assert response["reasoning_status"] == "returned"
     assert events[0]["observation"]["screenshot_file"] == "initial_state.png"
@@ -381,3 +406,99 @@ def test_anthropic_thinking_summary_payload_is_explicit(monkeypatch, enabled):
         assert "thinking" not in payload
         assert payload["temperature"] == 1
     assert payload["max_tokens"] == 1500
+
+
+def test_anthropic_thinking_effort_is_forwarded(monkeypatch):
+    monkeypatch.setenv("PACKY_API_KEY", "test-key")
+    wire = ModelWire(
+        "mock",
+        "anthropic_messages",
+        thinking_enabled=True,
+        thinking_effort="high",
+    )
+    wire.session.post = Mock(return_value=SimpleNamespace(status_code=200, json=lambda: {}))
+    wire.request("system", [], tools_enabled=False, native=True, max_tokens=128000, temperature=1)
+    payload = wire.session.post.call_args.kwargs["json"]
+    assert payload["thinking"] == {"type": "adaptive"}
+    assert payload["output_config"] == {"effort": "high"}
+    assert "temperature" not in payload
+
+
+@pytest.mark.parametrize(
+    ("variant", "agent_id", "sequence", "frames"),
+    [
+        ("agent1", "vanilla", False, False),
+        ("agent2", "anticipatory", True, False),
+        ("agent3", "video", False, True),
+        ("agent4", "combine", True, True),
+    ],
+)
+def test_checked_in_realtime_configs_map_all_runtime_capabilities(
+    variant, agent_id, sequence, frames
+):
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "configs"
+        / "realtime_agents"
+        / f"{agent_id}-claude-sonnet-5.yaml"
+    )
+    config = load_realtime_config(path, variant=variant)
+    kwargs = agent_kwargs(config)
+    assert config["agent_id"] == agent_id
+    assert kwargs["sequence"] is sequence
+    assert kwargs["frames"] is frames
+    assert kwargs["model"] == "claude-sonnet-5"
+    assert kwargs["tool_format"] == "native"
+    assert kwargs["max_tokens"] == 128000
+    assert kwargs["thinking_enabled"] is True
+    assert kwargs["thinking_effort"] == "high"
+    assert kwargs["thinking_summary"] is True
+    assert kwargs["system_prompt_text"] == config["system_prompt"]
+    assert kwargs["max_sequence_actions"] == (1 if not sequence else 100)
+
+
+@pytest.mark.parametrize("protocol", ["openai_chat", "openai_responses"])
+def test_openai_native_tool_schema_is_sent_without_text_fallback(monkeypatch, protocol):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    wire = ModelWire("openai-test", protocol)
+    wire.session.post = Mock(
+        return_value=SimpleNamespace(status_code=200, json=lambda: {})
+    )
+    wire.request(
+        "system prompt",
+        [{"role": "user", "content": "task"}],
+        tools_enabled=True,
+        native=True,
+        max_tokens=128000,
+        temperature=0.2,
+        tools=[ACTION_TOOLS[0]],
+    )
+    payload = wire.session.post.call_args.kwargs["json"]
+    assert payload["tools"] == [
+        (
+            {
+                "type": "function",
+                "name": ACTION_TOOLS[0]["name"],
+                "description": ACTION_TOOLS[0]["description"],
+                "parameters": ACTION_TOOLS[0]["parameters"],
+                "strict": False,
+            }
+            if protocol == "openai_responses"
+            else {
+                "type": "function",
+                "function": {
+                    "name": ACTION_TOOLS[0]["name"],
+                    "description": ACTION_TOOLS[0]["description"],
+                    "parameters": ACTION_TOOLS[0]["parameters"],
+                },
+            }
+        )
+    ]
+    if protocol == "openai_responses":
+        assert payload["max_output_tokens"] == 128000
+        assert payload["instructions"] == "system prompt"
+    else:
+        assert payload["max_tokens"] == 128000
+        assert payload["messages"][0] == {"role": "system", "content": "system prompt"}

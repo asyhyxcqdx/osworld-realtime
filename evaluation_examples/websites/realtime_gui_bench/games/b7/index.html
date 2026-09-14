@@ -198,9 +198,19 @@ body{
   const ORDER = ["2", "3", "1"];   // 满格先后顺序（2 最快 → 3 → 1 最慢）
   const MISS_MS = 600;             // 最后一个工位满格后 600ms 未点 → miss
 
-  const BENCH = { task:"assembly", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "assembly_line",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
   const startBtn=document.getElementById("startBtn");
@@ -216,7 +226,7 @@ body{
   let hitMap={ "1":false, "2":false, "3":false };
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次"; }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
   function setNum(el,r){ const s=Math.max(0,r/1000).toFixed(2); el.textContent=s; el.classList.toggle("zero", r<=0); }
   function setRing(fg,pct){ const off=CIRC*(1-Math.max(0,Math.min(1,pct))); fg.style.strokeDasharray=CIRC; fg.style.strokeDashoffset=off; }
@@ -269,6 +279,8 @@ body{
     sizeCanvas(); drawScene();
   }
   function arm(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";               // 第一次尝试：ready → running（不消耗机会）
     phase="armed"; stageKey=ORDER[0]; startBtn.disabled=true; setStationsEnabled(true);
     hitMap={ "1":false, "2":false, "3":false }; armNow=performance.now();
     setStatus("Click the station that fills first 先点先满格的工位","action"); syncURL();
@@ -292,7 +304,11 @@ body{
     const idx=ORDER.indexOf(id);
     if(idx+1 >= ORDER.length){
       phase="done"; setStationsEnabled(false); cancelAnimationFrame(raf);
-      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      BENCH.results.push(true);
+      BENCH.attempts_completed += 1;                       // 协议 1.1：成功也计入
+      BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+      BENCH.pass_at_3 = 1;
+      BENCH.passed=true; BENCH.status="passed";
       setStatus("Inspected! 检验完成","win"); syncURL();
       setTimeout(celebrate, 350);
     } else {
@@ -310,10 +326,17 @@ body{
   function failOne(reason){
     cancelAnimationFrame(raf);
     if(phase==="armed"){ phase="done"; setStationsEnabled(false); }
-    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    BENCH.results.push(false);
+    BENCH.attempts_completed+=1; setHint();
     setStatus("Missed 未命中","lose");
-    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
-    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    if(BENCH.attempts_completed>=MAX_ATTEMPTS){
+      BENCH.attempts_completed=MAX_ATTEMPTS;
+      BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
+      BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return;
+    }
+    BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
+    BENCH.status="running"; syncURL();
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次";
     document.getElementById("retryOverlay").classList.add("show");
   }
 
@@ -334,12 +357,14 @@ body{
   }
 
   function onIntroStart(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("intro").classList.add("hidden");
     resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
   }
   function onNext(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("retryOverlay").classList.remove("show");
-    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
   function onSpaceKey(e){
     if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
@@ -363,7 +388,7 @@ body{
       phase, stage:stageKey, hit:Object.assign({},hitMap), order:ORDER.slice(),
       elapsedMs:Math.round(el), dur:Object.assign({},DUR),
       inWindow: (phase==="armed") && el>=DUR[stageKey] && el<nextFillMs(),
-      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status
+      attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status
     };
   };
 

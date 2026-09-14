@@ -139,9 +139,19 @@
   const SLOT_N = 6;
   const SHOW_MS = 700, SPIN_MS = 480, FADE_MS = 380, STEPS_MIN = 3, STEPS_MAX = 5;
 
-  const BENCH = { task:"spinner", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "neon_lucky_wheel",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                     // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
   const palette = document.getElementById("palette");
@@ -158,10 +168,10 @@
   let fade = 0;              // 灯灭进度 0(霓虹亮)~1(全暗灰)
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次"; }
+  function setHint(){ const n = BENCH.attempts_completed + 1; hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+" · 第 "+n+" / "+MAX_ATTEMPTS+" 次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
-  window.__dbg = function(){ return { phase, targetIdx, dir, steps, attempts: BENCH.attempts, passed: BENCH.passed }; };
+  window.__dbg = function(){ return { phase, targetIdx, dir, steps, attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status }; };
 
   function buildPalette(){
     palette.innerHTML = "";
@@ -175,6 +185,8 @@
 
   function onSpin(){
     if (phase !== "idle") return;
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";                // 点 Reveal 开始第一次尝试：ready → running（不消耗机会）
     dir = Math.random() < 0.5 ? 1 : -1;
     steps = STEPS_MIN + Math.floor(Math.random()*(STEPS_MAX - STEPS_MIN + 1));
     moveIdx = 0;
@@ -330,6 +342,10 @@
     BENCH.results.push(ok);
     if (ok){
       phase = "done";
+      // 协议 1.1：判定瞬间先原子写 BENCH，再播动画；成功也计入 attempts_completed
+      BENCH.attempts_completed += 1;
+      BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+      BENCH.pass_at_3 = 1;
       BENCH.passed = true; BENCH.status = "passed";
       setStatus("Success! 成功","win"); syncURL(); celebrate();
       return;
@@ -339,21 +355,30 @@
   }
 
   function nextAttempt(){
-    BENCH.attempts += 1; setHint();
-    if (BENCH.attempts >= MAX_ATTEMPTS){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：不接受会改变结果的操作
+    // 协议 1.1：失败也计入 attempts_completed
+    BENCH.attempts_completed += 1; setHint();
+    if (BENCH.attempts_completed >= MAX_ATTEMPTS){
+      BENCH.attempts_completed = MAX_ATTEMPTS;
+      BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
       BENCH.status = "failed"; setStatus("Game over 游戏结束","lose"); syncURL(); failOverlay.classList.add("show");
       return;
     }
-    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " · 第 " + (BENCH.attempts + 1) + " / " + MAX_ATTEMPTS + " 次";
+    BENCH.pass_at_1 = 0; BENCH.pass_at_3 = 0; BENCH.passed = false;
+    BENCH.status = "running"; syncURL();
+    const n = BENCH.attempts_completed + 1;
+    document.getElementById("retryText").textContent = "Attempt " + n + " / " + MAX_ATTEMPTS + " · 第 " + n + " / " + MAX_ATTEMPTS + " 次";
     document.getElementById("retryOverlay").classList.add("show");
   }
 
   function startRound(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：重试入口失效
     rotAngle = 0; dir = 1; steps = 0; targetIdx = 0; fade = 0; phase = "idle";
     revealBtn.disabled = false;
     setStatus("Watch the wheel spin, then tap the color under the pointer · 看转盘旋转，点指针指向的颜色","");
     syncURL();
-    showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 第 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 次");
+    const n = BENCH.attempts_completed + 1;
+    showToast("Attempt "+n+" / "+MAX_ATTEMPTS+" · 第 "+n+" / "+MAX_ATTEMPTS+" 次");
   }
 
   function celebrate(){ overlay.classList.add("show"); launchConfetti(); }

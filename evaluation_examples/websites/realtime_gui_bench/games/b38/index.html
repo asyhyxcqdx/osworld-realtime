@@ -229,9 +229,19 @@ body{
   const TIMING_MS = 250;       // 下缘到线/上缘离线的时机窗口 ±250ms
   const KEYS = ["KeyD","KeyK"];
 
-  const BENCH = { task:"dual_hold", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "dual_hold",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
   const startBtn=document.getElementById("startBtn");
@@ -254,7 +264,7 @@ body{
   pressVal.textContent = (LEAD_IN_MS/1000).toFixed(1);
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次"; }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次"; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
   function setFeedback(t,c){ feedback.textContent=t; feedback.className="feedback "+(c||""); }
   function setBar(p){ p=Math.max(0,Math.min(1,p)); bar.style.width=(p*100)+"%"; barLbl.textContent=Math.round(p*100)+"%"; }
@@ -279,6 +289,8 @@ body{
   function releaseTargetMs(){ return LEAD_IN_MS + HOLD_MS; }
 
   function arm(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";               // 第一次尝试：ready → running（不消耗机会）
     phase="armed"; startBtn.disabled=true; armNow=performance.now();
     keyState={KeyD:false,KeyK:false}; firstKeyT=0; holding=false; holdReachedMax=false;
     keyD.className="key key-D"; keyK.className="key key-K";
@@ -366,7 +378,11 @@ body{
     if(phase!=="armed") return;
     phase="done"; cancelAnimationFrame(raf); startBtn.disabled=true;
     if(win){
-      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      BENCH.results.push(true);
+      BENCH.attempts_completed += 1;                       // 协议 1.1：成功也计入
+      BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+      BENCH.pass_at_3 = 1;
+      BENCH.passed=true; BENCH.status="passed";
       setStatus("Success 成功","win"); syncURL(); celebrate();
     } else {
       failOne(reason||"Failed 失败");
@@ -374,10 +390,17 @@ body{
   }
   function miss(){ cancelAnimationFrame(raf); if(phase!=="armed") return; phase="done"; startBtn.disabled=true; failOne("Missed 未按下"); }
   function failOne(reason){
-    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    BENCH.results.push(false);
+    BENCH.attempts_completed+=1; setHint();
     setStatus("Missed 未命中","lose");
-    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){ BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return; }
-    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次";
+    if(BENCH.attempts_completed>=MAX_ATTEMPTS){
+      BENCH.attempts_completed=MAX_ATTEMPTS;
+      BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
+      BENCH.status="failed"; syncURL(); failOverlay.classList.add("show"); return;
+    }
+    BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
+    BENCH.status="running"; syncURL();
+    document.getElementById("retryText").textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次";
     document.getElementById("retryOverlay").classList.add("show");
   }
 
@@ -398,12 +421,14 @@ body{
   }
 
   function onIntroStart(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("intro").classList.add("hidden");
     resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" 第1/"+MAX_ATTEMPTS+"次");
   }
   function onNext(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("retryOverlay").classList.remove("show");
-    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts+1)+"/"+MAX_ATTEMPTS+"次");
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
   function onSpaceKey(e){
     if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
@@ -430,7 +455,7 @@ body{
       keyD:keyState.KeyD, keyK:keyState.KeyK, holding,
       holdProgress:holding?Math.min(1,(el-pressTargetMs())/HOLD_MS):0,
       keys:KEYS,
-      attempts:BENCH.attempts, passed:BENCH.passed, status:BENCH.status };
+      attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status };
   };
 
   resetToIdle(); setHint(); syncURL();

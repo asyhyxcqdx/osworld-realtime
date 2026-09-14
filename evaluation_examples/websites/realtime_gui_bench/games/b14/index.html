@@ -154,9 +154,19 @@
   const TARGET_BEAT = 3;            // 数到第 3 声点击
   const MISS_BEAT = 5;              // 数到第 5 声还没点 → miss
 
-  const BENCH = { task:"beat3", attempts:0, maxAttempts:MAX_ATTEMPTS, passed:false, results:[], status:"running" };
+  const BENCH = {
+    protocol_version: "realtime-gui-bench/1.1",
+    task: "beat_3",
+    max_attempts: MAX_ATTEMPTS,
+    attempts_completed: 0,
+    passed: false,
+    status: "ready",
+    pass_at_1: 0,
+    pass_at_3: 0,
+    results: []                    // 诊断字段，不参与评分
+  };
   window.BENCH = BENCH;
-  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts="+BENCH.attempts+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status);}catch(e){} }
+  function syncURL(){ try{ window.history.replaceState(null,"","#task="+BENCH.task+"&attempts_completed="+BENCH.attempts_completed+"&passed="+(BENCH.passed?1:0)+"&status="+BENCH.status+"&pass_at_1="+BENCH.pass_at_1+"&pass_at_3="+BENCH.pass_at_3);}catch(e){} }
 
   const statusEl=document.getElementById("status"), hintEl=document.getElementById("hint");
   const startBtn=document.getElementById("startBtn");
@@ -171,7 +181,7 @@
   let lastT=0, drumHit=false, metronomeSwing=0;   // metronomeSwing 0..1 摆锤装饰动画相位
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
-  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS; }
+  function setHint(){ hintEl.textContent="Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1500); }
 
   function setBeat(b){
@@ -295,6 +305,8 @@
     setStatus("开始 / Press Start","idle"); syncURL();
   }
   function arm(){
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (BENCH.status === "ready") BENCH.status = "running";               // 第一次尝试：ready → running（不消耗机会）
     phase="armed"; startBtn.disabled=true; drumHit=false;
     armNow=performance.now(); lastT=armNow;
     setStatus("Count the beats, strike on the 3rd! 数拍子，第 3 拍击鼓！","action"); syncURL();
@@ -323,7 +335,11 @@
     drawScene(performance.now());
     if(inWin){
       drumHit=true; drawScene(performance.now());
-      BENCH.results.push(true); BENCH.passed=true; BENCH.status="passed";
+      BENCH.results.push(true);
+      BENCH.attempts_completed += 1;                       // 协议 1.1：成功也计入
+      BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
+      BENCH.pass_at_3 = 1;
+      BENCH.passed=true; BENCH.status="passed";
       setStatus("Success 成功","win"); syncURL();
       setTimeout(()=>{ overlay.classList.add("show"); launchConfetti(); }, 350);
     } else {
@@ -338,14 +354,19 @@
     failOne("Missed 脱靶");
   }
   function failOne(reason){
-    BENCH.results.push(false); BENCH.attempts+=1; setHint();
+    BENCH.results.push(false);
+    BENCH.attempts_completed+=1; setHint();
     setStatus("Missed 脱靶","lose");
-    if(BENCH.attempts>=MAX_ATTEMPTS && !BENCH.passed){
+    if(BENCH.attempts_completed>=MAX_ATTEMPTS){
+      BENCH.attempts_completed=MAX_ATTEMPTS;
+      BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
       BENCH.status="failed"; syncURL();
       setTimeout(()=>failOverlay.classList.add("show"), 300);
       return;
     }
-    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS + " · 尝试 " + (BENCH.attempts+1) + " / " + MAX_ATTEMPTS;
+    BENCH.pass_at_1=0; BENCH.pass_at_3=0; BENCH.passed=false;
+    BENCH.status="running"; syncURL();
+    document.getElementById("retryText").textContent = "Attempt " + (BENCH.attempts_completed+1) + " / " + MAX_ATTEMPTS + " · 尝试 " + (BENCH.attempts_completed+1) + " / " + MAX_ATTEMPTS;
     document.getElementById("retryOverlay").classList.add("show");
   }
 
@@ -380,12 +401,14 @@
   startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
   targetBtn.addEventListener("click",()=>onTarget());
   document.getElementById("introStart").addEventListener("click",()=>{
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("intro").classList.add("hidden");
     resetToIdle(); showToast("Attempt 1 / "+MAX_ATTEMPTS+" · 尝试 1 / "+MAX_ATTEMPTS);
   });
   document.getElementById("nextBtn").addEventListener("click",()=>{
+    if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("retryOverlay").classList.remove("show");
-    resetToIdle(); showToast("Attempt "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts+1)+" / "+MAX_ATTEMPTS);
+    resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS);
   });
 
   window.__dbg = function(){
@@ -397,7 +420,7 @@
       beatIntervalMs: BEAT_INTERVAL_MS, highlightMs: HIGHLIGHT_MS,
       halfWindowMs: HALF_WINDOW_MS, windowMs: HIGHLIGHT_MS,
       inWindow: beat===TARGET_BEAT && el>=TARGET_BEAT*BEAT_INTERVAL_MS && el<TARGET_BEAT*BEAT_INTERVAL_MS+HIGHLIGHT_MS,
-      attempts: BENCH.attempts, passed: BENCH.passed, status: BENCH.status
+      attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status
     };
   };
 
