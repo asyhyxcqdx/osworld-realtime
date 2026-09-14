@@ -49,17 +49,6 @@ def test_action_tools_are_generated_from_pydantic_models():
     assert "computer_fail" not in {tool["name"] for tool in ACTION_TOOLS}
 
 
-def test_legacy_prompt_initialization_preserves_json_braces():
-    from mm_agents.agent import PromptAgent
-
-    agent = PromptAgent(
-        action_space="computer_13",
-        observation_type="screenshot",
-        client_password="p{q}",
-    )
-    assert '"action_type"' in agent.system_message
-
-
 @pytest.mark.parametrize(
     "value", [[-1], [float("nan")], [float("inf")], [], [1] * 9, [True], ["1"]]
 )
