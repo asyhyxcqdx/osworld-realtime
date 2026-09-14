@@ -186,6 +186,6 @@ Agent loop 已经完成代码闭环，但全量实验前仍需验证：
 1. `computer_13` 的实时持续时间和动作间隔是否满足 69 个游戏；
 2. 真实 VM 是否正确返回动作执行结果；
 3. 各商业 API 是否完整返回 usage 和 reasoning summary；
-4. 游戏侧报告显示 69 个游戏均符合统一的 `BENCH` 和 `pass_at_1/pass_at_3` 协议；OSWorld 侧仍需完成全量 Docker/环境复验。
+4. 游戏侧报告显示 69 个游戏均符合统一的 `BENCH` 和 `pass_at_1/pass_at_3` 协议；OSWorld 侧 69 个任务的独立 Docker 初始环境复验已经完成。
 
 因此，当前适合先运行单个游戏的真实 VM 测试，再进行全量实验。
