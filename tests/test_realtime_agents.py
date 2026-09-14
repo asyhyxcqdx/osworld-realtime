@@ -546,6 +546,60 @@ def test_astra_config_preserves_thinking_and_combine_tools(monkeypatch):
     assert agent.max_actions == 100
 
 
+def test_fable_standard_vision_coordinates_are_mapped_to_native_screen(monkeypatch):
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "configs/realtime_agents/combine-claude-fable-5-1.yaml"
+    config = load_realtime_config(path, variant="agent4")
+    assert config["api"]["coordinate_mapping"] == {
+        "source_width": 1456,
+        "source_height": 819,
+        "target_width": 1920,
+        "target_height": 1080,
+    }
+    wire = ModelWire("claude-fable-5-1", "anthropic_messages")
+    wire.request = Mock(return_value=native_reply(
+        "anthropic_messages",
+        text=json.dumps({"action_type": "CLICK", "parameters": {"x": 754, "y": 549}}),
+    ))
+    agent = RealtimeAgent(**agent_kwargs(config), wire=wire)
+    assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [{
+        "action_type": "CLICK",
+        "parameters": {"x": 994.286, "y": 723.956},
+    }]
+
+
+def test_astra_does_not_apply_anthropic_coordinate_mapping():
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "configs/realtime_agents/combine-gpt-6-astra.yaml"
+    config = load_realtime_config(path, variant="agent4")
+    assert agent_kwargs(config)["coordinate_mapping"] is None
+
+
+def test_mixed_frame_and_action_calls_are_rejected_and_retried():
+    wire = ModelWire("claude-fable-5-1", "anthropic_messages")
+    mixed = {
+        "content": [
+            {"type": "tool_use", "id": "a0", "name": "computer_click", "input": {"x": 754, "y": 549}},
+            {"type": "tool_use", "id": "q0", "name": "get_frames", "input": {"times_s": [1.5]}},
+        ]
+    }
+    wire.request = Mock(side_effect=[mixed, native_reply(wire.protocol, text=json.dumps(ACTION))])
+    agent = RealtimeAgent(sequence=True, frames=True, wire=wire)
+    query = Mock()
+    agent.bind_frame_query(query)
+    assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION]
+    query.assert_not_called()
+    assert any(e["event"] == "format_error" for e in agent.last_events)
+    correction_messages = wire.request.call_args_list[1].args[1]
+    results = [m for m in correction_messages if m.get("role") == "user" and any(
+        b.get("type") == "tool_result" for b in m.get("content", [])
+    )]
+    assert results
+    assert {b["tool_use_id"] for b in results[0]["content"]} == {"a0", "q0"}
+
+
 def test_responses_image_logging_omits_bytes_without_changing_request():
     from mm_agents.realtime_agent import loggable_messages
 

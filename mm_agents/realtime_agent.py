@@ -469,6 +469,7 @@ class RealtimeAgent:
         thinking_enabled=None,
         thinking_effort=None,
         thinking_summary=False,
+        coordinate_mapping=None,
         system_prompt_text=None,
         wire=None,
     ):
@@ -486,6 +487,7 @@ class RealtimeAgent:
         if max_frame_queries < 0:
             raise ValueError("max_frame_queries must be nonnegative (0 means unlimited)")
         self.max_actions, self.max_queries = max_sequence_actions, max_frame_queries
+        self.coordinate_mapping = coordinate_mapping
         self.tool_format = tool_format
         self.wire = wire or ModelWire(
             model,
@@ -598,6 +600,7 @@ class RealtimeAgent:
             if arguments is None:
                 arguments = {}
             action = {"action_type": action_type, "parameters": arguments}
+            action = self._map_action_coordinates(action)
             try:
                 validate_action(action)
             except ForbiddenShortcutError:
@@ -611,6 +614,24 @@ class RealtimeAgent:
         if any(action["action_type"] == "DONE" for action in actions[:-1]):
             raise ValueError("DONE must be the last action.")
         return actions
+
+    def _map_action_coordinates(self, action):
+        """Map model-image coordinates back to the native VM screen when configured."""
+        mapping = self.coordinate_mapping
+        if not mapping:
+            return action
+        params = action.get("parameters", {})
+        if not isinstance(params, dict) or not {"x", "y"} <= set(params):
+            return action
+        mapped = copy.deepcopy(action)
+        mapped_params = mapped["parameters"]
+        mapped_params["x"] = round(
+            mapped_params["x"] * mapping["target_width"] / mapping["source_width"], 3
+        )
+        mapped_params["y"] = round(
+            mapped_params["y"] * mapping["target_height"] / mapping["source_height"], 3
+        )
+        return mapped
 
     def predict(self, instruction, obs):
         self.last_events = []
@@ -718,7 +739,34 @@ class RealtimeAgent:
                 frame_calls = [call for call in calls if call["name"] == FRAME_TOOL["name"]]
                 action_calls = [call for call in calls if call["name"] != FRAME_TOOL["name"]]
                 if frame_calls and action_calls:
-                    raise ValueError("A model response cannot mix frame queries and actions.")
+                    errors += 1
+                    message = (
+                        "Do not mix get_frames with action tools in one response. "
+                        "No actions were executed. Query historical frames first, "
+                        "then submit a separate response containing only actions."
+                    )
+                    self.emit({
+                        "event": "format_error",
+                        "request_id": request_id,
+                        "message": message,
+                        "correction": errors,
+                        "will_retry": errors <= 2,
+                    })
+                    if errors > 2:
+                        raise ValueError(message)
+                    # Close every native call before asking for a corrected response.
+                    # In particular, never execute a prefix of the action calls.
+                    rejected = [
+                        (call, {
+                            "status": "error",
+                            "executed": False,
+                            "message": message,
+                        })
+                        for call in calls
+                    ]
+                    round_messages.extend(self.wire.tool_results(rejected))
+                    round_messages.append(self.wire.user([text_block(message)]))
+                    continue
                 if action_calls:
                     self.counters["tool_calls"] += len(action_calls)
                     try:

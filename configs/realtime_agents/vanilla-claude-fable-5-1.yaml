@@ -30,6 +30,11 @@ api:
     enabled: true
     effort: high
     summary: true
+  coordinate_mapping:
+    source_width: 1456
+    source_height: 819
+    target_width: 1920
+    target_height: 1080
 constraints:
   forbid_refresh: true
   forbid_navigation: true

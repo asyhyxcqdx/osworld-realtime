@@ -144,6 +144,7 @@ api:
 | `thinking.enabled` | 布尔值 | 必须为 `true` | 是否请求供应商启用 thinking。正式实验必须开启。 |
 | `thinking.effort` | 字符串 | `low`、`medium`、`high`、`max`；Responses 另支持 `xhigh` | 实验规定的固定 thinking effort。不同供应商的适配器必须尽量映射到相同等级；不支持时显式报错。 |
 | `thinking.summary` | 布尔值 | 必须为 `true` | 是否请求供应商返回可读 thinking summary。它不代表可以获取隐藏的完整思维链。 |
+| `coordinate_mapping` | 映射或空值 | 仅在经过校准的 Anthropic 图像路径使用 | Claude 标准视觉分辨率会返回缩放后图像坐标时，声明模型坐标尺寸和 VM 原生屏幕尺寸；动作执行器按两个轴分别映射回原生坐标。Astra 等其他协议必须省略此字段。 |
 
 配置对实验使用固定的 `thinking.effort`，不把供应商内部的 adaptive 或 enabled 实现方式当作实验变量。Anthropic 等供应商如果只能通过 adaptive thinking 实现固定 effort，由 API 适配器负责映射；这不改变配置中的 effort 等级。其他协议不支持该 effort 时必须拒绝配置，而不是静默降低等级。
 
