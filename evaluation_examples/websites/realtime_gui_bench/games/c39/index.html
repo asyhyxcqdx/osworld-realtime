@@ -139,6 +139,8 @@
   const YL = 430;             // 雪坡落地 y
   const T_LAND = 0.891;       // 落地时刻（解析解）
   const OMEGA = (360 / T_LAND) * Math.PI / 180;  // 翻转角速度（1 圈/0.891s → 弧度）
+  const LAND_WINDOW_DEG = 60;                    // 落地前「转正」窗口：自 360° 起往前 60°
+  const LAND_MIN_DEG = 360 - LAND_WINDOW_DEG;    // 判定成功所需的最小**累计**旋转角 = 300°（必须转满一周后才可能成功）
   const UPRIGHT_WIN = 60 * Math.PI / 180;         // 头朝上 ±60°
 
   const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
@@ -183,6 +185,7 @@
   window.__dbg = function(){
     const d = ((theta * 180 / Math.PI) % 360 + 360) % 360;
     return { phase, t:+t.toFixed(3), px:Math.round(px), py:Math.round(py), thetaDeg:+d.toFixed(1),
+             spinDeg:+(theta * 180 / Math.PI).toFixed(1),   // 累计旋转角（0→360，用于「是否已转满一周」的判定与测试断言）
              tLand:+T_LAND.toFixed(3), attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status };
   };
 
@@ -204,10 +207,12 @@
   function pressLand(){
     if (phase !== "launch" || pressedAt !== null) return;
     pressedAt = theta;
-    const d = ((theta * 180 / Math.PI) % 360 + 360) % 360;
+    // 累计旋转角（θ 自 0 单调递增，**不取模**）：判定必须基于「已经转了多少」，而不是「当前朝向看起来是否朝上」。
+    // 修复：旧实现用 (θ % 360) 判「是否朝上」，导致起跳瞬间（θ≈0）按 J 也被判成功（成功判定过宽）。
+    const deg = theta * 180 / Math.PI;
     // 记录 easing 起始朝向（归一化到 [0, 2π)）
     const norm = ((theta % (2*Math.PI)) + 2*Math.PI) % (2*Math.PI);
-    if (d <= 60 || d >= 300) {
+    if (deg >= LAND_MIN_DEG) {
       phase = "landed"; settleT = 0;
       // 回正：目标最近的竖直朝上（0 或 2π），沿最短路径
       landThetaFrom = norm;

@@ -209,6 +209,7 @@
 
   function onClick(i){
     if(phase!=="player"||locked) return;
+    if (BENCH.status !== "running") return;   // 终态守卫：只在进行中的一轮里才接受输入
     if(firstPick===null){
       // 第一张：翻开玩家点的这一张，若空白则生成内容 = 随机 X 或 Y（与 bot 翻过的两张之一相同）
       if(cards[i].flipped) return;

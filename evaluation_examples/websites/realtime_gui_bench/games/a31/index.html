@@ -377,6 +377,7 @@
 
   function answer(n){
     if (phase !== "answer") return;
+    if (BENCH.status !== "running") return;   // 终态守卫：只在进行中的一轮里才接受输入
     const ok = (n === count);
     BENCH.results.push(ok ? "hit" : "miss");
     phase = ok ? "winning" : "losing";

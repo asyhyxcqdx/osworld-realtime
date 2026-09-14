@@ -163,6 +163,7 @@
   const confettiCv = document.getElementById("confetti");
 
   let phase = "idle";        // idle | show | spin | fade | answer | done
+  let settleLock = false;                  // 同一轮内是否已结算（防止重复提交）
   let rotAngle = 0, dir = 1, steps = 0, targetIdx = 0;
   let moveIdx = 0, moveStart = 0, phaseStart = 0;
   let fade = 0;              // 灯灭进度 0(霓虹亮)~1(全暗灰)
@@ -187,6 +188,7 @@
     if (phase !== "idle") return;
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     if (BENCH.status === "ready") BENCH.status = "running";                // 点 Reveal 开始第一次尝试：ready → running（不消耗机会）
+    settleLock = false;                   // 新一轮开始，解锁输入
     dir = Math.random() < 0.5 ? 1 : -1;
     steps = STEPS_MIN + Math.floor(Math.random()*(STEPS_MAX - STEPS_MIN + 1));
     moveIdx = 0;
@@ -338,6 +340,8 @@
 
   function onSwatch(i){
     if (phase !== "answer") return;
+    if (BENCH.status !== "running") return;   // 终态守卫：只在进行中的一轮里才接受输入
+    if (settleLock) return;                    // 本轮已结算：防止同一轮内重复提交（定时器重复排队）
     const ok = i === targetIdx;
     BENCH.results.push(ok);
     if (ok){
@@ -346,11 +350,13 @@
       BENCH.attempts_completed += 1;
       BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
       BENCH.pass_at_3 = 1;
+      settleLock = true;
       BENCH.passed = true; BENCH.status = "passed";
       setStatus("Success! 成功","win"); syncURL(); celebrate();
       return;
     }
     setStatus("Wrong color 选错了","lose");
+    settleLock = true;   // 点错后立即锁定输入，避免结算窗口内重复提交
     setTimeout(()=> nextAttempt(), 900);
   }
 
@@ -373,6 +379,7 @@
 
   function startRound(){
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：重试入口失效
+    settleLock = false;                      // 新一轮开始，解锁输入
     rotAngle = 0; dir = 1; steps = 0; targetIdx = 0; fade = 0; phase = "idle";
     revealBtn.disabled = false;
     setStatus("Watch the wheel spin, then tap the color under the pointer · 看转盘旋转，点指针指向的颜色","");

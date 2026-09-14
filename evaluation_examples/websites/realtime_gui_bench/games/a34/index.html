@@ -372,6 +372,7 @@
   }
   cv.addEventListener("click", (e)=>{
     if (phase !== "answer") return;
+    if (BENCH.status !== "running") return;   // 终态守卫：只在进行中的一轮里才接受输入
     const p = canvasPos(e);
     let sel = -1;
     for (let i=0;i<ROLES.length;i++){

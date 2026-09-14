@@ -185,6 +185,7 @@
   const confettiCv = document.getElementById("confetti");
 
   let phase = "idle";          // idle | ready | show | answer | done
+  let settleLock = false;                  // 同一轮内是否已结算（防止重复提交）
   let common = 0;              // 共同符号索引 0..8
   let cardA = [];              // 牌 A 的符号索引（5 个）
   let cardB = [];              // 牌 B 的符号索引（5 个）
@@ -202,6 +203,7 @@
 
   function startRound(){
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：重试入口失效
+    settleLock = false;                      // 新一轮开始，解锁输入
     common = Math.floor(Math.random()*SYMBOLS.length);
     const others = shuffle(SYMBOLS.map((_,i)=>i).filter(i=>i!==common));
     cardA = [common, others[0], others[1], others[2], others[3]];
@@ -221,6 +223,7 @@
     if (phase !== "idle") return;
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     if (BENCH.status === "ready") BENCH.status = "running";                // 点 Reveal 开始第一次尝试：ready → running（不消耗机会）
+    settleLock = false;                   // 新一轮开始，解锁输入
     phase = "ready"; phaseStart = performance.now();
     readyDelay = READY_MIN + Math.random()*(READY_MAX-READY_MIN);
     revealBtn.disabled = true;
@@ -368,6 +371,8 @@
   }
   cv.addEventListener("click", (e)=>{
     if (phase !== "answer") return;
+    if (BENCH.status !== "running") return;   // 终态守卫：只在进行中的一轮里才接受输入
+    if (settleLock) return;                    // 本轮已结算：防止同一轮内重复提交（定时器重复排队）
     const p = canvasPos(e);
     const candX = [110, 225, 340, 455, 570, 685], candY = 430;
     let sel = -1;
@@ -384,11 +389,13 @@
       BENCH.attempts_completed += 1;
       BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
       BENCH.pass_at_3 = 1;
+      settleLock = true;
       BENCH.passed = true; BENCH.status = "passed";
       setStatus("Success 成功","win"); syncURL(); celebrate();
       return;
     }
     setStatus("Miss! 找错了","lose");
+    settleLock = true;   // 点错后立即锁定输入，避免结算窗口内重复提交
     setTimeout(()=> nextAttempt(), 900);
   });
 

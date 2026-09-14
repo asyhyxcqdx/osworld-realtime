@@ -153,6 +153,7 @@
   const confettiCv = document.getElementById("confetti");
 
   let phase = "idle";        // idle | bounce | roll | answer | done
+  let settleLock = false;                  // 同一轮内是否已结算（防止重复提交）
   let ballX = 400, ballY = 60, vx = 0, vy = 0, lastNow = 0;
   let targetIdx = 0;
   let rollFromX = 0, rollT = 0, phaseStart = 0;
@@ -167,6 +168,7 @@
     if (phase !== "idle") return;
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     if (BENCH.status === "ready") BENCH.status = "running";                // 点 Reveal 开始第一次尝试：ready → running（不消耗机会）
+    settleLock = false;                   // 新一轮开始，解锁输入
     ballX = 250 + Math.random()*300;
     ballY = 60;
     vx = (Math.random() < 0.5 ? -1 : 1) * (60 + Math.random()*80);
@@ -284,6 +286,8 @@
   }
   cv.addEventListener("click", (e)=>{
     if (phase !== "answer") return;
+    if (BENCH.status !== "running") return;   // 终态守卫：只在进行中的一轮里才接受输入
+    if (settleLock) return;                    // 本轮已结算：防止同一轮内重复提交（定时器重复排队）
     const p = canvasPos(e);
     let clicked = -1;
     SLOTS.forEach((x,i)=>{ if (Math.abs(p.x - x) < PIT_R + 8 && p.y > PIT_Y - 40 && p.y < PIT_Y + 40) clicked = i; });
@@ -296,11 +300,13 @@
       BENCH.attempts_completed += 1;
       BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
       BENCH.pass_at_3 = 1;
+      settleLock = true;
       BENCH.passed = true; BENCH.status = "passed";
       setStatus("Success! 成功","win"); syncURL(); celebrate();
       return;
     }
     setStatus("Wrong pit 点错了","lose");
+    settleLock = true;   // 点错后立即锁定输入，避免结算窗口内重复提交
     setTimeout(()=> nextAttempt(), 900);
   });
 
@@ -323,6 +329,7 @@
 
   function startRound(){
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：重试入口失效
+    settleLock = false;                      // 新一轮开始，解锁输入
     ballX = 400; ballY = 60; vx = 0; vy = 0; targetIdx = 0; phase = "idle";
     revealBtn.disabled = false;
     setStatus("Watch the ball bounce, then tap the pit it rolls into · 看球弹跳，点它滚进的坑","");

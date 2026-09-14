@@ -154,6 +154,7 @@
   const confettiCv = document.getElementById("confetti");
 
   let phase = "idle";
+  let settleLock = false;                  // 同一轮内是否已结算（防止重复提交）
   let ballIdx = 0, dir = 1, steps = 0;
   let ballAngle = 0;
   let moveIdx = 0, moveStart = 0, phaseStart = 0;
@@ -179,6 +180,7 @@
     if (phase !== "idle") return;
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     if (BENCH.status === "ready") BENCH.status = "running";                // 点 Reveal 开始第一次尝试：ready → running（不消耗机会）
+    settleLock = false;                   // 新一轮开始，解锁输入
     ballIdx = Math.floor(Math.random()*SLOT_N);
     dir = Math.random() < 0.5 ? 1 : -1;
     steps = MOVES_N_MIN + Math.floor(Math.random()*(MOVES_N_MAX - MOVES_N_MIN + 1));
@@ -228,6 +230,7 @@
       BENCH.attempts_completed += 1;
       BENCH.pass_at_1 = (BENCH.attempts_completed === 1) ? 1 : 0;
       BENCH.pass_at_3 = 1;
+      settleLock = true;
       BENCH.passed = true; BENCH.status = "passed";
           setStatus("Enemy satellite destroyed! 敌卫星已摧毁","win"); syncURL(); celebrate();
         } else {
@@ -436,6 +439,8 @@
   }
   cv.addEventListener("click", (e)=>{
     if (phase !== "answer") return;
+    if (BENCH.status !== "running") return;   // 终态守卫：只在进行中的一轮里才接受输入
+    if (settleLock) return;                    // 本轮已结算：防止同一轮内重复提交（定时器重复排队）
     const p = canvasPos(e);
     let clicked = -1;
     for (let i=0;i<SLOT_N;i++){
@@ -482,6 +487,7 @@
 
   function startRound(){
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：重试入口失效
+    settleLock = false;                      // 新一轮开始，解锁输入
     ballIdx = 0; dir = 1; steps = 0; phase = "idle"; ballAngle = 0; fade = 0;
     attackBay = -1; attackHit = false; laserProgress = 0; burstParticles = [];
     revealBtn.disabled = false;
