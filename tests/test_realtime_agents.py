@@ -563,6 +563,8 @@ def test_fable_standard_vision_coordinates_are_mapped_to_native_screen(monkeypat
         text=json.dumps({"action_type": "CLICK", "parameters": {"x": 754, "y": 549}}),
     ))
     agent = RealtimeAgent(**agent_kwargs(config), wire=wire)
+    assert "Return x/y action coordinates in that processed-image pixel space" in agent.system
+    assert "native 1920x1080 VM screen" in agent.system
     assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [{
         "action_type": "CLICK",
         "parameters": {"x": 994.286, "y": 723.956},

@@ -500,11 +500,20 @@ class RealtimeAgent:
         base_system = system_prompt_text or system_prompt(
             self.sequence, self.frames, self.max_actions, self.max_queries
         )
-        coordinate_guidance = (
-            "\nThe VM screen and screenshots use the native 1920x1080 pixel coordinate system. "
-            "Always submit x/y action parameters in native screen pixels measured from the "
-            "top-left corner. Do not rescale or multiply coordinates."
-        )
+        if self.coordinate_mapping:
+            coordinate_guidance = (
+                "\nThis Claude vision configuration processes the 1920x1080 screenshot at "
+                f"{self.coordinate_mapping['source_width']}x{self.coordinate_mapping['source_height']}. "
+                "Return x/y action coordinates in that processed-image pixel space, "
+                "measured from its top-left corner. The runtime maps them back to the "
+                "native 1920x1080 VM screen; do not apply any other scaling."
+            )
+        else:
+            coordinate_guidance = (
+                "\nThe VM screen and screenshots use the native 1920x1080 pixel coordinate system. "
+                "Always submit x/y action parameters in native screen pixels measured from the "
+                "top-left corner. Do not rescale or multiply coordinates."
+            )
         self.system = base_system + coordinate_guidance
         self.frame_query = None
         self.event_sink = None
