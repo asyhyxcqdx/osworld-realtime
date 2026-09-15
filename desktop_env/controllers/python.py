@@ -512,12 +512,17 @@ class PythonController:
         return response.json()
 
     def start_realtime_recording(self, fragment_ms=100):
+        from desktop_env.realtime_contract import verify_server_source
+
         response = requests.get(self.http_server + "/realtime/capabilities", timeout=10)
         if response.status_code != 200:
             raise RuntimeError("VM server needs the realtime extension; run scripts/python/install_realtime_server.py first")
+        server_source = verify_server_source(self.http_server)
         self.realtime_session = None
+        self._realtime_held_keys = set()
         data = self._realtime_request("POST", "/start", {"fragment_ms": fragment_ms})
         self.realtime_session = data["session_id"]
+        data["server_source_sha256"] = server_source
         return data
 
     def get_frames(self, times_s):
@@ -528,13 +533,16 @@ class PythonController:
         # Reuse the official action compiler, including explicit realtime timing.
         collector = object.__new__(PythonController)
         groups = []
-        validate_action_sequence(actions)
+        held = set(getattr(self, "_realtime_held_keys", set()))
+        validate_action_sequence(actions, held_keys=held)
         for action in actions:
             commands = []
             collector.execute_python_command = lambda code: commands.append(PYAUTOGUI_PKGS_PREFIX.format(command=code))
             collector.execute_action(action)
             groups.append({"action": action, "commands": commands})
-        return self._realtime_request("POST", "/sequence", {"groups": groups}, timeout=300)
+        result = self._realtime_request("POST", "/sequence", {"groups": groups}, timeout=300)
+        self._realtime_held_keys = set() if result.get("done") else held
+        return result
 
     def end_realtime_recording(self, directory):
         self._realtime_request("POST", "/stop")

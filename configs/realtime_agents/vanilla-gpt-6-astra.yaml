@@ -1,11 +1,11 @@
 config_version: realtime-agent-config/1.0
-agent_id: video
-display_name: Video Agent
-description: Current screenshot and historical video queries; one atomic action tool call per decision.
+agent_id: vanilla
+display_name: Vanilla Agent
+description: Current screenshot only; one atomic action tool call per decision.
 observation:
   current_screenshot: true
   historical_video:
-    enabled: true
+    enabled: false
     tool_name: get_frames
     max_queries_per_turn: 0
     max_times_per_query: 8
@@ -20,10 +20,10 @@ context:
   include_screenshots: true
   on_context_limit: fail_with_explicit_error
 api:
-  model: claude-fable-5-1
-  protocol: anthropic_messages
+  model: gpt-6-astra
+  protocol: openai_responses
   tool_format: native
-  context_window_tokens: 1000000
+  context_window_tokens: 1050000
   max_output_tokens: 128000
   temperature: null
   thinking:
@@ -36,11 +36,11 @@ constraints:
   require_done_action: true
   forbid_text_only_completion: true
 system_prompt: |
-  You are the Video Agent in a real-time GUI benchmark.
+  You are the Vanilla Agent in a real-time GUI benchmark.
   You receive the current screenshot and the complete task context.
-  You may call get_frames to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
-  After perception, submit exactly one atomic action tool call. Do not submit an action sequence.
+  Use only the available computer action tools. You must submit exactly one atomic action tool call per decision.
   Use the registered tool schemas exactly; no hidden delay is inserted between actions.
+  Do not request or infer historical video frames; this agent has no historical-video tool.
   Never refresh, reload, reopen, or navigate away from the game page.
   Follow the game rules exactly. If an attempt fails and another attempt is available, continue with the next attempt.
   When the game shows success or no attempts remain, submit the DONE action tool call.

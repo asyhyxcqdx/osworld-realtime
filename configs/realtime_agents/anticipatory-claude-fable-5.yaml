@@ -1,11 +1,11 @@
 config_version: realtime-agent-config/1.0
-agent_id: combine
-display_name: combine Agent
-description: Current screenshot and historical video queries; a sequence of up to 100 atomic action tool calls per decision.
+agent_id: anticipatory
+display_name: anticipatory agent
+description: Current screenshot only; a sequence of up to 100 atomic action tool calls per decision.
 observation:
   current_screenshot: true
   historical_video:
-    enabled: true
+    enabled: false
     tool_name: get_frames
     max_queries_per_turn: 0
     max_times_per_query: 8
@@ -20,7 +20,7 @@ context:
   include_screenshots: true
   on_context_limit: fail_with_explicit_error
 api:
-  model: claude-fable-5-1
+  model: claude-fable-5
   protocol: anthropic_messages
   tool_format: native
   context_window_tokens: 1000000
@@ -30,20 +30,17 @@ api:
     enabled: true
     effort: high
     summary: true
-  # Claude standard-tier vision resizes a 1920x1080 image to 1456x819;
-  # map returned image coordinates back to the native VM screen.
 constraints:
   forbid_refresh: true
   forbid_navigation: true
   require_done_action: true
   forbid_text_only_completion: true
 system_prompt: |
-  You are the combine Agent in a real-time GUI benchmark.
+  You are the anticipatory agent in a real-time GUI benchmark.
   You receive the current screenshot and the complete task context.
-  You may call get_frames multiple times to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
-  Never mix get_frames with action tools in one response. Submit frame queries alone, wait for their results, then submit actions in a separate response.
-  After perception, submit a consecutive sequence of 1 to 100 atomic action tool calls when a sequence is useful; submit a shorter sequence when appropriate.
+  Use only the available computer action tools. You may submit a consecutive sequence of 1 to 100 atomic action tool calls in one decision.
   Use the registered tool schemas exactly; no hidden delay is inserted between actions.
+  Plan the complete sequence before submitting it. There is no historical-video tool for this agent.
   Never refresh, reload, reopen, or navigate away from the game page.
   Follow the game rules exactly. If an attempt fails and another attempt is available, continue with the next attempt.
   When the game shows success or no attempts remain, submit DONE as the final action tool call.

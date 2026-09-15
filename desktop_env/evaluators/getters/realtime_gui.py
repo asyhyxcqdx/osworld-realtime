@@ -245,6 +245,8 @@ def _normalize_realtime_gui_bench_state(
         raise ValueError("window.BENCH.status must be ready, running, passed, or failed")
     if passed != (pass_at_3 == 1):
         raise ValueError("window.BENCH.passed must equal pass_at_3 == 1")
+    if pass_at_1 == 1 and attempts_completed != 1:
+        raise ValueError("pass_at_1=1 requires first-attempt completion")
     if status == "ready":
         if attempts_completed != 0 or passed or pass_at_1 != 0 or pass_at_3 != 0:
             raise ValueError("ready BENCH state has inconsistent completion fields")
@@ -336,3 +338,29 @@ def get_realtime_gui_bench_state(env, config: Dict[str, Any]) -> Dict[str, Any]:
     raise RuntimeError(
         f"Unable to read valid RealtimeGUI-Bench state for {benchmark_id}"
     ) from last_error
+
+
+def realtime_page_identity(env, config):
+    """Read document identity without exposing DOM or BENCH to the model."""
+    response = requests.get(f"http://{env.vm_ip}:{env.chromium_port}/json/list", timeout=10)
+    response.raise_for_status()
+    pages = [p for p in response.json() if p.get("type") == "page"]
+    fragment = config.get("target_url_contains", "127.0.0.1:8765/")
+    matches = [p for p in pages if fragment in p.get("url", "") and p.get("webSocketDebuggerUrl")]
+    if len(matches) != 1:
+        raise RuntimeError("Realtime task page is missing or duplicated; run is invalid")
+    target = matches[0]
+    document = _evaluate_cdp_expression(
+        _rewrite_websocket_url(env, target["webSocketDebuggerUrl"]),
+        "({url: location.href.split('#')[0], time_origin: performance.timeOrigin})", 10,
+    )
+    if not isinstance(document, dict) or not isinstance(document.get("time_origin"), (int, float)):
+        raise RuntimeError("Cannot verify realtime document identity")
+    return {"target_id": target["id"], "page_ids": sorted(p["id"] for p in pages), **document}
+
+
+def verify_realtime_page_identity(env, config, expected):
+    current = realtime_page_identity(env, config)
+    if current != expected:
+        raise RuntimeError("Realtime page was reloaded, navigated, or replaced; run is invalid")
+    return current

@@ -75,7 +75,7 @@ def graceful_shutdown(container_name: str, timeout_s: float = 90) -> None:
     subprocess.run(["docker", "stop", "-t", "30", container_name], check=True)
 
 
-def verify_image(image: Path, timeout_s: float = 300) -> None:
+def verify_image(image: Path, timeout_s: float = 300) -> dict:
     """Boot the baked image and require its realtime endpoint before returning."""
     port = free_port()
     name = f"osworld-realtime-image-verify-{os.getpid()}"
@@ -93,6 +93,24 @@ def verify_image(image: Path, timeout_s: float = 300) -> None:
         capabilities = response.json()
         if capabilities.get("fmp4") is not True or capabilities.get("sequence") is not True:
             raise RuntimeError(f"Baked image lacks realtime capabilities: {capabilities}")
+        from desktop_env.controllers.python import PythonController
+
+        controller = PythonController("127.0.0.1", port)
+        recording = controller.start_realtime_recording()
+        try:
+            # A stale v1 endpoint used to accept WAIT while sleeping zero seconds.
+            result = controller.execute_sequence([
+                {"action_type": "WAIT", "parameters": {"duration_s": 0.25}},
+                *[{"action_type": "WAIT", "parameters": {"duration_s": 0}} for _ in range(99)],
+            ])
+            actual_wait = result["actions"][0]["duration_s"]
+            if len(result["actions"]) != 100 or not 0.24 <= actual_wait <= 0.75:
+                raise RuntimeError(f"Realtime timing/count verification failed: {actual_wait}")
+            return {"capabilities": capabilities, "recording": recording,
+                    "wait_requested_s": 0.25, "wait_actual_s": actual_wait,
+                    "sequence_actions": len(result["actions"])}
+        finally:
+            controller._realtime_request("POST", "/stop")
     finally:
         subprocess.run(["docker", "rm", "-f", name], check=False, stdout=subprocess.DEVNULL)
 
@@ -160,11 +178,15 @@ def build(source: Path, output: Path, password: str = "", *, force=False, verify
         if not output.is_file() or output.stat().st_size == 0:
             raise RuntimeError("qemu-img did not create the output image")
         try:
-            verify_image(output, timeout_s=verify_timeout_s)
+            verification = verify_image(output, timeout_s=verify_timeout_s)
         except Exception:
             # Never leave an image that was not boot-tested available for use.
             output.unlink(missing_ok=True)
             raise
+        import json
+        output.with_suffix(".verification.json").write_text(
+            json.dumps(verification, indent=2) + "\n"
+        )
         return output
     finally:
         if container:
@@ -175,7 +197,7 @@ def build(source: Path, output: Path, password: str = "", *, force=False, verify
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=Path("docker_vm_data/Ubuntu-realtime-gui.qcow2"))
-    parser.add_argument("--output", type=Path, default=Path("docker_vm_data/Ubuntu-realtime-gui-fmp4.qcow2"))
+    parser.add_argument("--output", type=Path, default=Path("docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2"))
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--verify-timeout-s", type=float, default=300)
     args = parser.parse_args()

@@ -20,9 +20,9 @@
 - `realtime_agent.py`：模型请求、工具调用、历史帧查询和响应日志。
 - 四个 Agent 的配置字段和内嵌 system prompt 规范见仓库根目录的
   `REALTIME_AGENT_CONFIG_PROTOCOL.md`。配置文件按
-  `<agent_id>-<model>.yaml` 命名，例如 `vanilla-claude-sonnet-5.yaml`。
+  `<agent_id>-<model>.yaml` 命名，例如 `vanilla-claude-fable-5.yaml`。
 
-最终实验要求所有 Agent 使用原生 API tool use。历史帧查询可以在一个回合内调用多次，但不计额外回合；Agent1/3 的行动工具必须限制为单个动作。迁移完成前，不要用旧的文本 JSON 输出行为作为最终实验接口。
+最终实验要求所有 Agent 使用原生 API tool use。历史帧查询可以在一个回合内调用多次，但不计额外回合；Agent1/3 的行动工具必须限制为单个动作。当前正式接口不接受文本 JSON 代替原生工具。
 
 ## 如何接入模型 API
 

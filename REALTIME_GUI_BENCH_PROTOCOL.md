@@ -203,7 +203,7 @@ checker 通过 Chrome DevTools Protocol 执行 `window.BENCH` 的只读表达式
 2. 校验第 2 节的必需字段、类型、范围和不变量。
 3. 只读取 `pass_at_1` 和 `pass_at_3` 作为分数。
 4. 将完整的 `BENCH` 对象原样保存到详细结果，便于复查。
-5. 对 `status=ready` 或 `status=running` 的任务标记为未完成；如果 Agent 已耗尽运行预算仍未提交 `DONE`，运行器将其作为 Agent 未完成并按主统计口径计 0 分。接口错误或运行级失效仍单列为 `unscored`。
+5. 对 `status=ready` 或 `status=running` 的任务标记为未完成，兼容标量为 0，不将它改写为 failed。当前汇总只对 passed/failed 计算终态均值，未完成与缺少有效结果计入 unscored_tasks；因此该均值不是覆盖全部 69 题的最终成功率。接口错误或运行级失效不产生伪造的游戏评分。
 6. 对 `status=passed` 或 `status=failed` 的任务记录终态和游戏直接提供的两个分数。
 
 checker **不得**：
@@ -275,7 +275,7 @@ window.__dbg = function () {
 
 ## 10. 旧接口迁移说明
 
-当前仓库中的旧游戏使用 `attempts`、`results`、`passed` 和 `status`，并且部分代码把 `attempts` 当作失败次数。本协议不接受这种含义不明确的字段。
+历史旧包使用 `attempts`、`results`、`passed` 和 `status`，并且部分代码把 `attempts` 当作失败次数。当前 69 道游戏已完成迁移，本节仅说明旧包差异。
 
 重写游戏时：
 

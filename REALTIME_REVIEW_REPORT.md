@@ -1,0 +1,41 @@
+# Realtime GUI 最终基线 review（2026-09-15）
+
+结论：最新交付的 69 个 HTML 已完整接入，当前两模型各四组配置齐全，原生坐标协议一致。已修正本次发现的配置回退、校验、跨回合快捷键与环境更新检查问题；本次检查范围内没有剩余阻塞。大规模模型实验尚未完成。
+
+## 环境来源
+
+- 对用户的 RealtimeGame_v1.1(3).zip 逐文件 SHA-256 核对：69/69 HTML 原字节相同。
+- 包内 manifest、任务 JSON、UUID 和运行清单对应一致，A/B/C/D=22/12/17/18。
+- 运行游戏目录只有 69 个 index.html；任务 JSON、清单和评分器为必要文件。
+- 交付方 69/69 自测仅作为其自测记录；OSWorld 已保存的 69 次独立页面加载及 138 个 BENCH 初始/延迟快照另用 checker 单文件和批量模式核对，错误为 0。
+- 最终镜像里的 realtime.py、fmp4.py 哈希与仓库匹配。真实 WAIT 0.25 执行 0.250326 秒，100 动作序列完整执行。
+
+来源与精简证据： [source_manifest.json](validation/realtime_final/source_manifest.json)、[checker_single.json](validation/realtime_final/checker_single.json)、[checker_batch.json](validation/realtime_final/checker_batch.json)、[image_execution_check.json](validation/realtime_final/image_execution_check.json)。
+
+## 四组 Agent 核查和修正
+
+1. 正式模型明确为 claude-fable-5、gpt-6-astra，各有 vanilla/anticipatory/video/combine 四份 YAML，共 8 份。取消未知模型配置静默回退到 Sonnet，显式指定模型也不得与配置冲突。
+2. 启动器统一复用 agent_kwargs()，减少手工逐字段传递造成遗漏的风险。校验 Agent ID 与 sequence/frames 一致，必需约束不得缺失；旧 coordinate_mapping 被拒绝。
+3. 两模型都原字节发送 1920×1080 图，原样执行 x/y。没有启用预缩放、比例猜测或自动放大。测试同时检查实际发出的图像字节和原始动作坐标。
+4. Agent3 保留同一响应可含多个帧查询的行为；atomic 限制作用于动作。Video prompt 补齐与 combine 相同的“历史查询与动作分开响应”规则。
+5. 录制前比对 VM 两份源码的 SHA-256 并记录。旧镜像或安装遗漏会在调用付费模型前被发现。构建器的验证也检查实际 WAIT 和 100 动作上限。
+6. 控制器持续记录已按住的修饰键，阻断跨原子回合组合出的刷新快捷键；整段非法动作仍不发送到 VM。
+7. runner 记录页面 ID、URL、performance.timeOrigin 和标签页集合，动作后与评分前检查；重载、导航、复制页不计为正常游戏成绩。真实 VM 中模拟刷新已验证被识别。
+8. 动作工具结果的 decision_id 与实际动作回合对齐；额外记录 run_error，避免把 API/环境错误混同于执行成功。getter 补齐与 metric/checker 一致的 pass_at_1 不变量检查。
+
+## 验证
+
+- 实时相关回归：138 passed，无跳过；包括 live fMP4 真实录制/解码测试。
+- 真实 VM + 模拟模型回复：两协议 × 四组，8/8 通过；检查工具能力、原图尺寸、实际 WAIT、按键无隐含 0.1 秒等待、真实历史帧和 DONE。全程顺序运行，没有付费模型请求。见 [runtime_matrix.json](validation/realtime_final/runtime_matrix.json)。
+- 真实模型成绩沿用此前独立 C1：Fable5 第二次通过，Astra 第三次通过；原始轨迹没有改写。这不是四组完整模型 benchmark；见 [C1 报告](PACKY_C1_FINAL_TRIAL_REPORT.md)。
+- 本次未修改 69 个游戏 HTML 或 VM 两份服务源码，终版镜像无需重打。
+
+## 清理
+
+移除 12 份淘汰的 Fable5.1/Opus/Sonnet 配置，保留两模型 8 份当前配置。删除 7 份已由正式协议与最终报告覆盖的交付讨论/失败分析文档；将总览、运行说明、配置、loop、实验设计和环境接入记录更新为当前版本。旧材料可从 Git 历史追溯。
+
+原始 ZIP 附件、实验结果、录像、最终镜像和构建源保留。没有删除上游 OSWorld 的其他任务、模型适配器或无关目录。旧 WAIT=0、坐标适配误判、单条 C1 成功等均不再被混写为全项目结论。
+
+## 边界
+
+仅 combine 已有两个真实模型 C1 成功样本，其余组本次验证的是实现链路，不是模型成功率。69 道完整模型实验、不同负载下时序稳定性和全部浏览器 GUI 越权路径的穷举测试不在本次通过结论中。新页面身份检查增加少量本地 CDP 读取，应以新 run_id 运行后续对照；不把修改前后实验混为同一批次。

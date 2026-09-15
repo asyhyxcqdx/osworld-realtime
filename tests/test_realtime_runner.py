@@ -123,11 +123,12 @@ def test_model_events_are_saved_before_next_request_and_survive_api_failure(tmp_
         run_realtime_example(agent, env, {}, 15, "task", args, str(tmp_path), [])
     events = [json.loads(line) for line in (tmp_path / "trajectory.jsonl").read_text().splitlines()]
     assert [e["event"] for e in events].count("model_response") == 1
-    assert events[-1]["event"] == "model_error"
+    assert events[-2]["event"] == "model_error"
+    assert events[-1]["event"] == "run_error"
     assert all(
         e["decision_id"] == 1
         for e in events
-        if e["event"] != "initial_observation"
+        if e["event"] not in {"initial_observation", "run_error"}
     )
     assert events[0]["observation"]["screenshot_file"] == "initial_state.png"
     assert (tmp_path / "system_prompt.txt").read_text() == agent.system
@@ -209,3 +210,35 @@ def test_stale_session_cannot_query_another_tasks_frames():
         "/realtime/frames", json={"session_id": "previous", "times_s": [0]}
     )
     assert response.status_code == 400
+
+
+def test_page_reload_saves_execution_evidence_but_never_scores(tmp_path, monkeypatch):
+    from mm_agents.realtime_agent import ModelWire, RealtimeAgent
+    from desktop_env.evaluators.getters import realtime_gui
+    monkeypatch.setattr('lib_run_realtime.time.sleep', lambda _: None)
+    monkeypatch.setattr('lib_run_single.setup_logger', lambda *args: None)
+    score = Mock()
+    monkeypatch.setattr('lib_run_single._evaluate_with_details', score)
+    monkeypatch.setattr(realtime_gui, 'realtime_page_identity', lambda *args: {'target_id': 'game'})
+    monkeypatch.setattr(realtime_gui, 'verify_realtime_page_identity', Mock(side_effect=RuntimeError('reloaded')))
+    wire = ModelWire('mock', 'anthropic_messages')
+    wire.request = Mock(return_value={'content': [{'type': 'tool_use', 'id': 'd', 'name': 'computer_done', 'input': {}}]})
+    agent = RealtimeAgent(sequence=True, frames=False, wire=wire)
+    obs = {'screenshot': b'png'}
+    controller = SimpleNamespace(start_realtime_recording=Mock(return_value={}),
+        last_observation_time=1, last_capture_interval=(.9, 1.1), end_realtime_recording=Mock())
+    env = SimpleNamespace(reset=Mock(), controller=controller, _get_obs=lambda: dict(obs),
+        step_sequence=Mock(return_value=(dict(obs), 0, True, {})))
+    args = SimpleNamespace(result_dir=str(tmp_path), environment_ready_wait_s=0,
+        recording_fragment_ms=100, model='mock', max_sequence_actions=100,
+        max_frame_queries=0, evaluation_settle_s=0)
+    with pytest.raises(RuntimeError, match='reloaded'):
+        run_realtime_example(agent, env, {'evaluator': {'result': {'type': 'realtime_gui_bench_state'}}},
+                             1, 'task', args, str(tmp_path), [])
+    score.assert_not_called()
+    controller.end_realtime_recording.assert_called_once()
+    assert (tmp_path / 'step_1.png').exists()
+    events = [json.loads(l) for l in (tmp_path / 'trajectory.jsonl').read_text().splitlines()]
+    assert any(e['event'] == 'action_executed' for e in events)
+    assert events[-1]['event'] == 'run_error'
+    assert not (tmp_path / 'result.txt').exists()

@@ -20,6 +20,13 @@ def run_realtime_example(
     task_started_at = datetime.now(timezone.utc).isoformat()
     env.reset(task_config=example)
     agent.reset(runtime_logger)
+    page_config = example.get("evaluator", {}).get("result", {})
+    page_identity = None
+    if page_config.get("type") == "realtime_gui_bench_state":
+        from desktop_env.evaluators.getters.realtime_gui import (
+            realtime_page_identity, verify_realtime_page_identity,
+        )
+        page_identity = realtime_page_identity(env, page_config)
     if getattr(args, "install_realtime_server", False):
         from scripts.python.install_realtime_server import install
 
@@ -42,6 +49,7 @@ def run_realtime_example(
         "environment_ready_wait_s": args.environment_ready_wait_s,
         "recording_fragment_ms": args.recording_fragment_ms,
         "recording": record,
+        "page_identity": page_identity,
         "max_decision_rounds": max_steps,
         "max_sequence_actions": args.max_sequence_actions,
         "max_frame_queries_per_decision": args.max_frame_queries,
@@ -60,6 +68,7 @@ def run_realtime_example(
     (out / "system_prompt.txt").write_text(agent.system, encoding="utf-8")
     action_count = decision_count = query_count = event_count = 0
     execution_error = None
+    run_error = None
     done = False
 
     def write_event(event, decision_id=None):
@@ -69,7 +78,10 @@ def run_realtime_example(
         record = {
             "event_index": event_count,
             "wall_time": datetime.now(timezone.utc).isoformat(),
-            "decision_id": decision_count + 1 if decision_id is None else decision_id,
+            "decision_id": (
+                decision_count if event.get("event") == "action_tool_result"
+                else decision_count + 1
+            ) if decision_id is None else decision_id,
             **event,
         }
         with (out / "trajectory.jsonl").open("a", encoding="utf-8") as f:
@@ -177,6 +189,8 @@ def run_realtime_example(
                 },
                 decision_id=decision_count,
             )
+            if page_identity is not None:
+                verify_realtime_page_identity(env, page_config, page_identity)
             record_action_result = getattr(agent, "record_action_result", None)
             if record_action_result is not None:
                 record_action_result(
@@ -186,6 +200,8 @@ def run_realtime_example(
                     info=info,
                 )
         time.sleep(args.evaluation_settle_s)
+        if page_identity is not None:
+            verify_realtime_page_identity(env, page_config, page_identity)
         result = _evaluate_with_details(env, str(out), result_root=args.result_dir)
         write_event(
             {
@@ -198,6 +214,10 @@ def run_realtime_example(
         scores.append(result)
         (out / "result.txt").write_text(f"{result}\n")
         log_task_completion(example, result, str(out), args)
+    except Exception as exc:
+        run_error = {"type": type(exc).__name__, "message": str(exc)}
+        write_event({"event": "run_error", **run_error}, decision_id=decision_count)
+        raise
     finally:
         agent.bind_event_sink(None)
         (out / "agent_metrics.json").write_text(
@@ -212,6 +232,7 @@ def run_realtime_example(
                     "trajectory_events": event_count,
                     "done": done,
                     "execution_error": execution_error,
+                    "run_error": run_error,
                 },
                 indent=2,
             )

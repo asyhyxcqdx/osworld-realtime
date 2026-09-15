@@ -457,7 +457,7 @@ class RealtimeAgent:
         variant="agent1",
         sequence=None,
         frames=None,
-        model="claude-sonnet-5",
+        model="claude-fable-5",
         api_format="auto",
         api_base_url=None,
         max_tokens=128000,
@@ -683,7 +683,7 @@ class RealtimeAgent:
                     max_tokens=self.max_tokens,
                     temperature=self.temperature,
                     tools=request_tools,
-                    parallel_tool_calls=self.sequence,
+                    parallel_tool_calls=True if self.sequence else None,
                 )
             except Exception as exc:
                 self.emit({

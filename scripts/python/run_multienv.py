@@ -149,19 +149,15 @@ def config() -> argparse.Namespace:
 
         requested_model = args.model
         config_path = args.agent_config or default_config_path(
-            args.agent_variant, requested_model or "claude-sonnet-5"
+            args.agent_variant, requested_model or "claude-fable-5"
         )
         try:
             realtime_config = load_realtime_config(config_path, variant=args.agent_variant)
         except (OSError, ValueError) as exc:
-            if args.agent_config or not isinstance(exc, FileNotFoundError):
-                parser.error(f"Invalid realtime Agent config {config_path}: {exc}")
-            config_path = default_config_path(args.agent_variant, "claude-sonnet-5")
-            try:
-                realtime_config = load_realtime_config(config_path, variant=args.agent_variant)
-            except (OSError, ValueError) as fallback_exc:
-                parser.error(f"Invalid realtime Agent config {config_path}: {fallback_exc}")
+            parser.error(f"Invalid realtime Agent config {config_path}: {exc}")
         config_values = agent_kwargs(realtime_config)
+        if requested_model and requested_model != config_values["model"]:
+            parser.error("--model must match api.model in the selected Agent config")
         args.realtime_config_path = str(config_path)
         args.realtime_config = realtime_config
         args.model = requested_model or config_values["model"]
@@ -360,18 +356,11 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
         active_environments.append(env)
         if args.agent_variant:
             from mm_agents.realtime_agent import RealtimeAgent
+            from mm_agents.realtime_config import agent_kwargs
             agent = RealtimeAgent(
-                variant=args.agent_variant, model=args.model, max_tokens=args.max_tokens,
-                sequence=args.realtime_config["action"]["mode"] == "sequence",
-                frames=args.realtime_config["observation"]["historical_video"]["enabled"],
-                temperature=args.temperature, max_trajectory_length=args.max_trajectory_length,
-                api_format=args.api_format, api_base_url=args.api_base_url,
-                max_sequence_actions=args.max_sequence_actions,
-                max_frame_queries=args.max_frame_queries, tool_format=args.tool_format,
-                thinking_enabled=args.thinking_enabled,
-                thinking_effort=args.thinking_effort,
-                thinking_summary=args.thinking_summary,
-                system_prompt_text=args.realtime_config["system_prompt"],
+                **{**agent_kwargs(args.realtime_config),
+                   "max_frame_queries": args.max_frame_queries},
+                variant=args.agent_variant, api_base_url=args.api_base_url,
             )
         else:
             from mm_agents.agent import PromptAgent

@@ -20,7 +20,7 @@ context:
   include_screenshots: true
   on_context_limit: fail_with_explicit_error
 api:
-  model: claude-opus-5
+  model: claude-fable-5
   protocol: anthropic_messages
   tool_format: native
   context_window_tokens: 1000000
@@ -39,6 +39,7 @@ system_prompt: |
   You are the Video Agent in a real-time GUI benchmark.
   You receive the current screenshot and the complete task context.
   You may call get_frames to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
+  Never mix get_frames with action tools in one response. Submit frame queries alone, wait for their results, then submit actions in a separate response.
   After perception, submit exactly one atomic action tool call. Do not submit an action sequence.
   Use the registered tool schemas exactly; no hidden delay is inserted between actions.
   Never refresh, reload, reopen, or navigate away from the game page.

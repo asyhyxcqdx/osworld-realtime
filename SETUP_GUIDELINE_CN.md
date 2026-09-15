@@ -1,69 +1,55 @@
-# 中文部署与运行说明
+# 实时 GUI 部署与运行
 
-这份说明只覆盖当前实时 GUI 项目。OSWorld 的 Google OAuth、代理和公共评测平台等通用内容仍保留在英文上游文档 `SETUP_GUIDELINE.md` 中。
+## 环境
 
-## 环境要求
+使用 Python 3.12+、Docker/KVM 和本地最终镜像 `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`。本机 Python 为 `/mnt/zhaorunsong/anaconda3/envs/osworld/bin/python`。从 OSWorld 仓库根目录执行命令。
 
-- 当前项目元数据要求 Python 3.12 或更高版本。
-- 运行实时网页游戏需要 Docker，并建议主机支持 KVM。
-- 模型 API 凭据通过环境变量提供，例如 `PACKY_API_KEY`、`ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY`。
-- VM 镜像位于本地 `docker_vm_data/`，不提交到 Git。
+最终中转站是 `https://www.packyapi.ai`。游戏网页在 VM 本地运行；模型请求需要保留已配置的 `HTTPS_PROXY` / `HTTP_PROXY`，本机 VM 地址保留在 `NO_PROXY`。本会话直连曾返回 region_restricted，代理请求通过。
 
-实时游戏全部在本地网页中运行，通常不需要 Google 账号或外网代理。其他 OSWorld 任务是否需要这些配置，要看具体任务。
+把当前模型对应的密钥放入 `PACKY_API_KEY`，或使用 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`。`PACKY_API_KEY` 优先；切换模型时不能误用上一模型的 key。不在示例、YAML 或结果中写真实密钥。
 
-## 先做最小检查
-
-在仓库根目录执行：
-
-```bash
-python -m pytest -q tests/test_realtime_gui_bench_manifest.py
-```
-
-该测试确认正式清单、69 个任务配置和 69 个游戏网页数量一致。修改任务接入、评分或 Agent 后，再运行 `AGENT_EXPERIMENT_DESIGN.md` 中列出的实时回归测试。
-
-## 运行一组 Agent
-
-四组 Agent 都使用 `scripts/python/run_multienv.py`。四次启动共享同一个 `--result_dir` 和 `--run_id`，只替换 `--agent_variant`：
+## 启动一组实验
 
 ```bash
 python scripts/python/run_multienv.py \
-  --agent_variant agent1 \
-  --run_id exp001 \
+  --agent_variant agent4 \
+  --model claude-fable-5 \
+  --run_id packy_v11_exp001 \
   --action_space computer_13 \
   --observation_type screenshot \
   --provider_name docker \
-  --path_to_vm docker_vm_data/Ubuntu-realtime-gui.qcow2 \
+  --path_to_vm docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 \
   --headless \
-  --model YOUR_MODEL \
-  --api_format anthropic_messages \
-  --api_base_url YOUR_API_BASE_URL \
+  --api_base_url https://www.packyapi.ai \
   --test_all_meta_path evaluation_examples/test_realtime_gui_bench.json \
-  --max_steps 15 \
+  --max_steps 100 \
   --sleep_after_execution 0 \
+  --environment_ready_wait_s 3 \
+  --evaluation_settle_s 3 \
   --num_envs 1 \
-  --install_realtime_server \
-  --client_password "$OSWORLD_VM_PASSWORD" \
   --result_dir results_four_agents
 ```
 
-把 `agent1` 换成 `agent2`、`agent3` 或 `agent4`。完整参数含义、录像服务安装和断点续跑规则见 `AGENT_EXPERIMENT_DESIGN.md`。
+`agent1/2/3/4` 自动选择对应 YAML。Astra 使用 `--model gpt-6-astra` 和对应 key。两协议来自配置，无需另传 `--api_format`。正式配置缺失或模型名与配置冲突时报错；不会换模型或协议兜底。
 
-## 结果位置
+默认顺序运行，每次一个 VM。一个模型同一对照批次共用 run_id；结果仍按模型隔离：`<result_dir>/<model>/<run_id>/<agent>/computer_13/screenshot/realtime_gui_bench/<UUID>/`。复现实验用新的 run_id；原批次续跑只跳过已落盘结果的任务。
 
-运行器会按模型、批次和 Agent 隔离结果：
+## 镜像与服务
 
-```text
-results_four_agents/<model>/<run_id>/agent1/
-results_four_agents/<model>/<run_id>/agent2/
-results_four_agents/<model>/<run_id>/agent3/
-results_four_agents/<model>/<run_id>/agent4/
+录制前读取 VM 内 `realtime.py`、`fmp4.py` 哈希，与宿主机对比并记录。如果不一致，先使用 `--install_realtime_server` 安装当前服务，或重新构建镜像。只更新宿主机 Agent 不需要重打镜像。
+
+```bash
+python scripts/python/build_realtime_vm_image.py \
+  --source docker_vm_data/Ubuntu-realtime-gui.qcow2 \
+  --output docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2
 ```
 
-修改模型、API 协议、提示词、schema 或预算时必须新建 `run_id`。不要把未完成任务、接口错误或中断运行当作游戏失败。
+输出文件已存在时默认拒绝覆盖；有意重建时才使用 `--force`。安装器只把两份服务源码上传 VM 并重启服务。构建器重启新镜像，检查源码、WAIT 实际时长及 100 动作序列，并写 `.verification.json`。原始构建源保留，废弃的 `Ubuntu-realtime-gui-fmp4.qcow2` 已移除。
 
-## 常见问题
+## 验证和排错
 
-- **VM 服务不认识实时接口**：保留 `--install_realtime_server`，它会在任务 reset 后安装录像和历史帧服务。
-- **结果目录混在一起**：检查四次启动是否使用相同的 `--run_id`，不同实验是否使用了不同编号。
-- **模型输出无法执行**：先检查 action tool-use schema 和 Agent1/3 的单动作限制，不要直接放宽解析器。
-- **录像或结果很大**：结果、日志、缓存和 VM 镜像是本地产物，不应提交到 Git。
+- 运行 [实验设计](AGENT_EXPERIMENT_DESIGN.md) 中列出的回归测试。
+- `python scripts/python/verify_realtime_runtime.py --artifacts /tmp/realtime-runtime-review` 可顺序验证两协议 × 四组的真实 VM 链路，使用模拟回复，不调用付费 API，不产生模型评分。
+- 普通动作不插入 PAUSE；模型需要间隔时显式调用 WAIT。检查 `info.sequence_actions[].duration_s`，不要只看请求参数。
+- 余额不足报错中的“需要预扣费额度”不是实际扣费。输出上限固定为 128000，完整截图历史也会影响请求额度；实际扣费看供应商账单，不擅自削减实验预算。
+- HTTP/API 异常不是游戏失败。只有合法 BENCH 终态才能作为完成成绩；源码哈希匹配也不代表全部游戏都已完成模型测试。

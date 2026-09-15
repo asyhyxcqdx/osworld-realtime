@@ -20,6 +20,9 @@ scripts/
 ```bash
 python scripts/python/run_multienv.py \
   --agent_variant agent1 \
+  --model claude-fable-5 \
+  --path_to_vm docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 \
+  --api_base_url https://www.packyapi.ai \
   --run_id exp001 \
   --action_space computer_13 \
   --observation_type screenshot \
@@ -34,6 +37,7 @@ python scripts/python/run_multienv.py \
 - `bash/` 下的 `run_*.sh` 是预设参数示例。
 - `validate_realtime_gui_bench.py` 用于检查实时任务接入和评分路径。
 - `install_realtime_server.py` 用于将实时录像与历史帧服务安装到当前 VM。
+- `verify_realtime_runtime.py` 用模拟模型回复顺序验证两协议四组 Agent 和真实 VM，不调用付费 API。
 
 ## 开发约定
 

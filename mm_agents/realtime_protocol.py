@@ -156,9 +156,9 @@ def validate_action(action):
     return action
 
 
-def validate_action_sequence(actions):
+def validate_action_sequence(actions, *, held_keys=None):
     """Validate actions and reject blocked shortcuts split across key events."""
-    held = set()
+    held = set(held_keys or ())
     for action in actions:
         validate_action(action)
         action_type = action["action_type"]
@@ -175,6 +175,9 @@ def validate_action_sequence(actions):
                 raise ForbiddenShortcutError("Refreshing or navigating away from the game page is forbidden.")
         elif action_type == "KEY_UP":
             held.discard(_normalise_key(params["key"]))
+    if held_keys is not None:
+        held_keys.clear()
+        held_keys.update(held)
     return actions
 
 

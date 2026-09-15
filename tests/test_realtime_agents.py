@@ -185,6 +185,7 @@ def test_four_variants_and_repeated_frame_queries(protocol, variant):
     assert query.call_count == (2 if mode.frames else 0)
     assert agent.counters["model_requests"] == (3 if mode.frames else 1)
     assert all(r[1]["tools_enabled"] == mode.frames for r in requests)
+    assert all(r[1]["parallel_tool_calls"] is (True if mode.sequence else None) for r in requests)
     if mode.frames:
         serialized = json.dumps(requests[-1][0])
         assert "q1" in serialized and "q2" in serialized
@@ -429,8 +430,9 @@ def test_anthropic_thinking_effort_is_forwarded(monkeypatch):
         ("agent4", "combine", True, True),
     ],
 )
+@pytest.mark.parametrize("model", ["claude-fable-5", "gpt-6-astra"])
 def test_checked_in_realtime_configs_map_all_runtime_capabilities(
-    variant, agent_id, sequence, frames
+    variant, agent_id, sequence, frames, model
 ):
     from pathlib import Path
 
@@ -438,14 +440,14 @@ def test_checked_in_realtime_configs_map_all_runtime_capabilities(
         Path(__file__).resolve().parents[1]
         / "configs"
         / "realtime_agents"
-        / f"{agent_id}-claude-sonnet-5.yaml"
+        / f"{agent_id}-{model}.yaml"
     )
     config = load_realtime_config(path, variant=variant)
     kwargs = agent_kwargs(config)
     assert config["agent_id"] == agent_id
     assert kwargs["sequence"] is sequence
     assert kwargs["frames"] is frames
-    assert kwargs["model"] == "claude-sonnet-5"
+    assert kwargs["model"] == model
     assert kwargs["tool_format"] == "native"
     assert kwargs["max_tokens"] == 128000
     assert kwargs["thinking_enabled"] is True
@@ -547,7 +549,7 @@ def test_astra_config_preserves_thinking_and_combine_tools(monkeypatch):
 
 
 def test_mixed_frame_and_action_calls_are_rejected_and_retried():
-    wire = ModelWire("claude-fable-5-1", "anthropic_messages")
+    wire = ModelWire("claude-fable-5", "anthropic_messages")
     mixed = {
         "content": [
             {"type": "tool_use", "id": "a0", "name": "computer_click", "input": {"x": 754, "y": 549}},
