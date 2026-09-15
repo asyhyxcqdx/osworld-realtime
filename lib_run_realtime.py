@@ -53,6 +53,9 @@ def run_realtime_example(
         "max_decision_rounds": max_steps,
         "max_sequence_actions": args.max_sequence_actions,
         "max_frame_queries_per_decision": args.max_frame_queries,
+        "max_frame_queries_per_response": (
+            None if agent.frames and agent.sequence else 1 if agent.frames else 0
+        ),
         "frame_queries_unlimited": args.max_frame_queries == 0,
         "thinking_enabled": getattr(agent.wire, "thinking_enabled", False),
         "thinking_effort": getattr(agent.wire, "thinking_effort", None),

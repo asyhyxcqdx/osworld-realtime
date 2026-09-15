@@ -206,6 +206,11 @@ def system_prompt(sequence, frames, max_actions, max_queries):
             if max_queries
             else "You may use get_frames repeatedly before committing actions; there is no query-count limit. "
         )
+        if not sequence:
+            query_budget += (
+                "Submit only one get_frames call per response. Wait for its result "
+                "before querying again or submitting an action. "
+            )
         prompt += (
             "\n" + query_budget
             + "It reads requested timestamps from a target 30 FPS recording, approximately one frame "

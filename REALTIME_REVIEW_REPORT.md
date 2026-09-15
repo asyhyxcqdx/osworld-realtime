@@ -17,7 +17,7 @@
 1. 正式模型明确为 claude-fable-5、gpt-6-astra，各有 vanilla/anticipatory/video/combine 四份 YAML，共 8 份。取消未知模型配置静默回退到 Sonnet，显式指定模型也不得与配置冲突。
 2. 启动器统一复用 agent_kwargs()，减少手工逐字段传递造成遗漏的风险。校验 Agent ID 与 sequence/frames 一致，必需约束不得缺失；旧 coordinate_mapping 被拒绝。
 3. 两模型都原字节发送 1920×1080 图，原样执行 x/y。没有启用预缩放、比例猜测或自动放大。测试同时检查实际发出的图像字节和原始动作坐标。
-4. Agent3 保留同一响应可含多个帧查询的行为；atomic 限制作用于动作。Video prompt 补齐与 combine 相同的“历史查询与动作分开响应”规则。
+4. review 当时保留 Agent3 单次回复多个帧查询；后续按用户要求统一为每次回复一个工具调用，即一个 get_frames 或一个动作。允许收到结果后继续查询；一次 get_frames 仍可取 1–8 张帧。Agent4 保持多查询能力。
 5. 录制前比对 VM 两份源码的 SHA-256 并记录。旧镜像或安装遗漏会在调用付费模型前被发现。构建器的验证也检查实际 WAIT 和 100 动作上限。
 6. 控制器持续记录已按住的修饰键，阻断跨原子回合组合出的刷新快捷键；整段非法动作仍不发送到 VM。
 7. runner 记录页面 ID、URL、performance.timeOrigin 和标签页集合，动作后与评分前检查；重载、导航、复制页不计为正常游戏成绩。真实 VM 中模拟刷新已验证被识别。

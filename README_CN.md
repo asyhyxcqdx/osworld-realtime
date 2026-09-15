@@ -14,6 +14,8 @@
 | agent3 / video | 有 | 1 |
 | agent4 / combine | 有 | 1–100 |
 
+Agent3 每次模型回复最多一个工具调用（get_frames 或动作）；取帧结果返回后可继续查询，单次 get_frames 仍可取 1–8 张帧。Agent4 可以同一回复提交多个查询。
+
 从 [项目总览](REALTIME_GUI_PROJECT.md) 和 [运行说明](SETUP_GUIDELINE_CN.md) 开始阅读。实现细节见 [配置协议](REALTIME_AGENT_CONFIG_PROTOCOL.md)、[Agent loop](REALTIME_AGENT_LOOP_GUIDE.md) 和 [实验设计](AGENT_EXPERIMENT_DESIGN.md)。
 
 环境目录只含 69 个 HTML；任务 JSON、任务清单、评分器是必要运行文件。交付方自测与 OSWorld 独立验收分别记录于 [接入记录](evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md)。

@@ -19,7 +19,7 @@
 
 校验器要求能力开关与 ID 一致，防止 Agent3 意外拥有 sequence。sequence 上限可设 1–100；默认 100。所有组允许 DONE、WAIT，禁止 FAIL。
 
-observation.current_screenshot 必须 true。historical_video 的工具名固定 get_frames、max_times_per_query 固定 8；max_queries_per_turn=0 表示不限（无录像能力的组只能为 0）。帧数、查询次数和动作决策数是不同概念。
+observation.current_screenshot 必须 true。historical_video 的工具名固定 get_frames、max_times_per_query 固定 8；max_queries_per_turn=0 表示不限（无录像能力的组只能为 0）。Agent3 每次模型回复至多一个 get_frames；查询返回后可在后续回复继续查询。Agent4 可同一回复提交多个查询。帧数、每次回复的调用数、每回合的查询总数和动作决策数是不同概念。
 
 context 固定 history_policy=full、include_screenshots=true、on_context_limit=fail_with_explicit_error；禁止静默删掉早期上下文。
 
@@ -31,6 +31,6 @@ coordinate_mapping 已移除，带该字段的旧自定义配置会被明确拒�
 
 ## 消息与错误
 
-动作通过 API tools schema 提供，不把工具调用当文本 JSON 解析。Video/combine prompt 明确要求先单独查帧，收到结果后再提交动作；只读历史查询不增加决策回合。混合或非法动作响应不执行其中的任何动作，所有调用 ID 获得对应错误结果，再允许模型纠正，最多两次。
+动作通过 API tools schema 提供，不把工具调用当文本 JSON 解析。Video/combine prompt 明确要求先单独查帧，收到结果后再提交动作；只读历史查询不增加决策回合。混合或非法动作响应不执行其中的任何动作，所有调用 ID 获得对应错误结果，再允许模型纠正，最多两次。Agent3 同一回复中的多个 get_frames 也整批拒绝，不执行任何查询、不消耗查询预算，回传每个调用 ID 的错误结果。
 
 Anthropic 使用 adaptive thinking；Astra 使用 reasoning.effort=high、summary=auto。每次请求的配置、图像哈希、原始回复、用量、动作与 VM 时长都落盘。API 密钥、请求授权头不落盘；Packy 地址由 --api_base_url 指定，系统代理保留。

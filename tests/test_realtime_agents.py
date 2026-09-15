@@ -185,7 +185,7 @@ def test_four_variants_and_repeated_frame_queries(protocol, variant):
     assert query.call_count == (2 if mode.frames else 0)
     assert agent.counters["model_requests"] == (3 if mode.frames else 1)
     assert all(r[1]["tools_enabled"] == mode.frames for r in requests)
-    assert all(r[1]["parallel_tool_calls"] is (True if mode.sequence else None) for r in requests)
+    assert all(r[1]["parallel_tool_calls"] is mode.sequence for r in requests)
     if mode.frames:
         serialized = json.dumps(requests[-1][0])
         assert "q1" in serialized and "q2" in serialized
@@ -632,3 +632,86 @@ def test_invalid_key_call_is_closed_before_model_correction(protocol):
         assert [r["tool_use_id"] for r in replies] == ["a0"]
     assert '"executed": false' in json.dumps(replies).replace('\\"', '"')
     assert "No action in this sequence was executed" in json.dumps(replies)
+
+
+def frame_batch_reply(protocol):
+    first = native_reply(protocol, tool='q1')
+    second = native_reply(protocol, tool='q2')
+    if protocol == 'anthropic_messages':
+        first['content'].extend(second['content'])
+    elif protocol == 'openai_responses':
+        first['output'].extend(second['output'])
+    else:
+        first['choices'][0]['message']['tool_calls'].extend(second['choices'][0]['message']['tool_calls'])
+    return first
+
+
+@pytest.mark.parametrize('protocol', ['anthropic_messages', 'openai_responses', 'openai_chat'])
+def test_atomic_frame_batch_rejected_before_queries_and_budget_consumption(protocol):
+    wire = ModelWire('mock', protocol)
+    query = Mock(return_value={'frames': [{'status': 'ok', 'image': IMAGE}]})
+    requests = []
+    replies = [frame_batch_reply(protocol), native_reply(protocol, tool='q3'),
+               native_reply(protocol, tool='q4'), native_reply(protocol, text=json.dumps(ACTION))]
+
+    def request(system, messages, **kwargs):
+        requests.append(copy.deepcopy(messages))
+        if len(requests) == 2:
+            query.assert_not_called()
+        return replies.pop(0)
+
+    wire.request = request
+    agent = RealtimeAgent(variant='agent3', sequence=False, frames=True, wire=wire, max_frame_queries=2)
+    agent.bind_frame_query(query)
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 1})[1] == [ACTION]
+    assert query.call_count == agent.counters['frame_queries'] == 2
+    assert agent.counters['images_returned'] == 2
+    errors = [e for e in agent.last_events if e['event'] == 'format_error']
+    assert len(errors) == 1 and errors[0]['will_retry'] is True
+    assert 'one get_frames call per response' in errors[0]['message']
+    messages = requests[1]
+    if protocol == 'anthropic_messages':
+        outputs = [b for m in messages for b in m.get('content', []) if b['type'] == 'tool_result']
+        assert [b['tool_use_id'] for b in outputs] == ['q1', 'q2']
+    elif protocol == 'openai_responses':
+        outputs = [m for m in messages if m.get('type') == 'function_call_output']
+        assert [m['call_id'] for m in outputs] == ['q1', 'q2']
+    else:
+        outputs = [m for m in messages if m.get('role') == 'tool']
+        assert [m['tool_call_id'] for m in outputs] == ['q1', 'q2']
+    assert 'No frame queries or actions were executed' in json.dumps(outputs)
+    assert GetFramesArgs(times_s=[float(i) for i in range(8)]).times_s == list(range(8))
+
+
+@pytest.mark.parametrize('protocol', ['anthropic_messages', 'openai_responses', 'openai_chat'])
+def test_combine_still_accepts_multiple_frame_queries_in_one_response(protocol):
+    wire = ModelWire('mock', protocol)
+    wire.request = Mock(side_effect=[frame_batch_reply(protocol), native_reply(protocol, text=json.dumps([ACTION, ACTION]))])
+    agent = RealtimeAgent(variant='agent4', sequence=True, frames=True, wire=wire)
+    query = Mock(return_value={'frames': []})
+    agent.bind_frame_query(query)
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 1})[1] == [ACTION, ACTION]
+    assert query.call_count == 2
+    assert not any(e['event'] == 'format_error' for e in agent.last_events)
+
+
+@pytest.mark.parametrize('model', ['claude-fable-5', 'gpt-6-astra'])
+@pytest.mark.parametrize('variant', ['agent1', 'agent3', 'agent4'])
+def test_atomic_configs_send_single_tool_policy_to_provider(monkeypatch, model, variant):
+    from mm_agents.realtime_config import default_config_path
+    monkeypatch.setenv('PACKY_API_KEY', 'test-key')
+    config = load_realtime_config(default_config_path(variant, model), variant=variant)
+    agent = RealtimeAgent(variant=variant, **agent_kwargs(config))
+    agent.wire.session.post = Mock(return_value=SimpleNamespace(status_code=200,
+        json=lambda: native_reply(agent.wire.protocol, text=json.dumps(ACTION))))
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 1})[1] == [ACTION]
+    payload = agent.wire.session.post.call_args.kwargs['json']
+    if agent.wire.protocol == 'anthropic_messages':
+        if variant == 'agent4':
+            assert 'tool_choice' not in payload
+        else:
+            assert payload['tool_choice'] == {'type': 'auto', 'disable_parallel_tool_use': True}
+    else:
+        assert payload['parallel_tool_calls'] is (variant == 'agent4')
+    if variant == 'agent3':
+        assert 'Submit only one get_frames call per response.' in payload.get('system', payload.get('instructions', ''))

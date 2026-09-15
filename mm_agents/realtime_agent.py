@@ -270,6 +270,10 @@ class ModelWire:
                     tool["name"] != FRAME_TOOL["name"] for tool in tools
                 ):
                     payload["tool_choice"] = {"type": "none"}
+                elif parallel_tool_calls is False:
+                    payload["tool_choice"] = {
+                        "type": "auto", "disable_parallel_tool_use": True,
+                    }
         else:
             headers["Authorization"] = f"Bearer {key}"
             if self.protocol == "openai_responses":
@@ -683,7 +687,7 @@ class RealtimeAgent:
                     max_tokens=self.max_tokens,
                     temperature=self.temperature,
                     tools=request_tools,
-                    parallel_tool_calls=True if self.sequence else None,
+                    parallel_tool_calls=self.sequence,
                 )
             except Exception as exc:
                 self.emit({
@@ -717,12 +721,18 @@ class RealtimeAgent:
             if calls:
                 frame_calls = [call for call in calls if call["name"] == FRAME_TOOL["name"]]
                 action_calls = [call for call in calls if call["name"] != FRAME_TOOL["name"]]
-                if frame_calls and action_calls:
+                mixed_calls = bool(frame_calls and action_calls)
+                too_many_frame_calls = not self.sequence and len(frame_calls) > 1
+                if mixed_calls or too_many_frame_calls:
                     errors += 1
                     message = (
                         "Do not mix get_frames with action tools in one response. "
                         "No actions were executed. Query historical frames first, "
                         "then submit a separate response containing only actions."
+                    ) if mixed_calls else (
+                        "This atomic agent allows only one get_frames call per response. "
+                        "No frame queries or actions were executed. Submit one get_frames "
+                        "call and wait for its result before querying again or acting."
                     )
                     self.emit({
                         "event": "format_error",

@@ -6,7 +6,7 @@
 
 四组共享原生 1920×1080 截图、完整上下文、computer_13 工具、模型参数和 VM 执行器。区别仅为历史帧是否开放、一次决策可提交 1 个还是 1–100 个动作。正式模型为 Fable5、Astra；每模型分别比较四组，不因模型名猜测坐标比例。
 
-每回合：当前截图 → 模型请求 → 可重复的 get_frames 查询 → 动作工具回复 → VM 连续执行 → 一个新截图。历史查询不增加动作决策数；模型响应可以含多个查询，不能和动作混在同一响应。atomic 限制只针对动作，不限制一条响应中的帧查询数。
+每回合：当前截图 → 模型请求 → 可重复的 get_frames 查询 → 动作工具回复 → VM 连续执行 → 一个新截图。历史查询不增加动作决策数；Agent3 每次模型回复只能含一个 get_frames 或一个动作工具；拿到取帧结果后仍可继续查帧。Agent4 可在同一次回复提交多个历史查询，不能与动作混在同一响应。每个 get_frames 仍可请求 1–8 张帧。
 
 ## 工具与时序
 
@@ -32,7 +32,7 @@ get_frames 接受 1–8 个秒数，可小数。对已完成片段，返回最�
 
 正式 YAML 固定 full history、128000 最大输出、high thinking、summary 开启。max_steps 默认 100，计动作决策；get_frames 默认不限次数。供应商耗时包含模型计算、网络与排队，不能把整个 latency_s 当成纯模型思考时间。
 
-Anthropic 使用 Messages 原生 tool_use/tool_result；Astra 使用 Responses，收齐 response.completed 才执行，不提前执行流中的半段调用。sequence 显式允许多调用，atomic 保留供应商默认，动作数量由本地校验器限制。
+Anthropic 使用 Messages 原生 tool_use/tool_result；Astra 使用 Responses，收齐 response.completed 才执行，不提前执行流中的半段调用。sequence 显式允许多调用；atomic 每次模型回复最多调用一个工具。OpenAI 使用 parallel_tool_calls=false，Anthropic 使用 tool_choice={type: auto, disable_parallel_tool_use: true}；本地校验也拒绝 Agent3 同一回复中的多个 get_frames。
 
 非法参数、文字代替工具、混合查询与动作都会回传错误后最多纠正两次；混合响应中任何调用均不执行。图片原字节发送；日志使用哈希代替 base64，原截图单独保存。模型提供的摘要仅按实际返回记录，不补写隐藏推理。
 
