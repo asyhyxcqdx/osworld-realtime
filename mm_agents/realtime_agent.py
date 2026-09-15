@@ -12,6 +12,8 @@ import time
 
 import requests
 
+from mm_agents.realtime_config import validate_key_env, validate_thinking
+
 from mm_agents.realtime_protocol import (
     ACTION_TOOLS,
     ACTION_TOOL_TYPES,
@@ -134,6 +136,7 @@ class ModelWire:
         thinking_summary=False,
         thinking_enabled=None,
         thinking_effort=None,
+        api_key_env=None,
     ):
         self.model = model
         self.protocol = (
@@ -149,15 +152,11 @@ class ModelWire:
             raise ValueError("Unsupported model API protocol")
         if thinking_enabled is None:
             thinking_enabled = thinking_summary
-        if thinking_enabled and self.protocol not in {"anthropic_messages", "openai_responses"}:
-            raise ValueError("thinking requires Anthropic Messages or OpenAI Responses")
         if thinking_summary and not thinking_enabled:
             raise ValueError("thinking_summary requires thinking_enabled")
-        efforts = {"low", "medium", "high", "max"}
-        if self.protocol == "openai_responses":
-            efforts.add("xhigh")
-        if thinking_effort is not None and thinking_effort not in efforts:
-            raise ValueError(f"thinking_effort must be one of {sorted(efforts)}")
+        validate_thinking(model, self.protocol, thinking_enabled, thinking_effort)
+        validate_key_env(api_key_env)
+        self.api_key_env = api_key_env
         self.thinking_enabled = bool(thinking_enabled)
         self.thinking_summary = thinking_summary
         self.thinking_effort = thinking_effort
@@ -219,8 +218,10 @@ class ModelWire:
         if tools is None:
             tools = [FRAME_TOOL] if tools_enabled or has_tool_history else []
         send_tools = native and bool(tools)
-        key_name = "PACKY_API_KEY"
+        key_name = self.api_key_env or "PACKY_API_KEY"
         key = os.getenv(key_name)
+        if not key and self.api_key_env:
+            raise RuntimeError(f"Set the configured API key environment variable {self.api_key_env}.")
         if not key:
             key_name = (
                 "ANTHROPIC_API_KEY"
@@ -252,7 +253,7 @@ class ModelWire:
             )
             if self.thinking_enabled:
                 payload["thinking"] = {"type": "adaptive"}
-                if self.thinking_summary:
+                if self.thinking_summary and self.model != "MiniMax-M3":
                     payload["thinking"]["display"] = "summarized"
                 if self.thinking_effort:
                     payload["output_config"] = {"effort": self.thinking_effort}
@@ -316,6 +317,16 @@ class ModelWire:
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
+                if self.thinking_enabled:
+                    # Gemini's documented OpenAI-compatible extension. Do not also
+                    # send reasoning_effort: the two controls overlap.
+                    thinking_config = {
+                        "include_thoughts": self.thinking_summary,
+                    }
+                    if self.thinking_effort:
+                        thinking_config["thinking_level"] = self.thinking_effort
+                    payload["extra_body"] = {"google": {"thinking_config": thinking_config}}
+                    payload.pop("temperature")
                 if parallel_tool_calls is not None:
                     payload["parallel_tool_calls"] = bool(parallel_tool_calls)
                 if send_tools:
@@ -370,6 +381,11 @@ class ModelWire:
         return response.json()
 
     def unpack(self, response):
+        stop_reason = response.get("stop_reason")
+        if self.protocol == "openai_chat":
+            stop_reason = response.get("choices", [{}])[0].get("finish_reason")
+        if stop_reason in {"max_tokens", "length"} or response.get("status") == "incomplete":
+            raise RuntimeError("Model response hit its output limit or is incomplete; no actions dispatched.")
         calls = []
         if self.protocol == "anthropic_messages":
             blocks = response.get("content", [])
@@ -464,6 +480,7 @@ class RealtimeAgent:
         model="claude-fable-5",
         api_format="auto",
         api_base_url=None,
+        api_key_env=None,
         max_tokens=128000,
         temperature=1.0,
         max_trajectory_length=3,
@@ -498,6 +515,7 @@ class RealtimeAgent:
             thinking_summary=thinking_summary,
             thinking_enabled=thinking_enabled,
             thinking_effort=thinking_effort,
+            api_key_env=api_key_env,
         )
         base_system = system_prompt_text or system_prompt(
             self.sequence, self.frames, self.max_actions, self.max_queries
@@ -625,7 +643,7 @@ class RealtimeAgent:
         }
         blocks = [
             text_block(
-                f"Task: {instruction}\nScreenshot task time: {obs['task_time_s']:.6f} seconds. "
+                f"Screenshot task time: {obs['task_time_s']:.6f} seconds. "
                 "This timestamp describes the screenshot, not the time your reply will execute."
             )
         ]
@@ -640,11 +658,14 @@ class RealtimeAgent:
             }
         )
         round_messages = [self.wire.user(blocks)]
-        history = [
+        # Keep one task message at the start of the conversation, separate from
+        # observation rounds so even an explicitly bounded history retains it.
+        history = [self.wire.user([text_block(f"Task: {instruction}")])]
+        history.extend(
             m
             for r in self._history_rounds()
             for m in r
-        ]
+        )
         queries, errors, requests_in_decision = 0, 0, 0
         while True:
             # Preserve the legacy finite mode only when explicitly requested.

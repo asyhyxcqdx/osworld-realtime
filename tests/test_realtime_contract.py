@@ -34,7 +34,7 @@ def test_actual_configs_preserve_image_bytes_and_action_coordinates(model, varia
     wire.request = Mock(return_value=raw)
     _, actions = agent.predict('task', {'screenshot': original, 'task_time_s': 0})
     assert actions == [{'action_type': 'CLICK', 'parameters': coords}]
-    parts = wire.request.call_args.args[1][0]['content']
+    parts = wire.request.call_args.args[1][-1]['content']
     block = next(b for b in parts if b['type'] in {'image', 'input_image'})
     encoded = block['source']['data'] if 'source' in block else block['image_url'].split(',', 1)[1]
     assert base64.b64decode(encoded) == original

@@ -1,0 +1,49 @@
+config_version: realtime-agent-config/1.0
+agent_id: combine
+display_name: combine Agent
+description: Current screenshot and historical video queries; a sequence of up to 100 atomic action tool calls per decision.
+observation:
+  current_screenshot: true
+  historical_video:
+    enabled: true
+    tool_name: get_frames
+    max_queries_per_turn: 0
+    max_times_per_query: 8
+action:
+  mode: sequence
+  max_actions_per_turn: 100
+  allow_done: true
+  allow_fail: false
+  allow_wait: true
+context:
+  history_policy: full
+  include_screenshots: true
+  on_context_limit: fail_with_explicit_error
+api:
+  model: gemini-3.8-flash
+  key_env: PACKY_COMMON_API_KEY
+  protocol: openai_chat
+  tool_format: native
+  context_window_tokens: 1048576
+  max_output_tokens: 65536
+  temperature: null
+  thinking:
+    enabled: true
+    effort: high
+    summary: true
+constraints:
+  forbid_refresh: true
+  forbid_navigation: true
+  require_done_action: true
+  forbid_text_only_completion: true
+system_prompt: |
+  You are the combine Agent in a real-time GUI benchmark.
+  You receive the current screenshot and the complete task context.
+  You may call get_frames multiple times to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
+  Never mix get_frames with action tools in one response. Submit frame queries alone, wait for their results, then submit actions in a separate response.
+  After perception, submit a consecutive sequence of 1 to 100 atomic action tool calls when a sequence is useful; submit a shorter sequence when appropriate.
+  Use the registered tool schemas exactly; no hidden delay is inserted between actions.
+  Never refresh, reload, reopen, or navigate away from the game page.
+  Follow the game rules exactly. If an attempt fails and another attempt is available, continue with the next attempt.
+  When the game shows success or no attempts remain, submit DONE as the final action tool call.
+  Do not finish with a text-only response.

@@ -193,6 +193,69 @@ def test_four_variants_and_repeated_frame_queries(protocol, variant):
         assert agent.counters["images_returned"] == 2
 
 
+@pytest.mark.parametrize("protocol", ["anthropic_messages", "openai_chat", "openai_responses"])
+@pytest.mark.parametrize("history_length", [None, 1, 0])
+def test_task_is_single_prefix_across_decisions_queries_and_reset(protocol, history_length):
+    wire = ModelWire("mock", protocol)
+    action_reply = native_reply(protocol, text=json.dumps(ACTION))
+    replies = iter([action_reply, native_reply(protocol, tool="q1"), action_reply,
+                    action_reply, action_reply])
+    requests = []
+
+    def request(system, messages, **kwargs):
+        requests.append(copy.deepcopy(messages))
+        return next(replies)
+
+    wire.request = request
+    agent = RealtimeAgent(variant="agent4", sequence=True, frames=True, wire=wire,
+                          max_trajectory_length=history_length)
+    agent.bind_frame_query(lambda _: {"frames": [{"status": "not_ready"}]})
+    events = []
+    agent.bind_event_sink(events.append)
+    for step in range(1, 4):
+        _, actions = agent.predict("original task", {
+            "screenshot": f"image-{step}".encode(), "task_time_s": float(step),
+        })
+        agent.record_action_result(actions)
+
+    assert len(requests) == 4  # The historical-frame result needs another request.
+    for messages in requests:
+        assert json.dumps(messages).count("Task: original task") == 1
+        assert messages[0]["role"] == "user"
+        assert messages[0]["content"][0]["text"] == "Task: original task"
+        for message in messages[1:]:
+            if message.get("role") == "user":
+                for block in message["content"]:
+                    if block.get("type") in {"text", "input_text"}:
+                        assert "Task:" not in block["text"]
+    assert len(requests[0]) == 2  # Task, then timestamp plus image.
+    assert "Screenshot task time: 2.000000" in json.dumps(requests[1][-1])
+    assert base64.b64encode(b"image-2").decode() in json.dumps(requests[1][-1])
+    assert requests[2][:len(requests[1])] == requests[1]
+    assert "q1" in json.dumps(requests[2][len(requests[1]):])
+    if history_length != 0:
+        previous_assistant = wire.unpack(action_reply)[2][0]
+        assert previous_assistant in requests[1]
+        result_message = requests[1][-2]
+        if protocol == "anthropic_messages":
+            result_text = result_message["content"][0]["content"][0]["text"]
+        elif protocol == "openai_responses":
+            result_text = result_message["output"][0]["text"]
+        else:
+            result_text = result_message["content"]
+        assert json.loads(result_text)["executed"] is True
+    expected_observations = 3 if history_length is None else history_length + 1
+    assert json.dumps(requests[-1]).count("Screenshot task time:") == expected_observations
+    logged = [e["request_messages"] for e in events if e["event"] == "model_request"]
+    assert all(json.dumps(m).count("Task: original task") == 1 for m in logged)
+
+    agent.reset()
+    agent.predict("next task", {"screenshot": b"new-image", "task_time_s": 0.0})
+    assert len(requests[-1]) == 2
+    assert "original task" not in json.dumps(requests[-1])
+    assert json.dumps(requests[-1]).count("Task: next task") == 1
+
+
 def test_text_json_tool_output_is_rejected():
     wire = ModelWire("mock", "anthropic_messages")
     with pytest.raises(ValueError, match="native tool use"):

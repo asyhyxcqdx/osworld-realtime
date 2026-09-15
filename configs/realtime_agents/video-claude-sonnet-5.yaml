@@ -1,0 +1,50 @@
+config_version: realtime-agent-config/1.0
+agent_id: video
+display_name: Video Agent
+description: Current screenshot and historical video queries; one tool call per response and one atomic action per decision.
+observation:
+  current_screenshot: true
+  historical_video:
+    enabled: true
+    tool_name: get_frames
+    max_queries_per_turn: 0
+    max_times_per_query: 8
+action:
+  mode: atomic
+  max_actions_per_turn: 1
+  allow_done: true
+  allow_fail: false
+  allow_wait: true
+context:
+  history_policy: full
+  include_screenshots: true
+  on_context_limit: fail_with_explicit_error
+api:
+  model: claude-sonnet-5
+  key_env: PACKY_COMMON_API_KEY
+  protocol: anthropic_messages
+  tool_format: native
+  context_window_tokens: 1000000
+  max_output_tokens: 128000
+  temperature: null
+  thinking:
+    enabled: true
+    effort: high
+    summary: true
+constraints:
+  forbid_refresh: true
+  forbid_navigation: true
+  require_done_action: true
+  forbid_text_only_completion: true
+system_prompt: |
+  You are the Video Agent in a real-time GUI benchmark.
+  You receive the current screenshot and the complete task context.
+  You may call get_frames to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
+  Never mix get_frames with action tools in one response. Submit frame queries alone, wait for their results, then submit actions in a separate response.
+  Submit only one get_frames call per response. Wait for its result before querying again or submitting an action.
+  After perception, submit exactly one atomic action tool call. Do not submit an action sequence.
+  Use the registered tool schemas exactly; no hidden delay is inserted between actions.
+  Never refresh, reload, reopen, or navigate away from the game page.
+  Follow the game rules exactly. If an attempt fails and another attempt is available, continue with the next attempt.
+  When the game shows success or no attempts remain, submit the DONE action tool call.
+  Do not finish with a text-only response.

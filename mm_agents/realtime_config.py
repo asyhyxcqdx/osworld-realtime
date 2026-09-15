@@ -1,5 +1,6 @@
 """Load and validate the self-contained real-time Agent configurations."""
 from pathlib import Path
+import re
 
 import yaml
 
@@ -10,6 +11,31 @@ VARIANT_TO_AGENT_ID = {
     "agent3": "video",
     "agent4": "combine",
 }
+
+
+def validate_thinking(model, protocol, enabled, effort):
+    if model == "MiniMax-M3" and enabled:
+        if protocol != "anthropic_messages":
+            raise ValueError("MiniMax-M3 adaptive thinking is configured through Anthropic Messages")
+        if effort is not None:
+            raise ValueError("MiniMax-M3 exposes adaptive thinking, not a documented effort level; use null")
+        return
+    efforts = {"low", "medium", "high", "max"}
+    if protocol == "openai_responses":
+        efforts.add("xhigh")
+    if protocol == "openai_chat" and enabled:
+        if model != "gemini-3.8-flash":
+            raise ValueError("Chat thinking is currently supported only for gemini-3.8-flash")
+        efforts = {"low", "medium", "high"}
+    if effort is not None and effort not in efforts:
+        raise ValueError(f"thinking effort must be one of {sorted(efforts)}")
+
+
+def validate_key_env(name):
+    if name is not None and (
+        not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
+    ):
+        raise ValueError("api.key_env must name an environment variable, not contain a key")
 
 
 def default_config_path(variant, model, root=None):
@@ -81,21 +107,26 @@ def load_realtime_config(path, *, variant=None):
         raise ValueError("Agents without video must set max_queries_per_turn=0")
     if api.get("tool_format") != "native":
         raise ValueError("Realtime configs must use native tool use.")
-    if protocol not in {"anthropic_messages", "openai_responses"}:
-        raise ValueError("Realtime configs require Anthropic Messages or OpenAI Responses.")
+    if protocol not in {"anthropic_messages", "openai_responses", "openai_chat"}:
+        raise ValueError("Unsupported realtime API protocol.")
+    validate_key_env(api.get("key_env"))
     if not isinstance(thinking, dict):
         raise ValueError("api.thinking must be a mapping.")
     if thinking.get("enabled") is not True:
         raise ValueError("api.thinking.enabled must be true for realtime experiments.")
     if thinking.get("summary") is not True:
         raise ValueError("api.thinking.summary must be true for realtime experiments.")
-    efforts = {"low", "medium", "high", "max"}
-    if protocol == "openai_responses":
-        efforts.add("xhigh")
-    if thinking.get("effort") not in efforts:
-        raise ValueError(f"api.thinking.effort must be one of {sorted(efforts)}.")
-    if any(type(api.get(k)) is not int or api[k] < 128000 for k in ("context_window_tokens", "max_output_tokens")):
-        raise ValueError("Realtime API limits must be at least 128000 tokens.")
+    if thinking.get("effort") is None and api["model"] != "MiniMax-M3":
+        raise ValueError("api.thinking.effort is required")
+    validate_thinking(api["model"], protocol, True, thinking.get("effort"))
+    if type(api.get("context_window_tokens")) is not int or api["context_window_tokens"] < 128000:
+        raise ValueError("Realtime context window must be at least 128000 tokens.")
+    if type(api.get("max_output_tokens")) is not int or api["max_output_tokens"] <= 0:
+        raise ValueError("max_output_tokens must be a positive integer.")
+    if api["max_output_tokens"] > api["context_window_tokens"]:
+        raise ValueError("max_output_tokens must not exceed context_window_tokens.")
+    if api["model"] == "gemini-3.8-flash" and api["max_output_tokens"] > 65536:
+        raise ValueError("gemini-3.8-flash supports at most 65536 output tokens.")
     if (context.get("history_policy") != "full" or context.get("include_screenshots") is not True
             or context.get("on_context_limit") != "fail_with_explicit_error"):
         raise ValueError("Realtime configs must preserve complete screenshot history.")
@@ -117,6 +148,7 @@ def agent_kwargs(config):
         "sequence": action["mode"] == "sequence",
         "frames": observation["enabled"],
         "api_format": api["protocol"],
+        "api_key_env": api.get("key_env"),
         "max_tokens": api["max_output_tokens"],
         "temperature": api["temperature"],
         "max_trajectory_length": None,
@@ -124,7 +156,7 @@ def agent_kwargs(config):
         "max_frame_queries": observation["max_queries_per_turn"],
         "tool_format": api["tool_format"],
         "thinking_enabled": thinking["enabled"],
-        "thinking_effort": thinking["effort"],
+        "thinking_effort": thinking.get("effort"),
         "thinking_summary": thinking["summary"],
         "system_prompt_text": config["system_prompt"],
     }

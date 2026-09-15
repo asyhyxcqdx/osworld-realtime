@@ -156,6 +156,9 @@ def config() -> argparse.Namespace:
         except (OSError, ValueError) as exc:
             parser.error(f"Invalid realtime Agent config {config_path}: {exc}")
         config_values = agent_kwargs(realtime_config)
+        key_env = config_values.get("api_key_env")
+        if key_env and not os.environ.get(key_env):
+            parser.error(f"Set the configured API key environment variable {key_env} before starting a VM")
         if requested_model and requested_model != config_values["model"]:
             parser.error("--model must match api.model in the selected Agent config")
         args.realtime_config_path = str(config_path)
@@ -174,6 +177,8 @@ def config() -> argparse.Namespace:
         args.thinking_summary = config_values["thinking_summary"]
         if args.action_space != "computer_13" or args.observation_type != "screenshot":
             parser.error("Four-agent experiments require --action_space computer_13 --observation_type screenshot")
+        if (args.screen_width, args.screen_height) != (1920, 1080):
+            parser.error("Realtime experiments require the native 1920x1080 screen size")
         if not 1 <= args.max_sequence_actions <= 100 or args.max_frame_queries < 0:
             parser.error("Invalid sequence/query budget")
         if min(args.sleep_after_execution, args.environment_ready_wait_s, args.evaluation_settle_s) < 0:

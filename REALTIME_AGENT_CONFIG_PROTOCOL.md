@@ -1,6 +1,6 @@
 # Realtime Agent 配置协议
 
-版本：`realtime-agent-config/1.0`。正式配置目录只有两模型 × 四组共 8 份 YAML。模型为 `claude-fable-5`（Anthropic Messages）和 `gpt-6-astra`（OpenAI Responses）；旧 Fable5.1、Opus、Sonnet 试验配置从活动目录移除，可由 Git 历史恢复。
+版本：`realtime-agent-config/1.0`。新增 Packy 八模型 × 四组共 32 份 YAML，保留 Fable 5、Astra 的 8 份基线配置，合计 40 份。模型、协议、预算与密钥分组见 [配置目录说明](configs/realtime_agents/README.md)。
 
 ## 选择配置
 
@@ -23,14 +23,14 @@ observation.current_screenshot 必须 true。historical_video 的工具名固定
 
 context 固定 history_policy=full、include_screenshots=true、on_context_limit=fail_with_explicit_error；禁止静默删掉早期上下文。
 
-api 定义 model、protocol、tool_format=native、context_window_tokens、max_output_tokens、temperature、thinking。上下文与输出上限均至少 128000；输出上限不是实际生成量。当前 Fable5 上下文声明 1000000，Astra 为 1050000。thinking.enabled 和 summary 必须 true，effort 当前为 high；temperature 为 null。模型能力声明需与实际供应商相符，HTTP 错误不能自动降低预算或换模型。
+api 定义 model、protocol、可选 key_env、tool_format=native、context_window_tokens、max_output_tokens、temperature、thinking。上下文预算至少 128000；输出上限是正整数且不能超过上下文预算。Gemini 3.8 Flash 配置为 65536，并拒绝超出其上限的配置；其他现用模型为 128000。输出上限不是实际生成量。thinking.enabled 和 summary 必须 true；MiniMax M3 的 effort 为 null（只开 adaptive），其余当前配置为 high；temperature 为 null。HTTP 错误不会自动降低预算或换模型。
 
 constraints 必须完整包含 forbid_refresh、forbid_navigation、require_done_action、forbid_text_only_completion，且都为 true。
 
-coordinate_mapping 已移除，带该字段的旧自定义配置会被明确拒绝。所有模型原样接收 1920×1080 PNG、原样执行原生坐标；没有猜比例、预缩放或自动放大。
+coordinate_mapping 已移除，带该字段的旧自定义配置会被明确拒绝。实时 CLI 拒绝非 1920×1080 的屏幕设置。所有模型原样接收 1920×1080 PNG、原样执行原生坐标；没有猜比例、预缩放或自动放大。
 
 ## 消息与错误
 
 动作通过 API tools schema 提供，不把工具调用当文本 JSON 解析。Video/combine prompt 明确要求先单独查帧，收到结果后再提交动作；只读历史查询不增加决策回合。混合或非法动作响应不执行其中的任何动作，所有调用 ID 获得对应错误结果，再允许模型纠正，最多两次。Agent3 同一回复中的多个 get_frames 也整批拒绝，不执行任何查询、不消耗查询预算，回传每个调用 ID 的错误结果。
 
-Anthropic 使用 adaptive thinking；Astra 使用 reasoning.effort=high、summary=auto。每次请求的配置、图像哈希、原始回复、用量、动作与 VM 时长都落盘。API 密钥、请求授权头不落盘；Packy 地址由 --api_base_url 指定，系统代理保留。
+Messages 使用 adaptive thinking；MiniMax 不发送 effort/display；Responses 使用 reasoning.effort=high、summary=auto。Gemini Chat 使用 extra_body.google.thinking_config={thinking_level: high, include_thoughts: true}，不同时发送 reasoning_effort。Chat 思考配置目前只为 gemini-3.8-flash 开通；不把 Gemini 扩展参数发送给任意 Chat 模型。每次请求的配置、图像哈希、原始回复、用量、动作与 VM 时长都落盘。api.key_env 指定的环境变量是唯一密钥来源，缺失即报错；未指定时保留旧的密钥兜底规则。API 密钥、请求授权头不落盘；Packy 地址由 --api_base_url 指定，系统代理保留。

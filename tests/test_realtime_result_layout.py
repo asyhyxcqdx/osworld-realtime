@@ -96,6 +96,14 @@ def test_cli_cannot_override_config_with_another_provider_model(monkeypatch, run
         runner["config"]()
 
 
+@pytest.mark.parametrize('width,height', [(1600, 900), (1920, 1200), (0, 1080)])
+def test_realtime_cli_rejects_screen_size_inconsistent_with_coordinate_protocol(monkeypatch, runner, width, height):
+    monkeypatch.setattr(sys, 'argv', ['run_multienv.py', '--agent_variant', 'agent1',
+        '--action_space', 'computer_13', '--screen_width', str(width), '--screen_height', str(height)])
+    with pytest.raises(SystemExit):
+        runner['config']()
+
+
 @pytest.mark.parametrize("budget", [0, 4, 100])
 def test_query_limit_is_optional_and_defaults_to_unlimited(monkeypatch, runner, budget):
     argv = ["run_multienv.py", "--agent_variant", "agent3", "--action_space", "computer_13"]
@@ -192,3 +200,26 @@ def test_shared_batch_keeps_distinct_agent_and_resume_start_times(tmp_path, monk
     assert manifest["agents"] == ["agent1", "agent2", "agent3", "agent4"]
     args_json = json.loads((root / "agent1/computer_13/screenshot/args.json").read_text())
     assert args_json["agent_started_at"] == launches[2][1]
+
+
+@pytest.mark.parametrize('model,key_env,limit', [
+    ('claude-sonnet-5', 'PACKY_COMMON_API_KEY', 128000),
+    ('gpt-5.6-sol', 'PACKY_COMMON_API_KEY', 128000),
+    ('gemini-3.8-flash', 'PACKY_COMMON_API_KEY', 65536),
+    ('qwen3.8-max-0902', 'PACKY_COMMON_API_KEY', 128000),
+    ('kimi-k3', 'PACKY_KIMI_API_KEY', 128000),
+    ('deepseek-flash', 'PACKY_COMMON_API_KEY', 128000),
+    ('glm-5.3-flash', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
+    ('MiniMax-M3', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
+])
+def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, monkeypatch, runner, model, key_env, limit):
+    monkeypatch.delenv(key_env, raising=False)
+    monkeypatch.setenv('PACKY_API_KEY', 'unrelated-provider-key')
+    with pytest.raises(SystemExit):
+        configure(runner, monkeypatch, tmp_path, model, 'agent3')
+    monkeypatch.setenv(key_env, 'selected-test-key')
+    args = configure(runner, monkeypatch, tmp_path, model, 'agent3')
+    assert args.max_tokens == limit
+    assert args.realtime_config['api']['key_env'] == key_env
+    assert args.thinking_effort == (None if model == 'MiniMax-M3' else 'high')
+    assert args.api_format == ('openai_chat' if model == 'gemini-3.8-flash' else 'openai_responses' if model == 'gpt-5.6-sol' else 'anthropic_messages')

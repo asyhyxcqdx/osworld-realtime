@@ -1,0 +1,306 @@
+{
+  "review_date": "2026-09-15",
+  "scope": "Align task-prefix deduplication with eight-model realtime configs; host-side review, no new model game runs.",
+  "task_history": {
+    "task_messages_per_request": 1,
+    "full_screenshot_and_assistant_tool_history": true,
+    "task_prefix_survives_bounded_history": true
+  },
+  "configs": {
+    "experiment_models": 8,
+    "retained_baseline_models": 2,
+    "variants_per_model": 4,
+    "total_yaml_files": 40,
+    "gemini_output_limit": 65536,
+    "minimax_thinking": "adaptive; no effort"
+  },
+  "environment": {
+    "supplier_archive_sha256": "7a4656df0e2b6b93b0bd0bb90f1830e4316d0d0d7eeef10833e244423399507a",
+    "html_byte_matches": 69,
+    "task_config_hash_matches": 69,
+    "runtime_game_files": "69 index.html only",
+    "server_sources": {
+      "realtime.py": "8ffc76917c4484f078f02218032ee09cc3c54650da4e0f272427d8afd7aeeab7",
+      "fmp4.py": "923f5ff1467620c1828c45cc4d2b6c8bbca628942286ab3660b6a6a6b4d5e4cf"
+    },
+    "image_sha256_verified": "8196fe7eda43ca93b4ffe377541a245e0e57b41991890e05f6698248883df0d2",
+    "image": "docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2"
+  },
+  "prior_production_config_api_smoke": {
+    "method": "Real Agent3 configs with static native frame callback; real provider requests, no VM actions or game scores",
+    "models_passed": 8,
+    "model_requests": 16,
+    "models": [
+      {
+        "model": "gpt-5.6-sol",
+        "output_limit": 128000,
+        "thinking": {
+          "enabled": true,
+          "effort": "high",
+          "summary": true
+        },
+        "frame_queries": 1,
+        "model_requests": 2
+      },
+      {
+        "model": "gemini-3.8-flash",
+        "output_limit": 65536,
+        "thinking": {
+          "enabled": true,
+          "effort": "high",
+          "summary": true
+        },
+        "frame_queries": 1,
+        "model_requests": 2
+      },
+      {
+        "model": "kimi-k3",
+        "output_limit": 128000,
+        "thinking": {
+          "enabled": true,
+          "effort": "high",
+          "summary": true
+        },
+        "frame_queries": 1,
+        "model_requests": 2
+      },
+      {
+        "model": "glm-5.3-flash",
+        "output_limit": 128000,
+        "thinking": {
+          "enabled": true,
+          "effort": "high",
+          "summary": true
+        },
+        "frame_queries": 1,
+        "model_requests": 2
+      },
+      {
+        "model": "claude-sonnet-5",
+        "output_limit": 128000,
+        "thinking": {
+          "enabled": true,
+          "effort": "high",
+          "summary": true
+        },
+        "frame_queries": 1,
+        "model_requests": 2
+      },
+      {
+        "model": "MiniMax-M3",
+        "output_limit": 128000,
+        "thinking": {
+          "enabled": true,
+          "effort": null,
+          "summary": true
+        },
+        "frame_queries": 1,
+        "model_requests": 2
+      },
+      {
+        "model": "deepseek-flash",
+        "output_limit": 128000,
+        "thinking": {
+          "enabled": true,
+          "effort": "high",
+          "summary": true
+        },
+        "frame_queries": 1,
+        "model_requests": 2
+      },
+      {
+        "model": "qwen3.8-max-0902",
+        "output_limit": 128000,
+        "thinking": {
+          "enabled": true,
+          "effort": "high",
+          "summary": true
+        },
+        "frame_queries": 1,
+        "model_requests": 2
+      }
+    ]
+  },
+  "prior_native_coordinate_audit": {
+    "method": "Production Agent1; 3 native 1920x1080 fixtures per model, no VM actions",
+    "conditions": 24,
+    "http_attempts": 25,
+    "all_png_requests_unchanged": true,
+    "all_parsed_coordinates_equal_provider": true,
+    "per_model": [
+      {
+        "model": "claude-sonnet-5",
+        "target_hits": 3,
+        "samples": 3,
+        "max_center_error_px": 1.414,
+        "coordinates": [
+          [
+            994,
+            723
+          ],
+          [
+            674,
+            503
+          ],
+          [
+            1600,
+            880
+          ]
+        ]
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "target_hits": 3,
+        "samples": 3,
+        "max_center_error_px": 0.0,
+        "coordinates": [
+          [
+            995,
+            724
+          ],
+          [
+            675,
+            504
+          ],
+          [
+            1600,
+            880
+          ]
+        ]
+      },
+      {
+        "model": "gemini-3.8-flash",
+        "target_hits": 1,
+        "samples": 3,
+        "max_center_error_px": 54.009,
+        "coordinates": [
+          [
+            994,
+            670
+          ],
+          [
+            674,
+            466
+          ],
+          [
+            1600,
+            880
+          ]
+        ]
+      },
+      {
+        "model": "qwen3.8-max-0902",
+        "target_hits": 2,
+        "samples": 3,
+        "max_center_error_px": 326.711,
+        "coordinates": [
+          [
+            990,
+            721
+          ],
+          [
+            351,
+            462
+          ],
+          [
+            1588,
+            877
+          ]
+        ]
+      },
+      {
+        "model": "kimi-k3",
+        "target_hits": 3,
+        "samples": 3,
+        "max_center_error_px": 1.0,
+        "coordinates": [
+          [
+            995,
+            723
+          ],
+          [
+            675,
+            504
+          ],
+          [
+            1600,
+            880
+          ]
+        ]
+      },
+      {
+        "model": "deepseek-flash",
+        "target_hits": 3,
+        "samples": 3,
+        "max_center_error_px": 5.385,
+        "coordinates": [
+          [
+            995,
+            719
+          ],
+          [
+            673,
+            509
+          ],
+          [
+            1600,
+            879
+          ]
+        ]
+      },
+      {
+        "model": "glm-5.3-flash",
+        "target_hits": 3,
+        "samples": 3,
+        "max_center_error_px": 3.0,
+        "coordinates": [
+          [
+            995,
+            724
+          ],
+          [
+            675,
+            505
+          ],
+          [
+            1600,
+            883
+          ]
+        ]
+      },
+      {
+        "model": "MiniMax-M3",
+        "target_hits": 1,
+        "samples": 3,
+        "max_center_error_px": 480.16,
+        "coordinates": [
+          [
+            518,
+            669
+          ],
+          [
+            495,
+            371
+          ],
+          [
+            1647,
+            859
+          ]
+        ]
+      }
+    ]
+  },
+  "limits": [
+    "Small coordinate samples are not game success rates or model rankings.",
+    "Remote model/gateway processing is not directly observable.",
+    "Token usage is retained but automatic cost calculation is not implemented.",
+    "Full 69-game x 4-agent x 8-model experiments have not been completed."
+  ],
+  "review_validation": {
+    "pytest_command": "python -m pytest -q tests/test_realtime*.py",
+    "passed": 212,
+    "warnings": "One pre-existing PyPDF2 deprecation warning",
+    "diff_check_passed": true,
+    "realtime_cli_rejects_non_native_screen": true
+  }
+}

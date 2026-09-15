@@ -44,6 +44,7 @@ def run_realtime_example(
         "model": args.model,
         "agent_config": getattr(args, "realtime_config_path", None),
         "api_format": agent.wire.protocol,
+        "api_key_env": getattr(agent.wire, "api_key_env", None),
         "tool_format": agent.tool_format,
         "implicit_action_sleep_s": 0,
         "environment_ready_wait_s": args.environment_ready_wait_s,

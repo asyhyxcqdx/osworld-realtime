@@ -8,3 +8,5 @@
 - image_execution_check.json：终版镜像重新启动后的源码哈希、实际 WAIT、100 动作序列检查。
 
 没有模型密钥、请求授权头、模型私有推理、原始截图或 VM 镜像。真实 C1 结果另见仓库根目录的 PACKY_C1_FINAL_TRIAL_REPORT.md。
+
+`agent_model_review.json` 是后续八模型配置与任务说明去重对齐的复核摘要，包含真实 API 短测及原生坐标小样本记录；不代表完整游戏实验已通过。
