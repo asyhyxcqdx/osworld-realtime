@@ -16,13 +16,16 @@ CAPABILITIES = {
 
 
 @pytest.mark.parametrize("variant", list(CAPABILITIES))
+@pytest.mark.parametrize("export_fails", [False, True])
 def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
-    tmp_path, monkeypatch, variant
+    tmp_path, monkeypatch, variant, export_fails
 ):
     monkeypatch.setattr("lib_run_realtime.time.sleep", lambda _: None)
     monkeypatch.setattr("lib_run_single.setup_logger", lambda *args: None)
     monkeypatch.setattr("lib_run_single._evaluate_with_details", lambda *args, **kwargs: 1)
     monkeypatch.setattr("lib_run_realtime.log_task_completion", lambda *args: None)
+    if export_fails:
+        monkeypatch.setattr("lib_realtime_trajectory.render_trajectory", Mock(side_effect=RuntimeError('HTML export failed')))
     mode = CAPABILITIES[variant]
     controller = SimpleNamespace(
         start_realtime_recording=Mock(return_value={"task_time_s": 0}),
@@ -77,6 +80,7 @@ def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
     stats = json.loads((tmp_path / "agent_metrics.json").read_text())
     assert stats["executed_actions"] == len(actions)
     assert stats["action_decisions"] == 1
+    assert (tmp_path / "trajectory.html").exists() is not export_fails
 
 
 def test_model_events_are_saved_before_next_request_and_survive_api_failure(tmp_path, monkeypatch):
@@ -135,6 +139,7 @@ def test_model_events_are_saved_before_next_request_and_survive_api_failure(tmp_
     assert json.loads((tmp_path / "experiment.json").read_text())["frame_queries_unlimited"] is True
     assert agent.event_sink is None
     controller.end_realtime_recording.assert_called_once_with(str(tmp_path))
+    assert (tmp_path / 'trajectory.html').exists()
 
 
 def fake_backend():

@@ -23,3 +23,5 @@ Agent3 每次模型回复最多一个工具调用（get_frames 或动作）；�
 开发和运行命令在仓库根目录执行。密钥、截图、录像、缓存、VM 镜像和私有实验输出不提交到 Git。本次核查和清理结果见 [review 报告](REALTIME_REVIEW_REPORT.md)。
 
 新增八款 Packy 模型的四类 Agent 配置、Gemini Chat/high 通路和三组密钥启动方式见 [模型配置目录](configs/realtime_agents/README.md)。Gemini 输出上限 65536；MiniMax M3 只开 adaptive thinking，不设 high。
+
+实时实验结束后自动生成 `trajectory.html`，可离线查看截图、模型回复、历史帧和动作时长；已有轨迹转换方法见 [HTML 轨迹查看器](REALTIME_TRAJECTORY_VIEWER.md)。

@@ -2,6 +2,7 @@
 import base64
 from datetime import datetime, timezone
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -63,6 +64,7 @@ def run_realtime_example(
         "thinking_summary_requested": getattr(agent.wire, "thinking_summary", False),
         "instruction": instruction,
         "trajectory_file": "trajectory.jsonl",
+        "trajectory_html_file": "trajectory.html",
         "system_prompt_file": "system_prompt.txt",
         "frame_tool": FRAME_TOOL if agent.frames else None,
         "model_log_version": 3,
@@ -242,4 +244,13 @@ def run_realtime_example(
             )
             + "\n"
         )
-        env.controller.end_realtime_recording(str(out))
+        try:
+            env.controller.end_realtime_recording(str(out))
+        finally:
+            # Export after recording stops so visualization work never delays actions.
+            # A report failure must not replace the task's score or original error.
+            try:
+                from lib_realtime_trajectory import render_trajectory
+                render_trajectory(out / "trajectory.jsonl")
+            except Exception as exc:
+                logging.getLogger(__name__).warning("Cannot render trajectory HTML in %s: %s", out, exc)
