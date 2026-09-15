@@ -2,7 +2,8 @@
 
 这些是精简的无模型核查证据，不是新增的真实模型实验结果：
 
-- source_manifest.json：最新 ZIP 哈希、69 个 HTML 与必要任务配置哈希、manifest 映射。
+- source_manifest.json：交付核查时的 ZIP 哈希、69 个 HTML 与任务配置哈希、manifest 映射；作为当时的快照保留。
+- done_prompt_review.json：后续将结束说明明确为 `computer_done({})` 的指令核查。69 个任务只改 instruction，记录新旧任务配置哈希；40 份 Agent 配置只改 system prompt，69 个 HTML 哈希仍与交付快照一致。
 - checker_single.json / checker_batch.json：OSWorld 保存的实际 BENCH 快照通过单文件/批量契约检查；完整快照和原始报告在文件内引用的本地证据目录。
 - runtime_matrix.json：真实 VM + 两协议四组模拟回复；读取原生截图/历史帧，实际执行 WAIT 和 DONE，最后模拟刷新验证运行失效检查。
 - image_execution_check.json：终版镜像重新启动后的源码哈希、实际 WAIT、100 动作序列检查。

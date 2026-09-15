@@ -46,5 +46,5 @@ system_prompt: |
   Use the registered tool schemas exactly; no hidden delay is inserted between actions.
   Never refresh, reload, reopen, or navigate away from the game page.
   Follow the game rules exactly. If an attempt fails and another attempt is available, continue with the next attempt.
-  When the game shows success or no attempts remain, submit the DONE action tool call.
+  When the game shows success or no attempts remain, call the registered `computer_done` tool with empty arguments `{}`.
   Do not finish with a text-only response.

@@ -9,7 +9,7 @@
 5. 如模型提交动作，先确认回复未因输出上限截断，再由 Agent1/3 校验恰好一个，Agent2/4 校验 1–100 个；注册键名、参数范围和 DONE 位置都需合法。显式 length/max_tokens/incomplete 响应保留原始记录并停止，不执行半段序列。
 6. VM 按顺序执行整段动作，之后只返回一个当前截图。KEY_DOWN 持续到 KEY_UP；WAIT 的 duration_s 在 VM 内睡眠，普通动作没有隐含 pause。
 7. 实际开始/结束/耗时、截图和执行结果写入 trajectory.jsonl，并按相同调用 ID 回传模型。新截图引出下一次动作决策。
-8. DONE 结束动作循环，读取游戏 BENCH，保存 result.json/result.txt 和汇总；录制在 finally 中停止，下载 MP4、索引和日志，然后自动生成只读 `trajectory.html`；失败的运行也展示已有事件，HTML 导出失败不改变实验结果。
+8. 模型调用 `computer_done({})`，运行时转换为内部 DONE 动作并结束循环，读取游戏 BENCH，保存 result.json/result.txt 和汇总；录制在 finally 中停止，下载 MP4、索引和日志，然后自动生成只读 `trajectory.html`；失败的运行也展示已有事件，HTML 导出失败不改变实验结果。
 
 正式游戏在 reset 后记录页面身份，在每次动作后及评分前比较标签页、URL 和加载时间。重载、换页或复制页面时写 run_error 并保持未评分。该检查发生在环境侧，不提供给模型，也不读取 __dbg。
 

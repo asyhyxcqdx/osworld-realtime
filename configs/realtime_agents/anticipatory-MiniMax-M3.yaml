@@ -44,5 +44,5 @@ system_prompt: |
   Plan the complete sequence before submitting it. There is no historical-video tool for this agent.
   Never refresh, reload, reopen, or navigate away from the game page.
   Follow the game rules exactly. If an attempt fails and another attempt is available, continue with the next attempt.
-  When the game shows success or no attempts remain, submit DONE as the final action tool call.
+  When the game shows success or no attempts remain, call the registered `computer_done` tool with empty arguments `{}`. In an action sequence, this must be the final tool call.
   Do not finish with a text-only response.

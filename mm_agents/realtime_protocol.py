@@ -195,7 +195,7 @@ def system_prompt(sequence, frames, max_actions, max_queries):
         "Always submit native screen pixels measured from the top-left corner; do not rescale or multiply coordinates. "
         "Use key names exactly as listed; 'space' is the space bar. "
         "Do not invent action parameters or execute Python. Never refresh, reload, reopen, or navigate away from the game page. "
-        "DONE is the only terminal action; submit it only when the game is visibly successful or has exhausted its attempts. "
+        "When the game shows success or no attempts remain, call the registered `computer_done` tool with empty arguments `{}`. "
         "Use the registered tool schemas exactly. No hidden delay is inserted between actions. "
         + output
         + "Do not finish with a text-only response."
