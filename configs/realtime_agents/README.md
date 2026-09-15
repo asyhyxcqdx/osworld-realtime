@@ -2,11 +2,11 @@
 
 当前新增的 Packy 实验模型共 8 款，每款都有 vanilla / anticipatory / video / combine 四份 YAML。Fable 5、Astra 原有 8 份配置保留，目录合计 40 份 YAML。
 
-| model（区分大小写） | 协议 | 上下文预算 | 输出上限 | 思考 | 密钥环境变量 |
+| model（区分大小写） | 协议 | 上下文声明 | 输出上限 | 思考 | 密钥环境变量 |
 |---|---|---:|---:|---|---|
 | `claude-sonnet-5` | anthropic_messages | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
-| `gpt-5.6-sol` | openai_responses | 1050000 | 128000 | high | `PACKY_COMMON_API_KEY` |
-| `gemini-3.8-flash` | openai_chat | 1048576 | **65536** | high | `PACKY_COMMON_API_KEY` |
+| `gpt-5.6-sol` | openai_responses | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
+| `gemini-3.8-flash` | openai_chat | 1000000 | **65536** | high | `PACKY_COMMON_API_KEY` |
 | `qwen3.8-max-0902` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_COMMON_API_KEY` |
 | `kimi-k3` | anthropic_messages | 1000000 | 128000 | high | `PACKY_KIMI_API_KEY` |
 | `deepseek-flash` | anthropic_messages | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
@@ -15,7 +15,7 @@
 
 `Claude-sonnet-5.0` 不是此处的 API ID。GLM 5.3（非 Flash）只有文本输入、Seed 2.1 Turbo 未确认可用，均未加入截图 Agent 配置。
 
-这些数值是实验使用的预算，不宣称都是模型支持的最大值；达到输出上限可能截断回答，不能认为一定用不到。思考 token 也可能占用输出预算。收到明确的 length/max_tokens/incomplete 结束状态时，不执行其中的部分动作。
+上下文声明统一为 1000000，目前只用于配置校验，不发送给 API，也不据此在本地裁剪历史；不宣称它是各模型已经实测的真实上限。实际输入保留完整历史，服务端判断是否超限。输出上限则随请求实际发送；达到上限可能截断回答，思考 token 也可能占用输出预算。收到明确的 length/max_tokens/incomplete 结束状态时，不执行其中的部分动作。
 
 ## 协议和原生坐标
 
@@ -24,6 +24,8 @@
 - Messages：保留完整 thinking/tool_use/tool_result。MiniMax M3 只发送 `thinking: {type: adaptive}`，不发送 `output_config.effort` 或 Claude 的 `thinking.display`。
 - Responses：`reasoning: {effort: high, summary: auto}`，保留 reasoning 内容，收齐完成响应才解析动作。
 - Gemini Chat：通过 `extra_body.google.thinking_config` 发送 `thinking_level: high`、`include_thoughts: true`，不再同时发送 `reasoning_effort`。正式配置校验和 ModelWire 均支持该路径。保留完整 assistant 消息、reasoning_content 和供应商返回的扩展字段。
+- 三种协议统一发送 `stream: true`；Chat 另外请求 `stream_options.include_usage: true`。收齐完成标志后再执行动作，保留分片工具参数、思考签名和累计 usage。读取超时仍为 120 秒，最多尝试三次；不改思考档位、输出上限或工具动作顺序。`model_response.stream_received` 标明实际响应是否为 SSE。
+- 若 Chat 中转流对不同工具重复使用同一 index，按不同调用 ID 分开保存；索引冲突后缺少 ID 的分片无法确定归属时明确报错，不猜测或把两个动作拼成一个。
 - 四组的截图、历史、工具、动作预算规则相同于既有基线。Agent3 每次回复只能提交一个 get_frames 或一个动作；Agent4 仍允许多个查询或动作序列，但不能混合查询与动作。
 
 兼容接口接受某个参数，并不证明所有供应商内部具有完全相同的推理预算。Qwen/GLM 通过 Packy Messages 的 high 兼容请求沿用已验证路径，其底层映射由中转站实现。
@@ -59,7 +61,7 @@ python scripts/python/run_multienv.py \
   --headless \
   --api_base_url https://www.packyapi.ai \
   --test_all_meta_path evaluation_examples/test_realtime_gui_bench.json \
-  --max_steps 100 \
+  --max_steps 70 \
   --sleep_after_execution 0 \
   --environment_ready_wait_s 3 \
   --evaluation_settle_s 3 \
@@ -77,4 +79,8 @@ Fable 5、Astra 的旧配置未指定 `key_env`，仍沿用 `PACKY_API_KEY` 优�
 
 参考：[Gemini 思考参数](https://ai.google.dev/gemini-api/docs/openai)、[Gemini 3.8 Flash 上限](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash)、[Kimi Messages](https://platform.kimi.ai/docs/api/messages)、[MiniMax Messages](https://platform.minimax.io/docs/api-reference/text-chat-anthropic)、[DeepSeek Anthropic 兼容](https://api-docs.deepseek.com/guides/anthropic_api)。
 
+流式协议参考：[OpenAI 工具调用分片](https://developers.openai.com/api/docs/guides/function-calling)、[OpenAI Responses 流式事件](https://developers.openai.com/api/docs/guides/streaming-responses)、[Claude Messages 流式事件](https://platform.claude.com/docs/en/build-with-claude/streaming)。
+
 本次接入验证（2026-09-15）：实时相关回归 209 项通过；8 款模型各使用正式 Agent3 配置完成一次真实 API 查帧/回图/动作往返，共 16 次模型请求，Gemini 65536 和其他模型 128000 的请求上限均被接受。回图由静态原生截图回调提供，没有执行 VM 动作；坐标错误没有修正，也不将这次接口检查记为游戏成功。
+
+流式更新验证（2026-09-16）：8 款实验模型使用 combine 配置完成真实流式查帧/回图/动作往返，16 份成功响应均实际为 SSE 并返回 usage；原始流离线重放与记录结果一致。Sol 的动作回复只有 CLICK，其余模型返回了动作序列；不把 Sol 这一次计为完整序列样本。以上仍是静态图片接口检查，不是完整游戏成绩。核查摘要见 `validation/realtime_final/streaming_review.json`。

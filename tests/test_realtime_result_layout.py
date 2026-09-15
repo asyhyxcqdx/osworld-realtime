@@ -48,6 +48,7 @@ def test_resume_and_scores_do_not_cross_models_or_agents(tmp_path, monkeypatch, 
         for i in range(1, 5):
             variant = f"agent{i}"
             args = configure(runner, monkeypatch, tmp_path, model, variant)
+            assert args.max_steps == 70
             run = Path(runner["get_result_dir"](
                 args.result_dir, args.action_space, args.observation_type, model, variant
             ))

@@ -670,7 +670,7 @@ def test_responses_stream_requires_complete_turn_before_action_dispatch(monkeypa
             agent.predict("task", {"screenshot": b"png", "task_time_s": 0})
         assert agent.pending_action_calls is None
     assert wire.session.post.call_args.kwargs["json"]["stream"] is True
-    response.close.assert_called_once()
+    assert response.close.call_count == (1 if complete else 3)
 
 
 @pytest.mark.parametrize("protocol", ["anthropic_messages", "openai_chat", "openai_responses"])

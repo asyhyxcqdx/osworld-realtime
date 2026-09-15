@@ -13,6 +13,7 @@ import time
 import requests
 
 from mm_agents.realtime_config import validate_key_env, validate_thinking
+from mm_agents.realtime_stream import IncompleteStreamError, collect_stream
 
 from mm_agents.realtime_protocol import (
     ACTION_TOOLS,
@@ -103,25 +104,8 @@ def loggable_messages(messages):
 
 def completed_responses_stream(response):
     """Collect a complete Responses SSE turn before dispatching any actions."""
-    data = []
     try:
-        for line in response.iter_lines():
-            if isinstance(line, bytes):
-                line = line.decode("utf-8")
-            if line.startswith("data:"):
-                data.append(line[5:].lstrip())
-            elif not line and data:
-                encoded, data = "\n".join(data), []
-                if encoded == "[DONE]":
-                    break
-                event = json.loads(encoded)
-                kind = event.get("type")
-                if kind == "response.completed":
-                    return event["response"]
-                if kind in {"response.failed", "response.incomplete", "error"}:
-                    detail = event.get("response", {}).get("error") or event.get("message")
-                    raise RuntimeError(f"Responses stream {kind}: {str(detail)[:300]}")
-        raise RuntimeError("Responses stream ended before response.completed; no actions dispatched.")
+        return collect_stream(response, "openai_responses")
     finally:
         response.close()
 
@@ -169,6 +153,7 @@ class ModelWire:
         ).rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
+        self.last_response_streamed = None
 
     def user(self, blocks):
         if self.protocol == "anthropic_messages":
@@ -237,7 +222,7 @@ class ModelWire:
                 "Set PACKY_API_KEY or the selected provider's API key in the environment."
             )
         headers = {"content-type": "application/json"}
-        payload = {"model": self.model}
+        payload = {"model": self.model, "stream": True}
         if self.protocol == "anthropic_messages":
             path = "messages"
             if key_name == "ANTHROPIC_AUTH_TOKEN":
@@ -316,6 +301,7 @@ class ModelWire:
                     messages=[{"role": "system", "content": system}] + messages,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    stream_options={"include_usage": True},
                 )
                 if self.thinking_enabled:
                     # Gemini's documented OpenAI-compatible extension. Do not also
@@ -346,39 +332,40 @@ class ModelWire:
                     ):
                         payload["tool_choice"] = "none"
         url = self.base_url + ("/" if self.base_url.endswith("/v1") else "/v1/") + path
-        response = None
+        self.last_response_streamed = None
         last_error = None
         for attempt in range(3):
+            response = None
             try:
                 response = self.session.post(
                     url, headers=headers, json=payload, timeout=self.timeout,
-                    stream=self.protocol == "openai_responses",
+                    stream=True,
+                )
+                if response.status_code == 200:
+                    self.last_response_streamed = "text/event-stream" in getattr(response, "headers", {}).get("content-type", "").lower()
+                    if self.last_response_streamed:
+                        return collect_stream(response, self.protocol)
+                    return response.json()
+                detail = ""
+                try:
+                    error = response.json().get("error", {})
+                    if isinstance(error, dict):
+                        detail = str(error.get("message", error.get("type", ""))).replace(key, "[REDACTED]")[:300]
+                except ValueError:
+                    pass
+                last_error = RuntimeError(
+                    f"Model API HTTP {response.status_code} ({self.protocol}): {detail or 'request failed'}"
                 )
                 if response.status_code not in {429, 500, 502, 503, 504}:
-                    break
-                last_error = RuntimeError(f"HTTP {response.status_code}")
-            except requests.RequestException as exc:
+                    raise last_error
+            except (requests.RequestException, IncompleteStreamError) as exc:
                 last_error = exc
+            finally:
+                if response is not None and callable(getattr(response, "close", None)):
+                    response.close()
             if attempt < 2:
                 time.sleep(2 ** attempt)
-        if response is None:
-            raise last_error
-        if response.status_code != 200:
-            detail = ""
-            try:
-                error = response.json().get("error", {})
-                if isinstance(error, dict):
-                    detail = str(error.get("message", error.get("type", ""))).replace(
-                        key, "[REDACTED]"
-                    )[:300]
-            except ValueError:
-                pass
-            raise RuntimeError(
-                f"Model API HTTP {response.status_code} ({self.protocol}): {detail or 'request failed'}"
-            )
-        if self.protocol == "openai_responses" and "text/event-stream" in getattr(response, "headers", {}).get("content-type", ""):
-            return completed_responses_stream(response)
-        return response.json()
+        raise last_error
 
     def unpack(self, response):
         stop_reason = response.get("stop_reason")
@@ -688,6 +675,7 @@ class RealtimeAgent:
                 "observation": observation, "history_observations": list(self.observations),
                 "tools_enabled": tools_enabled,
                 "protocol": self.wire.protocol,
+                "stream_requested": True,
                     "model": self.wire.model,
                     "max_tokens": self.max_tokens,
                     "temperature": self.temperature,
@@ -723,6 +711,7 @@ class RealtimeAgent:
                 "event": "model_response", "request_id": request_id,
                 "latency_s": time.monotonic() - start,
                 "provider_response": copy.deepcopy(raw),
+                "stream_received": self.wire.last_response_streamed,
                 **response_reasoning(raw, self.wire.protocol),
             }
             try:

@@ -22,7 +22,7 @@ python scripts/python/run_multienv.py \
   --headless \
   --api_base_url https://www.packyapi.ai \
   --test_all_meta_path evaluation_examples/test_realtime_gui_bench.json \
-  --max_steps 100 \
+  --max_steps 70 \
   --sleep_after_execution 0 \
   --environment_ready_wait_s 3 \
   --evaluation_settle_s 3 \
@@ -35,6 +35,8 @@ python scripts/python/run_multienv.py \
 实时入口只接受 1920×1080 屏幕尺寸，其他宽高会在启动 VM 前报错；不会自动缩放来适配。
 
 默认顺序运行，每次一个 VM。一个模型同一对照批次共用 run_id；结果仍按模型隔离：`<result_dir>/<model>/<run_id>/<agent>/computer_13/screenshot/realtime_gui_bench/<UUID>/`。复现实验用新的 run_id；原批次续跑只跳过已落盘结果的任务。
+
+69 个游戏、四类 Realtime Agent、所有模型均使用 `--max_steps 70`，也是实时入口的默认值。每个“模型 × Agent × 游戏”的独立运行有 70 个动作决策回合，游戏内部三次机会共用这份预算；开始下一个游戏时重新计数。`get_frames` 查询不增加动作决策数，所以模型请求次数可能更多；每次动作序列最多 100 个原子动作的规则不变。触及回合上限而页面尚未终结时，应结合 `done`、决策计数和 BENCH 的 ready/running 状态分析，不能描述成模型已用完三次机会。
 
 ## 镜像与服务
 

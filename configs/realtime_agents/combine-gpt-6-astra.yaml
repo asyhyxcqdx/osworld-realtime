@@ -23,7 +23,7 @@ api:
   model: gpt-6-astra
   protocol: openai_responses
   tool_format: native
-  context_window_tokens: 1050000
+  context_window_tokens: 1000000
   max_output_tokens: 128000
   temperature: null
   thinking:

@@ -4,7 +4,7 @@
 
 1. `run_multienv.py` 按模型和变体加载 YAML，校验 ID、感知与动作能力，再使用统一 `agent_kwargs()` 创建 Agent。
 2. `run_realtime_example()` 执行任务 reset；必要时安装服务；核对 VM 两份 realtime 源码哈希，开始 30 FPS 目标录像。
-3. 对话开头固定一条任务说明 user 消息，每个决策轮只追加截图时间和当前原始 1920×1080 截图。每次 API 请求包含这条任务说明、完整历史回复及工具结果和本轮观测，单次请求内任务说明只有一份。YAML system prompt 后统一追加原生坐标约定。工具 schema 通过 API tools 字段发送。
+3. 对话开头固定一条任务说明 user 消息，保留阅读游戏规则、继续尝试、禁止导航这三句；结束工具要求只放在 system prompt，避免重复。每个决策轮只追加截图时间和当前原始 1920×1080 截图。每次 API 请求包含任务说明、完整历史回复及工具结果和本轮观测，单次请求内任务说明只有一份。YAML system prompt 后统一追加原生坐标约定。工具 schema 通过 API tools 字段发送。
 4. 如模型调用 get_frames，VM 按所给秒数读取已完成视频片段，返回图片及实际时间；宿主保存查询图片并把结果回填 API。可重复，不增加决策数。Agent3 一次回复至多一个 get_frames，收到结果后才能再次查询；Agent4 允许一次回复多个 get_frames。
 5. 如模型提交动作，先确认回复未因输出上限截断，再由 Agent1/3 校验恰好一个，Agent2/4 校验 1–100 个；注册键名、参数范围和 DONE 位置都需合法。显式 length/max_tokens/incomplete 响应保留原始记录并停止，不执行半段序列。
 6. VM 按顺序执行整段动作，之后只返回一个当前截图。KEY_DOWN 持续到 KEY_UP；WAIT 的 duration_s 在 VM 内睡眠，普通动作没有隐含 pause。
@@ -18,6 +18,8 @@
 Agent3 同一回复多个 get_frames、混合 get_frames 与动作、非法参数或文字代替工具时，不执行该回复的动作；先回传每个调用的错误结果，再请求纠正，最多两次。执行阶段发生错误则不重放序列，以免重复已执行的前缀。
 
 模型知道截图时间与之前动作的实际时间，不接收持续更新的视频流。它自己选择历史查询时间点与数量；get_frames 单次 1–8 张，not_ready 没有图片，框架不会自动重查。模型生成回复期间，游戏和录屏仍在继续。
+
+三种模型 API 协议均请求流式回复。Messages 按块拼接文本、思考、签名和工具 JSON；Chat 按索引拼接工具调用、思考扩展及最终 usage；Responses 等待完整 response.completed。收齐协议完成标志后才解析并提交动作，不能执行中途收到的半段序列。读取超时保持 120 秒，HTTP 暂时错误及读取超时/断连最多尝试三次；失败重试丢弃该次不完整回复。模型的 length/max_tokens 等输出截断仍明确停止。请求记录 stream_requested，回复记录实际是否按 SSE 返回的 stream_received；供应商忽略流式请求而返回普通 JSON 时标为 false，不冒充流式成功。
 
 当前三份重要记录：`model_response.calls` 是原始调用，`action_executed.info.sequence_actions` 是 VM 实际执行，`tool_result.frames` 是历史帧实际返回。三者应对齐，不能只凭模型计划认定动作发生。
 

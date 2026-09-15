@@ -68,6 +68,9 @@ def test_packy_config_request_and_native_coordinates(monkeypatch, screenshot, mo
     assert agent.history_length is None
     kw = agent.wire.session.post.call_args.kwargs
     payload = kw['json']
+    assert payload['stream'] is True
+    assert kw['stream'] is True
+    assert kw['timeout'] == 120
     assert agent.wire.protocol == protocol
     assert payload.get('max_tokens', payload.get('max_output_tokens')) == output_limit
     assert 'selected-test-credential' in list(kw['headers'].values()) or kw['headers'].get('Authorization') == 'Bearer selected-test-credential'

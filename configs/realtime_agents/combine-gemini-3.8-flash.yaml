@@ -24,7 +24,7 @@ api:
   key_env: PACKY_COMMON_API_KEY
   protocol: openai_chat
   tool_format: native
-  context_window_tokens: 1048576
+  context_window_tokens: 1000000
   max_output_tokens: 65536
   temperature: null
   thinking:

@@ -1,6 +1,6 @@
 {
   "base_commit": "077a1975",
-  "change": "Clarify that terminal completion is the registered computer_done tool with empty arguments; retain Do not finish with a text-only response.",
+  "change": "Clarify computer_done in system prompts; task user message retains game rules, retry and navigation instructions, removing only duplicate completion instructions.",
   "task_count": 69,
   "agent_config_count": 40,
   "html_hashes_match_delivery_manifest": 69,
@@ -13,7 +13,7 @@
       "benchmark_id": "B14",
       "task_id": "0487b465-9a06-5dc7-8f57-acc6424c292e",
       "old_sha256": "919fa19c65337594425b60593c3ec2f5c7f903ab4015ec9f07da8e1ec52dd00a",
-      "new_sha256": "124d7761b661224b67f83f99c0b90551bb86af67a964346fb6843a51755c11ec",
+      "new_sha256": "1e29fc30c473e1105adb53a015a765820d77c334c116217577ce8c5ee73b0357",
       "changed_fields": [
         "instruction"
       ]
@@ -22,7 +22,7 @@
       "benchmark_id": "A38",
       "task_id": "06277c03-08f5-5df7-b99c-e4200a4fa11e",
       "old_sha256": "5a451ccb075b488841c8b8928bcfe09d69e6df1330e81f9cde40ee46740c3b03",
-      "new_sha256": "bcfdf2b82552357bd07e2cdb71d7848f19f968d1df081db72d51570f6c1dd5dc",
+      "new_sha256": "d0a9ce11aeb9dfd37f9315b46488f31523008440a931dca6444de94fb92e4925",
       "changed_fields": [
         "instruction"
       ]
@@ -31,7 +31,7 @@
       "benchmark_id": "B32",
       "task_id": "06f6a910-4018-56db-9db4-396d4575c261",
       "old_sha256": "e19d8ae8ade9a6021d01edd8b34eff31c2bf6a17486d39d0736ee3dc14cdcc7d",
-      "new_sha256": "99982a1709ccec0383293027cc7d4d06effd6d8147150c370b9a081d7c94e7ca",
+      "new_sha256": "b889b70b7716f55213cb41daf9b4f7142fe190a6b62b9fe693a238ed92fad4dc",
       "changed_fields": [
         "instruction"
       ]
@@ -40,7 +40,7 @@
       "benchmark_id": "C36",
       "task_id": "0888c45a-7722-5a31-8bfd-25881c52a501",
       "old_sha256": "3eae8b62053ff28418ca6034f094fd838619786bba81aa74f969cde969cac43c",
-      "new_sha256": "529f709039eddb852ba1edbe62e70e4b289155e007dba5ba0de1e4c1a1c461ed",
+      "new_sha256": "05de894693503b66f8b0b51f124055752ace21251f6e957bad342c53c1cf88b6",
       "changed_fields": [
         "instruction"
       ]
@@ -49,7 +49,7 @@
       "benchmark_id": "C26",
       "task_id": "14d6fc8c-414b-5793-a76b-c6e90487ded0",
       "old_sha256": "49a8695363cea07dedf7fd8b99f93b6e53f866ffa7015933749aa634414b0c54",
-      "new_sha256": "b8ace83659974da639307d6bc654628623512b3840a2d46d74a1eccc039209df",
+      "new_sha256": "617fbc4272942110222b27b1216bde1f5bded48bd9a5dd41e3072a603237cb1b",
       "changed_fields": [
         "instruction"
       ]
@@ -58,7 +58,7 @@
       "benchmark_id": "A23",
       "task_id": "1621d97b-c85e-5884-89d0-41c62008169d",
       "old_sha256": "363d3510af1e4a42cb1dd5882965a860acf82e3f618449fe8473f091cd058a8a",
-      "new_sha256": "bcd73f66e3dea9d35366a72d53a324bfc1e00ba79dac10ac5741071a669c30c3",
+      "new_sha256": "82137321a67881b5428aacdb1e7aae3b4d250688fc0bb815256936b7af83c5e3",
       "changed_fields": [
         "instruction"
       ]
@@ -67,7 +67,7 @@
       "benchmark_id": "D34",
       "task_id": "1ee78e95-0128-5fc5-ba9e-d20dca97535f",
       "old_sha256": "2ef873e02b2b96ed761ceed2d8b9c15e8e13beb1bf7c63ccfd0a4b8fac993c28",
-      "new_sha256": "495167df69d07c61d5f43c2c1cdcf4c020718991577c6107425445ca11ac342a",
+      "new_sha256": "feeb62d3266310ea137fab92338904eedef329cb9a418585b5fdbb077945b1ca",
       "changed_fields": [
         "instruction"
       ]
@@ -76,7 +76,7 @@
       "benchmark_id": "B23",
       "task_id": "1fb088a5-51ea-522a-aa7e-33fbcf4b78fe",
       "old_sha256": "adb9984a0b03818c0b48a701a20e45e7fcfba81eea53a99c3b21d7d12d8d55d3",
-      "new_sha256": "1adeb1c3639ffcb3c87314b29d403f07eab2160aa38f251acf2ae187a0c3d4d8",
+      "new_sha256": "6d363c7f04eed313cbff8b3eeb3b13f0bac3e1cd54a142299a6fe96ae3294e7b",
       "changed_fields": [
         "instruction"
       ]
@@ -85,7 +85,7 @@
       "benchmark_id": "D14",
       "task_id": "21d04069-0bd9-52f3-b077-78fa06d38a38",
       "old_sha256": "e74e0834159558b38f2baac4ad081447b1b2968adcc3ce00c2c9e5dd953332e3",
-      "new_sha256": "7cb1db86b65eac483fc79396d58b60875f502d77fd41a7508dc4f768f2be57ca",
+      "new_sha256": "1e999beee9cde2a0aeab13f497a671e65cf8f165c4b2ac42f35cb69abb2b0762",
       "changed_fields": [
         "instruction"
       ]
@@ -94,7 +94,7 @@
       "benchmark_id": "A31",
       "task_id": "29be19ce-4409-5615-8a49-b22552000523",
       "old_sha256": "640c46ead1f21043d9bba31ce87a122e7d9001bf49bee6d84fcd2ef981735be4",
-      "new_sha256": "eea58b39024da771a5b447272a72fae5636ad7ab4883922fa92264bbb4e3f6b0",
+      "new_sha256": "f3b279a6335b601acc873f93a8fb5d169e669379cd96e19b4c3770b08153f9a2",
       "changed_fields": [
         "instruction"
       ]
@@ -103,7 +103,7 @@
       "benchmark_id": "B38",
       "task_id": "2cca841b-f62a-5ebe-a18f-1d50f051c791",
       "old_sha256": "48cf1f8cbef47398070b03f0eb77b8b7fa618bcb842320a87f52efe7455876af",
-      "new_sha256": "d8058115b84bd84c2076cf53346dea111c36fc3c87c5fe182e324373f5c6888d",
+      "new_sha256": "7e140b0304d9a537729c605890db507d7c04ab093c7543da5f8e9127ea318500",
       "changed_fields": [
         "instruction"
       ]
@@ -112,7 +112,7 @@
       "benchmark_id": "B1",
       "task_id": "2df3a2ca-63b8-5c46-bdb2-a9e57d858e8e",
       "old_sha256": "89de837180b8ae46dda8bee525c36c74e524acc37905108a149cf127bb70e988",
-      "new_sha256": "9816c10fbb143c36bd3b0f6f6a4dc8c3bff5d89a3174d144f408da63e654e29f",
+      "new_sha256": "61f55393dce8f83d0c720cb89626202cc4331971add88dcbe1158f4e58d57a18",
       "changed_fields": [
         "instruction"
       ]
@@ -121,7 +121,7 @@
       "benchmark_id": "D4",
       "task_id": "30d579e6-c1ce-5db1-917a-83a0988b91e3",
       "old_sha256": "48a24edbec9a24773ab3c76bd922653cf2259fe075916217facc0f2915bdc386",
-      "new_sha256": "6891996259b23ab9e1a30484e48be99ebee95b324d36dd6cb6c15e89932fb1b7",
+      "new_sha256": "fa0a6367080acc8642a691636a1bcc2922dfec40fbfb777c93cf55e05cf7f18f",
       "changed_fields": [
         "instruction"
       ]
@@ -130,7 +130,7 @@
       "benchmark_id": "D30",
       "task_id": "316e1b9c-6914-524a-89d1-45abf5651da2",
       "old_sha256": "4f45da98acb483b60f6550a324423089f3f4e4a9f9d7cbcc1790f20f38fb884a",
-      "new_sha256": "e1a9ac31be1e50f3c266525fa32ec9255a0867b9b8c459ab698e84a038e47c82",
+      "new_sha256": "cef81b8ee469af00c0ee067de311a9ed888ef63472dfdea4c02e6e21ef3849d9",
       "changed_fields": [
         "instruction"
       ]
@@ -139,7 +139,7 @@
       "benchmark_id": "A41",
       "task_id": "3390d0db-258a-53af-b74c-ae6998d039c0",
       "old_sha256": "5178beb2b8fd8a004990035e4003fdc5c383d84ee299e1c1e633e8027c0b144b",
-      "new_sha256": "b85340cd8f50336f3a6322f7ffa34109468a3a5f9e5daf6a508d41663495cdfe",
+      "new_sha256": "289e4397e96816ebbdac88dd7008da91ef854cccc1134a6a0054ea02494ed786",
       "changed_fields": [
         "instruction"
       ]
@@ -148,7 +148,7 @@
       "benchmark_id": "A21",
       "task_id": "3efd62fd-f2be-5f37-908b-4b7ebb63e5af",
       "old_sha256": "357df6ab4aca766d84a0492d1c44bbb91268831caa76818009c1dfb6ac21efab",
-      "new_sha256": "45f6c31f735d65028dcfd1c1ab57453129bcc8a3f130e07459b5ff4603873e10",
+      "new_sha256": "0562dc457982cc9049fa790f46df46d4db8045e67ff296638280555ae0295949",
       "changed_fields": [
         "instruction"
       ]
@@ -157,7 +157,7 @@
       "benchmark_id": "D27",
       "task_id": "3f25ef16-808f-5419-8ffb-0bb0a734c8e8",
       "old_sha256": "bf52fee0286e6f25e9fb0a10433a1921c19b99d43d8c739c0651c11fa5bfdcdf",
-      "new_sha256": "d68b7e7db6a5a642e47521b011cbb8de912d7d705218179c918b4fd377b6e4d0",
+      "new_sha256": "291d9182007ef79a63ad8bfdfd683e2f9ec2dd4e28ea828a9b65f427a68a7f86",
       "changed_fields": [
         "instruction"
       ]
@@ -166,7 +166,7 @@
       "benchmark_id": "D15",
       "task_id": "403775ce-a5e7-5a42-a378-914f8ee1d5a9",
       "old_sha256": "62aa3700f7b2a8438f87fa473a73240488ebdbada65907a2832cf3fdc66fdace",
-      "new_sha256": "847d3a49931239108253d60ae0ad80e00f28dd4527fe2446f1f1cf4b1c78186a",
+      "new_sha256": "76895b55d60749b4dab70bbb97a345998f91cf35f92715e755c434f45bf91486",
       "changed_fields": [
         "instruction"
       ]
@@ -175,7 +175,7 @@
       "benchmark_id": "A40",
       "task_id": "434d76a6-0f5e-565b-8e09-5f6822377a22",
       "old_sha256": "4ab9d92fdcc8ecfa8b6abfe9ca6adfaa860aa179285bbe33146cecaf451eb8f2",
-      "new_sha256": "c2f0b8ffed66e84473793613faebec74efc1300c9c3eb019f3a4cad2270b20c4",
+      "new_sha256": "326e7597c08e5eba9d2f1b21260bf180e84956cc19a3c1e98c9aa27a758b5ce4",
       "changed_fields": [
         "instruction"
       ]
@@ -184,7 +184,7 @@
       "benchmark_id": "D28",
       "task_id": "442f061d-384a-5a05-b998-ffe50a4a3dd3",
       "old_sha256": "3c791c09255432e3f18b30006b6452c8db2a2084c9d340fcfa13130a036509fc",
-      "new_sha256": "0058b9773fed9f2b558767897acbc4ec70304886f4c6a457b89022eb0060b740",
+      "new_sha256": "7b9d4e600039f32177e068488d9ecb1b87e4416b389ffbf06fdaf733db0d6377",
       "changed_fields": [
         "instruction"
       ]
@@ -193,7 +193,7 @@
       "benchmark_id": "C3",
       "task_id": "483fa619-b45e-5175-b98a-675e52ee89d7",
       "old_sha256": "72565032288a950e60e8b4fd43452ca6e70a70be43179fd1d7f4d2db973c71dc",
-      "new_sha256": "0ec45f86da22e64546982b3cdfcfe39a9a31ecdf296a62f0b4891bc64ad16f0e",
+      "new_sha256": "ecdc7e4870b9bc8f3d80319fb04cf759f4c54ff59eff7b2f526dca592951f18c",
       "changed_fields": [
         "instruction"
       ]
@@ -202,7 +202,7 @@
       "benchmark_id": "C1",
       "task_id": "5169e1b0-1a7d-538b-8e59-8785c39460ce",
       "old_sha256": "3d2c20f56954db224eaea275fa1af3e2fa585c856922c3f25ac63ce1bc966ae5",
-      "new_sha256": "fcabbf82501581239a0c06b505392d00d4b1e3a4c8570a75452eff1e3043869d",
+      "new_sha256": "4e059432b07dc7207c56712722b5d2a313fc313acedcf435f99a116c521e24d2",
       "changed_fields": [
         "instruction"
       ]
@@ -211,7 +211,7 @@
       "benchmark_id": "B39",
       "task_id": "52801730-7ba0-5495-a9e2-e81555dc2c56",
       "old_sha256": "7e13d5cf7e3a1fe56b92ad80186a80aa21eb160a2fb5f3d175e6b0379f643a72",
-      "new_sha256": "e391c6ead38affaa66a7ed8deaff34724791945eb0b0ae9384a304d6b9b766cb",
+      "new_sha256": "401eba2f39f592bf66b38b72f3c9de1a178eadd688b706e06f18f4dcc33adc9b",
       "changed_fields": [
         "instruction"
       ]
@@ -220,7 +220,7 @@
       "benchmark_id": "C37",
       "task_id": "570a86a0-de5b-5411-94ec-dd3a1e38ca9e",
       "old_sha256": "e4cc48e8614997e17e84887dffeaa4e0022aa4f2e6e55d749295becb59778e8e",
-      "new_sha256": "ef1afc8a3926af8f26de184566886d4dbf58e91bb057172154de3ea586efc74e",
+      "new_sha256": "89c3c24bc2b964311c2301940b5a07860fec3f8fc0ef17ff6762c5640ca760cf",
       "changed_fields": [
         "instruction"
       ]
@@ -229,7 +229,7 @@
       "benchmark_id": "A37",
       "task_id": "5d8eb098-b3b2-5434-b854-bbabb8cafa74",
       "old_sha256": "c8ab3569b0a117ea9a4606093f30adfaad67eee8f7c1ca26bd9ec548d65b2612",
-      "new_sha256": "1c96ffae35bdd5fe1533829b2f346ec9ec84345fdcf67ea627d5e28857d7c50a",
+      "new_sha256": "88e18369a8a2372ec7ed1d0c72e6679f4753421b2d4a0e9b0cc45baea67070f5",
       "changed_fields": [
         "instruction"
       ]
@@ -238,7 +238,7 @@
       "benchmark_id": "A24",
       "task_id": "602416f9-209f-59ba-ba05-2cd583cd22ed",
       "old_sha256": "dbcc837099273f4d36c39f1453d62f7fc8bd0c16d0df1a5dfd52cbe78711159a",
-      "new_sha256": "39fc0f867371c0eb590480736bc4d8b2b29c77e8e154019bfbeb2c3487c83532",
+      "new_sha256": "8a04c4862acdaedf4fd3b4e0945302e88b2c2d24b945f1f7e455a76964db3520",
       "changed_fields": [
         "instruction"
       ]
@@ -247,7 +247,7 @@
       "benchmark_id": "B15",
       "task_id": "6a06831e-024f-5c84-a89f-5df4682cf7bd",
       "old_sha256": "1ee1972383672a2eb1a33042ec07206baa58ec1c4bbbce1bd8bfd11b4fddaf12",
-      "new_sha256": "a49cfe492a0a006d0417ff8558a92eed0e3444e6a30c3e6fad02060dd5ce1150",
+      "new_sha256": "369f6b03e620f0ecbdf571c6c1f0885284eb870cc2789ed7e5b80954f21adf82",
       "changed_fields": [
         "instruction"
       ]
@@ -256,7 +256,7 @@
       "benchmark_id": "A45",
       "task_id": "6af08ca8-4eae-5ff4-a3ff-b6fc3cb05983",
       "old_sha256": "0744bb08e7bd159d23c9b229ea3bb31565bff8b98a250f8053054197e40c6bf8",
-      "new_sha256": "fcb2fcc2033988b715819dcb25af5eb65b377a9f630fe002b3ee1876cedc69aa",
+      "new_sha256": "99d1301afd74d44a1cd882cef95ca81496c19cc0467dca4f1ada2aad80607fec",
       "changed_fields": [
         "instruction"
       ]
@@ -265,7 +265,7 @@
       "benchmark_id": "A12",
       "task_id": "6c40ab40-2303-5c29-995d-bb1bf2cce225",
       "old_sha256": "cf1e4e2b011e723a2ce64c5e59c2ba3bed08a331a485b9d55c60c11d669c7767",
-      "new_sha256": "e30174db7201153e0b3cecb9d7c79ad38b4a39d5017dd1773fb51f8688e33f45",
+      "new_sha256": "1cef2fc3b9e03c672be0b39bc1bd20860a4c6587966d2bf654739c6d8660ce05",
       "changed_fields": [
         "instruction"
       ]
@@ -274,7 +274,7 @@
       "benchmark_id": "C12",
       "task_id": "6f206238-a279-5562-829b-8ae59e7e9a36",
       "old_sha256": "c50408e1096e8558fe5b9634ed312fd2d6bfaacdd6a5f5b0359f764bef004bab",
-      "new_sha256": "7009759063430ded872b4d052b65fb4be91800c43b36dcd3fa6f0cdf236ed457",
+      "new_sha256": "12a8c084411a5023707bf46daf39b2d004cb8c7fc0738ebfa15587e14b5acfaf",
       "changed_fields": [
         "instruction"
       ]
@@ -283,7 +283,7 @@
       "benchmark_id": "A17",
       "task_id": "71adb9c4-f7f9-57e7-81f8-152456c8f944",
       "old_sha256": "8bb0a3906db5452da28b22028d707f1cc48ca3a7eeb60c6c40c524f2d7176264",
-      "new_sha256": "c761cff3a38a72a24e7d1a854a469046d816f6f44123add6baf80d9ce43e168f",
+      "new_sha256": "5c371991c757b8e1aeb5f8354682a9e5b321aa7678d6f53cc058e3e6bdd11652",
       "changed_fields": [
         "instruction"
       ]
@@ -292,7 +292,7 @@
       "benchmark_id": "D36",
       "task_id": "787c3287-fba3-5876-97f9-de6cde3d79ca",
       "old_sha256": "902bed3c7b873ea1d70fb5bcc2028792c71864457ade17de49667bf96774ae8d",
-      "new_sha256": "f1ddb1086d33d2fbc0c397841f71d9b7525d91523c715a80e22e46669badffa7",
+      "new_sha256": "76c51f1baabc8965c64ef8b52371e5e20467155b883687ec3c604a7687fa4e35",
       "changed_fields": [
         "instruction"
       ]
@@ -301,7 +301,7 @@
       "benchmark_id": "C33",
       "task_id": "7ae2a81a-c6ef-5f3d-9549-fbdbbf3b97fc",
       "old_sha256": "c02c3f4347048a82e909296bdb4f886141b1fd26c14fa8827db285ae5bd59f6d",
-      "new_sha256": "c493cd60b1b4833c0d5908b180dec020d2b2aae2c4694c0a27fec18c5391857b",
+      "new_sha256": "dd7facda5927b7875df232def2a9ab937b9f48dcb2ee96b5a378e3b059f7eb57",
       "changed_fields": [
         "instruction"
       ]
@@ -310,7 +310,7 @@
       "benchmark_id": "D32",
       "task_id": "7fa23dd5-d595-5c4f-8e20-dbc193712f9d",
       "old_sha256": "efd9873e25b6e96a394c3fa401a33a8fc73f9e8df7ef3afe104810d35eb8a69a",
-      "new_sha256": "402fbbb95430e6c291255d08575e18058cffe18ae5d590013a0af674fb60e714",
+      "new_sha256": "c561bcdd1069ac0c85d867cdbebc8d26f0f487c48913ae1815ffe3111d6fb53f",
       "changed_fields": [
         "instruction"
       ]
@@ -319,7 +319,7 @@
       "benchmark_id": "C39",
       "task_id": "801e597f-2f5f-58a5-930a-5772b9cce36c",
       "old_sha256": "2312ca460467747de149dcd75ab4afab39095fdeb842940904b2000a435e2262",
-      "new_sha256": "bddc074d2073d0e3858e723d0466bbd50cecfc8f1aaf1e4b2cae2bfb46cac72b",
+      "new_sha256": "873e24e9ebfd4ffdf0d97bed4c21804baecf9345ab0bda7a3e605d782bf9396a",
       "changed_fields": [
         "instruction"
       ]
@@ -328,7 +328,7 @@
       "benchmark_id": "C27",
       "task_id": "80233680-6b7c-5a9b-a816-b1f4e53720bf",
       "old_sha256": "26c97147f30129b65b54824964936495e330dae08d615e82323a25e2e3b4cdeb",
-      "new_sha256": "4b11f562e843f0f81273a72db10dfd7ac629b4c94da5f6c38b7461268f458670",
+      "new_sha256": "efc92ecb1893b1c6c19475e43e66183fb06a94e2e4c5738811218dbef7a9f1cb",
       "changed_fields": [
         "instruction"
       ]
@@ -337,7 +337,7 @@
       "benchmark_id": "A16",
       "task_id": "804acb2e-4d30-5ff7-a196-e03c1145fb3f",
       "old_sha256": "7992e0babd1e267e8880c1c9bf7e7d82723d3ab764459a3bc79f3c43949a3a2f",
-      "new_sha256": "bc011068e51b3a0b616c6a9c8556c94c5bce56088f2edbb4186af5c6d7da4a41",
+      "new_sha256": "b2de4b67a7ec3de44de9640763730cb94d4e575641f34e4803630cd97a4c54dc",
       "changed_fields": [
         "instruction"
       ]
@@ -346,7 +346,7 @@
       "benchmark_id": "D35",
       "task_id": "848e122f-3a42-5a9c-be59-004bf1d51f00",
       "old_sha256": "908b7d8094587f7fee1964fbf3c7c5656140a2fc3047f6b86ea52849bc87ae1e",
-      "new_sha256": "81dab01a15f9725a70f9531b3fb76e867cd9d6a21dc242347aadb2296a693f5c",
+      "new_sha256": "296d82eeee1d3e1bce1add3504587fdc68a1eccfa219e0ff0169b07d40c2a11e",
       "changed_fields": [
         "instruction"
       ]
@@ -355,7 +355,7 @@
       "benchmark_id": "A42",
       "task_id": "8784639b-6507-50d5-a6c5-fabb4b9180eb",
       "old_sha256": "623d04fdb0d35997bbc41b561d9bd7b2bf8e8b78dd0ad5cf5eda0f7a8c703bc5",
-      "new_sha256": "a3a761fe7d7c3eb7373f3b50e64f6347ef0f5cb382f28e5020123914ee8e263a",
+      "new_sha256": "600588f48f3b45c8d98c7e425290b06a8d970421d82cb68a42831bdac470df05",
       "changed_fields": [
         "instruction"
       ]
@@ -364,7 +364,7 @@
       "benchmark_id": "A14",
       "task_id": "91afb5ea-d004-52d1-bb65-620ce81cd9e2",
       "old_sha256": "0a77d8ac4864361492cb6d6ede2ab0ba7eb25f672ef556182472e9ae5c499ab2",
-      "new_sha256": "6f2d88d6dbf8d97502d6ba1c9c0f140bbd909245bb7620751362143f7fddd3c8",
+      "new_sha256": "35b20a53b1bdc5b84ff0fceb7b379a08a3d35c5fef37e1f78cdf9ebecd6a527f",
       "changed_fields": [
         "instruction"
       ]
@@ -373,7 +373,7 @@
       "benchmark_id": "D37",
       "task_id": "9585ddb1-8356-56b7-8daf-5a2e717846de",
       "old_sha256": "64ee4f3d8cfc05b5105bcca5be12110a30d8af0e6781914535cfe18f54179e6b",
-      "new_sha256": "c17f459dc659bb213717966d5d4ed98e8978b74f5373e53dc51f190d3df02510",
+      "new_sha256": "eee669bd20646bdf3929bdf8973c27001e6525fecf83395f9f0708d5aa80562f",
       "changed_fields": [
         "instruction"
       ]
@@ -382,7 +382,7 @@
       "benchmark_id": "C35",
       "task_id": "9b323986-b225-5d42-a481-056b7c696228",
       "old_sha256": "07a6075151a4ac4fe1fac2fc7a47fd69773f082f9f42573ad45b581ed34544cb",
-      "new_sha256": "50e0aa2d28b48dd4e3b6e529e0b1804bafe9a0b1a6c7503f6e882959ff8c23bb",
+      "new_sha256": "b93445e72edc833a3286d179d456633dc954364b754237a5420d10cb2dbd61cd",
       "changed_fields": [
         "instruction"
       ]
@@ -391,7 +391,7 @@
       "benchmark_id": "C29",
       "task_id": "9cb469bb-3a48-59b2-9913-1c6d59a12a20",
       "old_sha256": "7bfb8b70e8a716a1edb8b3a93246a40fee50c09d7a7a092549ed77f1c644ef8f",
-      "new_sha256": "e82a207614fe7673b0e53fd2c06959f97528efd498c75b321630e0d18866fc81",
+      "new_sha256": "571ebde63b4aadf335026b5ad3b97f6acc78d3e8159a1ce025aa806f57f75a9b",
       "changed_fields": [
         "instruction"
       ]
@@ -400,7 +400,7 @@
       "benchmark_id": "B4",
       "task_id": "9e4e1bd0-1d68-5332-9619-a590c5158c73",
       "old_sha256": "334fad93d4e8da05beb4f9f3a306c6d88106734dc2c8eaefa391f6a48539ec07",
-      "new_sha256": "cb86983c290e864f60d632ae4af93abaa5292124dc3f5b6f1cd22c0ca6c1f814",
+      "new_sha256": "764dd4746a02b01f32844333193fc89eba8878f289bc0ec01c7034743a2b3fda",
       "changed_fields": [
         "instruction"
       ]
@@ -409,7 +409,7 @@
       "benchmark_id": "B36",
       "task_id": "9ec15c2c-1c9a-599f-b52b-d21223fe351a",
       "old_sha256": "ae4390192adac08921f3fef7ae3f854c29e0578f6efb82877be13bd11672434a",
-      "new_sha256": "a2e3ac01ffa11abad1b4c4c095623bc01d7b63e1d63740e7e55a56b13541b213",
+      "new_sha256": "6c5d6de0dd39416696cb9e34a8bc8832093668cf8b765c3607feb3f57f610153",
       "changed_fields": [
         "instruction"
       ]
@@ -418,7 +418,7 @@
       "benchmark_id": "A36",
       "task_id": "a07ba597-db81-5714-8d27-1c30ca155eec",
       "old_sha256": "c37c81fa94c95bde53e6ef78faf274f33eca0600f63e876e7c94337cc663f432",
-      "new_sha256": "4d4263b62ede27037683c8c2a5c11b64639890b300faf7fc634748f5cc109235",
+      "new_sha256": "ce00eb6f547ec0c736b6f02f9bd7e6dae7710c170da18cd4108e507dee39d5ea",
       "changed_fields": [
         "instruction"
       ]
@@ -427,7 +427,7 @@
       "benchmark_id": "A44",
       "task_id": "a98b71c1-4371-5a9c-96b1-7ee0021b46bb",
       "old_sha256": "7c535c01894c092b84c943424881f42e3e824c06492041bb5b2406b3ff90cb02",
-      "new_sha256": "b054b84ebb567fb060afb417c4317739879b869c4aa426acc62b6258bb4a18aa",
+      "new_sha256": "4a7641d05b6e7f2b409d681a7cdb488d730109e8a150a354a29041da33d36fd8",
       "changed_fields": [
         "instruction"
       ]
@@ -436,7 +436,7 @@
       "benchmark_id": "C34",
       "task_id": "ad7b335b-3ce0-582d-864d-a15862af59b5",
       "old_sha256": "636084a44c3f921b80d7eb03e272b40978f234a6c2e0d38c66a75bc8d06f7bcb",
-      "new_sha256": "0da63202f58685a9214a0acdc24a32baf1a3a1113c29a927850df02362df3e06",
+      "new_sha256": "48761433a8cf509a7b07260c4b00dcaf5d6b67288be60fdf92d1bcf637e0c848",
       "changed_fields": [
         "instruction"
       ]
@@ -445,7 +445,7 @@
       "benchmark_id": "D1",
       "task_id": "b0860ad0-2faf-5198-b0f7-32d0cf2cdbe2",
       "old_sha256": "dec79653edc3715e69909b1b39c6638a4dcb05c89ed4995b246edf7ce1d9da2b",
-      "new_sha256": "8c3d2728ab23a882a63b30389f2c016c89ffee36abec935cffe0f858a792a402",
+      "new_sha256": "e52afb1e7cb4a4ea94f1810a137dcba79717c7ee78300c21e3c88c30f7fd4f8b",
       "changed_fields": [
         "instruction"
       ]
@@ -454,7 +454,7 @@
       "benchmark_id": "A35",
       "task_id": "b3191575-cb2e-5473-b39e-be8a3c54a2e1",
       "old_sha256": "814284a983824bd85a8f85d5cc75ab038eac5bb526d6f31613e352ca54510b20",
-      "new_sha256": "58a4f2dfaee4fa3dd4246d52304bfbd282854d416a8fa9bb4bdce64a470ad687",
+      "new_sha256": "5e7ed294916b5e061236670be05ea859632380b200f6de9f3e351bca9d5b1012",
       "changed_fields": [
         "instruction"
       ]
@@ -463,7 +463,7 @@
       "benchmark_id": "C31",
       "task_id": "b787793b-3783-58ca-bbd1-41f3598dc8ee",
       "old_sha256": "66c9bd65a2504a885657aa3c8371f929b4a0e7b4e8e8890ae20abf70e72b2caf",
-      "new_sha256": "d558f81083f3d7e2fdfc203303f3806e80bb9a81ecfa5518dcba9352a25ddde1",
+      "new_sha256": "9dc5bb2a49ca9f69973cef3e0a16dd3f35cb8623ac1558f49bf63ec402ad4ea0",
       "changed_fields": [
         "instruction"
       ]
@@ -472,7 +472,7 @@
       "benchmark_id": "B7",
       "task_id": "bb454bdd-5a1f-5d98-b7e5-e66ae0ace20e",
       "old_sha256": "3f79f12157bd09cf64903f12e2bd2fece559e6ac816e0fac8b0566f3624493d7",
-      "new_sha256": "da21303817330a09731f9fbcbb62bebeee8b8ceab78d5b0bc248f9235c8f3ebd",
+      "new_sha256": "0871a96bd56b75c3c35459a89965539074a763b5d09c86de274bf0486cee3d8f",
       "changed_fields": [
         "instruction"
       ]
@@ -481,7 +481,7 @@
       "benchmark_id": "D3",
       "task_id": "bd97cfef-dda4-55bc-ad31-06c7a57583dd",
       "old_sha256": "b1812b7f5f17f65ed245a529464ec331a6d8f8474f7934410d7af6e9af890a58",
-      "new_sha256": "cd020433f2169fae3cc60a1c32761078c5fe7a2ac16451c09f30305d76d41a8e",
+      "new_sha256": "3f39980678271337d0a3ed1653ff57191fabb4f1ed1c6e7e06e939733687636c",
       "changed_fields": [
         "instruction"
       ]
@@ -490,7 +490,7 @@
       "benchmark_id": "D29",
       "task_id": "be0947da-6ab7-5998-8c0b-76416c1e6ae8",
       "old_sha256": "3f8b781882e35da630622a02485f54f5136d132e81e46d4ac92c0f7b65285f36",
-      "new_sha256": "2e3e0761c19c23d2ae27c83cd59687706c0edf476734a3533856f4b12dd9c1e4",
+      "new_sha256": "6c1fe85e18e7d30c7247b8a1d4bd80edfcd6cc32b9cdc8a970890afc462e781a",
       "changed_fields": [
         "instruction"
       ]
@@ -499,7 +499,7 @@
       "benchmark_id": "C32",
       "task_id": "c4812c35-23de-5d55-b5fe-4a27fb47ffca",
       "old_sha256": "47d7a4ec388c2703a4cc6401a7bb5f16bb1918a617e82309d47bfbe24a943ec1",
-      "new_sha256": "5164daa7a10d901df0597e58f5887e54e18ed2aa75df2b7fae76db4350a1157e",
+      "new_sha256": "2ce726b3ca84cfebdd1549bfcd6628ca1aaff57d98889a586d2c143486d5aa42",
       "changed_fields": [
         "instruction"
       ]
@@ -508,7 +508,7 @@
       "benchmark_id": "D31",
       "task_id": "caa740d7-616d-58fb-90f9-34c0a8f2e278",
       "old_sha256": "3e56a86504058fc7c4248ac38dcd7a92f53d6f3dd27d39d5f9564f653d8f2ecb",
-      "new_sha256": "1b257c6dada6f3a68343d10773f027d99cc8d88fdb84bd7a04f11b31907a62ec",
+      "new_sha256": "8d38ef815b1069c52d0742bb1bc548dea4b518f2aa1a5e8ad8a9dd3a647b21be",
       "changed_fields": [
         "instruction"
       ]
@@ -517,7 +517,7 @@
       "benchmark_id": "D33",
       "task_id": "d07b3c26-8242-5c59-a2b6-c02a709c144a",
       "old_sha256": "faaa5bccad2d740657d0bf5762003946e19a2a3b4d5e052c85a8306dc3eb39fd",
-      "new_sha256": "cbcd78a6107a12e5ee317c84dbe5e9a470f2c3c9d5e8883df301a1db5ed93b1e",
+      "new_sha256": "c3c9dcffdc76d2d74c70b2a8ce1e753d0528872254f813ba3c6400f4a4ec1389",
       "changed_fields": [
         "instruction"
       ]
@@ -526,7 +526,7 @@
       "benchmark_id": "C30",
       "task_id": "d66dde9a-7dd4-5356-b874-77f8746b4910",
       "old_sha256": "489723a9072040633ccf485aa7bd1cb6fd1b19710ebeff70db0c18faacab4349",
-      "new_sha256": "5afc7052627314179768810709e3d6eef45b123a7c8758caa875d9f11aafbdbd",
+      "new_sha256": "f91f0d41009a11a3c1db42d844e754c9eebd11f50978e347aba108b8b664e129",
       "changed_fields": [
         "instruction"
       ]
@@ -535,7 +535,7 @@
       "benchmark_id": "A1",
       "task_id": "d8f0ee2d-0932-55af-913b-7cbc4b9a0f49",
       "old_sha256": "bb21e4ec664099c5d10becb9793cccfb355273f8f69cb735c1fa7366ffcca344",
-      "new_sha256": "21fd437aa6c92ef1c2bf6a9864cdbeacf2de881c0e38aa1fde4fcff3b07d62b2",
+      "new_sha256": "9158cff3659715f6dac81cc0997c80e6f38ce22db6498200ea3441bfabcbd9f1",
       "changed_fields": [
         "instruction"
       ]
@@ -544,7 +544,7 @@
       "benchmark_id": "B20",
       "task_id": "dc213f35-9d6f-515c-82e9-673337349b5a",
       "old_sha256": "9b06bb9a6f01cbaef1c3037cf8550ff91c2c1404780179e8d40acf8d7e1d47ff",
-      "new_sha256": "90ea30858dcc08382f98bae88f608120342c90a7d017113bc2fbac9b180a99db",
+      "new_sha256": "500cd1f3f8e8b9e4b2511142bb7ff5a12c199b9254a53f5015f30b00d4ac8f12",
       "changed_fields": [
         "instruction"
       ]
@@ -553,7 +553,7 @@
       "benchmark_id": "C28",
       "task_id": "e1e36fca-5319-532b-95f8-8205fdaa71bd",
       "old_sha256": "2a4056f3ec82b4682bc335f25c5eb91c4d104b904867e47c955d3ff6612e6029",
-      "new_sha256": "18192e7e5c0024bbd6d452abe249dc69112f41508a6024968944e05af96c0894",
+      "new_sha256": "28944b3b1ba5f029d9714618be55531573d0d19447deba6c6c2ee52c89fbfdaa",
       "changed_fields": [
         "instruction"
       ]
@@ -562,7 +562,7 @@
       "benchmark_id": "A34",
       "task_id": "e2d74c8e-d288-5e26-8f52-c62318c774bf",
       "old_sha256": "def6ff1ba1efa49cf6bdda4efb1f36aa2488c6ffc20f00bd1108d8799a2316b9",
-      "new_sha256": "d3d946bafe055cc913f882a2f2c535c95db65c1bbfb5cd8894b10a5e39e21a04",
+      "new_sha256": "56f8b942dd2346922ff2efd8921a654043efc768f39647fbeb7d9e75ece04771",
       "changed_fields": [
         "instruction"
       ]
@@ -571,7 +571,7 @@
       "benchmark_id": "B37",
       "task_id": "e9527909-9784-5a33-8501-b62b4744a6e6",
       "old_sha256": "f73c6882fb9e199179e4cf58fdaa8f1827328dd219e3d80c87a4f5440014a507",
-      "new_sha256": "4228a8aabc205d06df7366357cd7e5bccb1f9d02ee36c6421f151f5b7f675044",
+      "new_sha256": "57db8b49d9fd6f5925d7a67bfa63426d9bbfe2de3491c85235d350e5730c2abd",
       "changed_fields": [
         "instruction"
       ]
@@ -580,7 +580,7 @@
       "benchmark_id": "A43",
       "task_id": "e9c3a31f-de20-5244-994e-96812cbe933a",
       "old_sha256": "08b6c3aec23f189c0198b16ef51191c3ebddff0163d5f0adfe2ee3f74ecbba43",
-      "new_sha256": "1bdbc55180fcca77a21dcc97be6b5bdba9157c6c21ef40b18e4e980e84200203",
+      "new_sha256": "f4bcef3ebf75ff80d8e424e4e11edfb10c8b9219f81999b818c25aa68616f60e",
       "changed_fields": [
         "instruction"
       ]
@@ -589,7 +589,7 @@
       "benchmark_id": "D23",
       "task_id": "eb777921-1b61-574b-8cd1-b7d35f4e7286",
       "old_sha256": "2224a8927df8f26a287f124d3149f656744f725f887f29e02bef4c99c7fcc830",
-      "new_sha256": "ddf0f818626d57ab453ba6338882d97f54b5dee7b48931c79a15ce3ba610c32a",
+      "new_sha256": "807577b0b774b4be8d63feb3a8e78c27c3e3eab77d9563a7ded32c5522d6fe8d",
       "changed_fields": [
         "instruction"
       ]
@@ -598,7 +598,7 @@
       "benchmark_id": "C38",
       "task_id": "ebd6f1e1-1086-5d54-848c-e4dd7367f366",
       "old_sha256": "ed83458aa564a04658aa09ae408a62c4c4ff1300192235bdc514e5926e5cb69b",
-      "new_sha256": "fed1db1e7bd6cf1162a25767b9fb2b2cc4e1d938eb05078715f067cb4cdf9cdc",
+      "new_sha256": "c1e7a54278c318a8f1b34c6a27f80854920a6341a1eda692eb7e596fb44f6545",
       "changed_fields": [
         "instruction"
       ]
@@ -607,7 +607,7 @@
       "benchmark_id": "A39",
       "task_id": "f0d25317-e279-5f2b-9595-151d94836d32",
       "old_sha256": "0347baa39fa87768d8e08862fcec55e3fc648f73db3f9e2060385df3c9a111ad",
-      "new_sha256": "1668186b91e445654f3d164bd423dd56357f823b0c939be1abaff78a407d90ed",
+      "new_sha256": "86a80291ba8c64b83c05190262622473ad3defb50f37fcd6f5daf459c8ed08e6",
       "changed_fields": [
         "instruction"
       ]
@@ -616,7 +616,7 @@
       "benchmark_id": "D7",
       "task_id": "f51cb7c6-c1c8-5cea-9e5c-d68b25b8ef3b",
       "old_sha256": "933caf86228470dad91b840eb2e8248298e4f359fe8e27705a13012a89ea4d54",
-      "new_sha256": "e7189716dd86c560b6fa0531598a54363a7d9befde497cb07f10677047f0bdb7",
+      "new_sha256": "db1eaff7aebd98b331ae459cd4a8ca2633b0f8eb44dfeea0ff66781f4ce675b5",
       "changed_fields": [
         "instruction"
       ]
@@ -625,10 +625,17 @@
       "benchmark_id": "A46",
       "task_id": "fd4d4a49-88da-5934-acda-37df92322a72",
       "old_sha256": "49682f20e07321f32434d34b14dc108e98e06e1f3b6edd45278435b769601b19",
-      "new_sha256": "f8c0420d617459a8a9683bdcc6f29b8cc360dac883cf826459e724be5232f9b1",
+      "new_sha256": "c9e325a30fb45a4ff1635f15800a7d14c8ce1a873934f8ec06f01632e7a8f0d3",
       "changed_fields": [
         "instruction"
       ]
     }
+  ],
+  "task_instruction": "Read the game rules shown on the current page and follow them exactly. If an attempt fails and another attempt is available, continue with the next attempt. Never refresh, reload, reopen, or navigate away from this page.",
+  "common_rules_present_in_all_40_system_prompts": true,
+  "context_window_tokens": 1000000,
+  "allowed_agent_config_changes_since_base": [
+    "system_prompt",
+    "api.context_window_tokens"
   ]
 }

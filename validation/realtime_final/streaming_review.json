@@ -1,0 +1,126 @@
+{
+  "date": "2026-09-16",
+  "protocols": [
+    "anthropic_messages",
+    "openai_chat",
+    "openai_responses"
+  ],
+  "stream_requested": true,
+  "request_read_timeout_s": 120,
+  "max_http_attempts": 3,
+  "realtime_default_max_decisions": 70,
+  "context_window_tokens_declaration": 1000000,
+  "input_image_pixels": [
+    1920,
+    1080
+  ],
+  "coordinates_remapped": false,
+  "static_checks_no_vm_actions": true,
+  "verified_response_replays": 16,
+  "models": [
+    {
+      "model": "gemini-3.8-flash",
+      "protocol": "openai_chat",
+      "actual_stream_received": true,
+      "frame_queries": 1,
+      "received_responses": 2,
+      "usage_returned": true,
+      "action_types": [
+        "CLICK",
+        "WAIT"
+      ]
+    },
+    {
+      "model": "claude-sonnet-5",
+      "protocol": "anthropic_messages",
+      "actual_stream_received": true,
+      "frame_queries": 1,
+      "received_responses": 2,
+      "usage_returned": true,
+      "action_types": [
+        "CLICK",
+        "WAIT"
+      ]
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "protocol": "openai_responses",
+      "actual_stream_received": true,
+      "frame_queries": 1,
+      "received_responses": 2,
+      "usage_returned": true,
+      "action_types": [
+        "CLICK"
+      ]
+    },
+    {
+      "model": "qwen3.8-max-0902",
+      "protocol": "anthropic_messages",
+      "actual_stream_received": true,
+      "frame_queries": 1,
+      "received_responses": 2,
+      "usage_returned": true,
+      "action_types": [
+        "CLICK",
+        "WAIT",
+        "DONE"
+      ]
+    },
+    {
+      "model": "kimi-k3",
+      "protocol": "anthropic_messages",
+      "actual_stream_received": true,
+      "frame_queries": 1,
+      "received_responses": 2,
+      "usage_returned": true,
+      "action_types": [
+        "CLICK",
+        "WAIT",
+        "DONE"
+      ]
+    },
+    {
+      "model": "deepseek-flash",
+      "protocol": "anthropic_messages",
+      "actual_stream_received": true,
+      "frame_queries": 1,
+      "received_responses": 2,
+      "usage_returned": true,
+      "action_types": [
+        "CLICK",
+        "WAIT"
+      ]
+    },
+    {
+      "model": "glm-5.3-flash",
+      "protocol": "anthropic_messages",
+      "actual_stream_received": true,
+      "frame_queries": 1,
+      "received_responses": 2,
+      "usage_returned": true,
+      "action_types": [
+        "CLICK",
+        "WAIT"
+      ]
+    },
+    {
+      "model": "MiniMax-M3",
+      "protocol": "anthropic_messages",
+      "actual_stream_received": true,
+      "frame_queries": 1,
+      "received_responses": 2,
+      "usage_returned": true,
+      "action_types": [
+        "CLICK",
+        "WAIT"
+      ]
+    }
+  ],
+  "artifacts": "/mnt/zhaorunsong/yhyx/streaming-review-20260916",
+  "scope": "Eight experiment models; static-image get_frames/action API roundtrips, not completed games. Sol returned only CLICK in its action reply.",
+  "realtime_tests_passed": 249,
+  "source_sha256": {
+    "mm_agents/realtime_agent.py": "062d063cb7fa0cc49422ad3508e6f60222864219940127233bae56bd1509b89e",
+    "mm_agents/realtime_stream.py": "65262dc547aa534c5b92c07dd99d45749333697539a7cdac49f228c7fe0f84d4"
+  }
+}

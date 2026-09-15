@@ -30,7 +30,7 @@ get_frames 接受 1–8 个秒数，可小数。对已完成片段，返回最�
 
 ## 预算与协议
 
-正式 YAML 保持 full history，Gemini 最大输出为 65536，其余现用配置为 128000；MiniMax 使用 adaptive thinking、effort=null，其余为 high；均保留返回的思考内容。max_steps 默认 100，计动作决策；get_frames 默认不限次数。供应商耗时包含模型计算、网络与排队，不能把整个 latency_s 当成纯模型思考时间。
+正式 YAML 保持 full history，Gemini 最大输出为 65536，其余现用配置为 128000；MiniMax 使用 adaptive thinking、effort=null，其余为 high；均保留返回的思考内容。Realtime 的 max_steps 默认 70，三次游戏机会共用这 70 个动作决策回合；get_frames 默认不限次数。单次动作序列最多 100 个原子动作的规则独立保留。供应商耗时包含模型计算、网络与排队，不能把整个 latency_s 当成纯模型思考时间。
 
 Anthropic 使用 Messages 原生 tool_use/tool_result；Astra 使用 Responses，收齐 response.completed 才执行，不提前执行流中的半段调用。sequence 显式允许多调用；atomic 每次模型回复最多调用一个工具。OpenAI 使用 parallel_tool_calls=false，Anthropic 使用 tool_choice={type: auto, disable_parallel_tool_use: true}；本地校验也拒绝 Agent3 同一回复中的多个 get_frames。
 

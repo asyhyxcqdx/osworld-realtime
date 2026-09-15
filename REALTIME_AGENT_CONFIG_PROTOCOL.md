@@ -23,7 +23,7 @@ observation.current_screenshot 必须 true。historical_video 的工具名固定
 
 context 固定 history_policy=full、include_screenshots=true、on_context_limit=fail_with_explicit_error；禁止静默删掉早期上下文。
 
-api 定义 model、protocol、可选 key_env、tool_format=native、context_window_tokens、max_output_tokens、temperature、thinking。上下文预算至少 128000；输出上限是正整数且不能超过上下文预算。Gemini 3.8 Flash 配置为 65536，并拒绝超出其上限的配置；其他现用模型为 128000。输出上限不是实际生成量。thinking.enabled 和 summary 必须 true；MiniMax M3 的 effort 为 null（只开 adaptive），其余当前配置为 high；temperature 为 null。HTTP 错误不会自动降低预算或换模型。
+api 定义 model、protocol、可选 key_env、tool_format=native、context_window_tokens、max_output_tokens、temperature、thinking。上下文声明统一为 1000000；该字段目前用于配置校验，不发送给 API，也不在本地估算或截断实际输入，真实容量由模型服务端判断。输出上限是正整数且不能超过声明窗口。Gemini 3.8 Flash 配置为 65536，并拒绝超出其上限的配置；其他现用模型为 128000。输出上限不是实际生成量。thinking.enabled 和 summary 必须 true；MiniMax M3 的 effort 为 null（只开 adaptive），其余当前配置为 high；temperature 为 null。HTTP 错误不会自动降低预算或换模型。
 
 constraints 必须完整包含 forbid_refresh、forbid_navigation、require_done_action、forbid_text_only_completion，且都为 true。
 

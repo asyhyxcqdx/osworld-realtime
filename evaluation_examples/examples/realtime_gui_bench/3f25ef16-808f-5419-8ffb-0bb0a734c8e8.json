@@ -2,7 +2,7 @@
   "id": "3f25ef16-808f-5419-8ffb-0bb0a734c8e8",
   "benchmark_id": "D27",
   "snapshot": "chrome",
-  "instruction": "Read the game rules shown on the current page and follow them exactly. If an attempt fails and another attempt is available, continue with the next attempt. Never refresh, reload, reopen, or navigate away from this page. When the game shows success or no attempts remain, call the registered `computer_done` tool with empty arguments `{}`. Do not finish with a text-only response.",
+  "instruction": "Read the game rules shown on the current page and follow them exactly. If an attempt fails and another attempt is available, continue with the next attempt. Never refresh, reload, reopen, or navigate away from this page.",
   "source": "evaluation_examples/websites/realtime_gui_bench/games/d27/index.html",
   "config": [
     {

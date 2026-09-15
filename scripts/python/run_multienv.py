@@ -68,8 +68,8 @@ def config() -> argparse.Namespace:
         help="Legacy delay for non-realtime actions; ignored by four-agent realtime runs.",
     )
     parser.add_argument(
-        "--max_steps", type=int, default=100,
-        help="Maximum decision rounds per task for realtime Agents",
+        "--max_steps", type=int, default=None,
+        help="Maximum decision rounds per task (default: 70 for realtime Agents, 100 otherwise)",
     )
 
     # agent config
@@ -144,6 +144,8 @@ def config() -> argparse.Namespace:
     parser.add_argument("--evaluation_settle_s", type=float, default=3)
     parser.add_argument("--install_realtime_server", action="store_true", help="Install the realtime extension in the VM after reset")
     args = parser.parse_args()
+    if args.max_steps is None:
+        args.max_steps = 70 if args.agent_variant else 100
     if args.agent_variant:
         from mm_agents.realtime_config import agent_kwargs, default_config_path, load_realtime_config
 
