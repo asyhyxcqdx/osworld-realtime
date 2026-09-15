@@ -220,3 +220,17 @@ def test_reused_index_without_an_id_cannot_guess_fragment_owner():
     ]
     with pytest.raises(RuntimeError, match='Ambiguous tool delta'):
         collect_stream(sse(events), 'openai_chat')
+
+
+def test_reused_index_fragment_can_complete_the_only_unfinished_call():
+    events = [
+        {'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': 'a', 'type': 'function', 'function': {'name': 'computer_click', 'arguments': '{"x":995,"y":724}'}}]}}]},
+        {'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': 'b', 'type': 'function', 'function': {'name': 'computer_wait', 'arguments': ''}}]}}]},
+        {'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'function': {'arguments': '{"duration_s":0.1}'}}]}, 'finish_reason': 'tool_calls'}]},
+        '[DONE]',
+    ]
+    body = collect_stream(sse(events), 'openai_chat')
+    calls = body['choices'][0]['message']['tool_calls']
+    assert [call['id'] for call in calls] == ['a', 'b']
+    assert [json.loads(call['function']['arguments']) for call in calls] == [
+        {'x': 995, 'y': 724}, {'duration_s': 0.1}]

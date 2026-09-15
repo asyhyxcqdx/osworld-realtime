@@ -138,6 +138,12 @@ class _ChatTools:
     def __init__(self):
         self.calls, self.indices, self.by_index, self.by_id = [], [], {}, {}
 
+    def _arguments_complete(self, position):
+        try:
+            return isinstance(json.loads(self.calls[position].get('function', {}).get('arguments', '')), dict)
+        except (TypeError, ValueError):
+            return False
+
     def add(self, delta):
         delta = copy.deepcopy(delta)
         for field in ('id', 'type'):
@@ -151,6 +157,14 @@ class _ChatTools:
         if position is None:
             if call_id:
                 candidates = [p for p in candidates if not self.calls[p].get('id')]
+            elif len(candidates) > 1:
+                # Some gateways reuse index=0 while streaming successive calls.
+                # An argument fragment can only extend the sole unfinished JSON
+                # object; two unfinished calls are ambiguous and must fail.
+                fragment = (delta.get('function') or {}).get('arguments')
+                unfinished = [p for p in candidates if not self._arguments_complete(p)]
+                if isinstance(fragment, str) and fragment.strip() and len(unfinished) == 1:
+                    candidates = unfinished
             if len(candidates) > 1:
                 raise RuntimeError('Ambiguous tool delta: reused index without a call ID; no actions dispatched.')
             if candidates:

@@ -118,9 +118,9 @@
   ],
   "artifacts": "/mnt/zhaorunsong/yhyx/streaming-review-20260916",
   "scope": "Eight experiment models; static-image get_frames/action API roundtrips, not completed games. Sol returned only CLICK in its action reply.",
-  "realtime_tests_passed": 249,
+  "realtime_tests_passed": 250,
   "source_sha256": {
     "mm_agents/realtime_agent.py": "062d063cb7fa0cc49422ad3508e6f60222864219940127233bae56bd1509b89e",
-    "mm_agents/realtime_stream.py": "65262dc547aa534c5b92c07dd99d45749333697539a7cdac49f228c7fe0f84d4"
+    "mm_agents/realtime_stream.py": "484c93ad9f0dcd19140f4fd970e6feb6ff488b408cc20835e804ef8db84c4199"
   }
 }
