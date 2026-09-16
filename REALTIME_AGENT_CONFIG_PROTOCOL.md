@@ -8,7 +8,7 @@
 
 ## 字段
 
-顶层字段为 config_version、agent_id、display_name、description、observation、action、context、api、constraints、system_prompt。未知顶层字段会被拒绝。system_prompt 必须为非空字符串，实际 system = YAML prompt + 原生坐标约定。完整实际文字保存在每次运行的 system_prompt.txt。
+顶层字段为 config_version、agent_id、display_name、description、observation、action、context、api、constraints、system_prompt。未知顶层字段会被拒绝。system_prompt 必须为非空字符串，实际 system = YAML prompt + api.coordinate_system 对应的坐标约定。完整实际文字保存在每次运行的 system_prompt.txt。
 
 | 配置 ID | action.mode | max_actions_per_turn | historical_video.enabled |
 | --- | --- | ---: | --- |
@@ -27,7 +27,7 @@ api 定义 model、protocol、可选 key_env、tool_format=native、context_wind
 
 constraints 必须完整包含 forbid_refresh、forbid_navigation、require_done_action、forbid_text_only_completion，且都为 true。
 
-coordinate_mapping 已移除，带该字段的旧自定义配置会被明确拒绝。实时 CLI 拒绝非 1920×1080 的屏幕设置。所有模型原样接收 1920×1080 PNG、原样执行原生坐标；没有猜比例、预缩放或自动放大。
+旧 coordinate_mapping 仍被拒绝。新 api.coordinate_system 可选 native_pixels（缺省）、normalized_0_1000（Gemini）、normalized_0_1000_unclipped（MiniMax），并保留 normalized_0_999 供显式旧配置与轨迹读取；未知值在启动 VM 前被拒绝。该字段经 agent_kwargs 传入 RealtimeAgent，统一决定追加 prompt、模型工具 x/y schema 和转换。实时 CLI 仍拒绝非 1920×1080 的屏幕设置，所有模型接收原始 PNG。相对协议均按 1000 为分母映射，端点分别遵循上游：Gemini 将 1000 限定到最后一个屏幕像素；MiniMax 直接换算为对应屏幕尺寸，不加截边。协议名保存在日志中，HTML 使用该次记录的规则，不按当前模型名重新解释旧轨迹。校验不通过时整段动作不执行，沿用工具错误纠正。其余模型使用 native_pixels 原样传递，禁止按返回值猜比例。完整规则和官方来源见 [模型配置说明](configs/realtime_agents/README.md#协议和坐标适配)。
 
 ## 消息与错误
 

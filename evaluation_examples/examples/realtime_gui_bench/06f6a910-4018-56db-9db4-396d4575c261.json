@@ -34,7 +34,8 @@
       "parameters": {
         "command": [
           "google-chrome",
-          "--remote-debugging-port=1337"
+          "--remote-debugging-port=1337",
+          "--disable-features=OutdatedBuildDetector"
         ]
       }
     },

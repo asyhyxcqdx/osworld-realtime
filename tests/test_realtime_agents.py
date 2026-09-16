@@ -229,7 +229,7 @@ def test_task_is_single_prefix_across_decisions_queries_and_reset(protocol, hist
                     if block.get("type") in {"text", "input_text"}:
                         assert "Task:" not in block["text"]
     assert len(requests[0]) == 2  # Task, then timestamp plus image.
-    assert "Screenshot task time: 2.000000" in json.dumps(requests[1][-1])
+    assert "Screenshot task time: 2.000 seconds." in json.dumps(requests[1][-1])
     assert base64.b64encode(b"image-2").decode() in json.dumps(requests[1][-1])
     assert requests[2][:len(requests[1])] == requests[1]
     assert "q1" in json.dumps(requests[2][len(requests[1]):])
@@ -300,6 +300,44 @@ def test_chat_parallel_results_precede_images():
     messages = wire.tool_results([({"id": "a"}, result), ({"id": "b"}, result)])
     assert [m["role"] for m in messages] == ["tool", "tool", "user"]
     assert messages[0]["tool_call_id"] == "a"
+
+
+@pytest.mark.parametrize('protocol', ['anthropic_messages', 'openai_responses', 'openai_chat'])
+def test_model_tool_results_round_only_time_fields_without_mutating_measurements(protocol):
+    wire = ModelWire('mock', protocol)
+    result = {
+        'task_time_s': 31.715886116,
+        'frames': [{'status': 'ok', 'requested_time_s': 15.234567,
+                    'actual_time_s': 15.235027, 'available_until_s': 29.874705,
+                    'image': IMAGE}],
+    }
+    execution = {'info': {'sequence_actions': [{
+        'action': {'action_type': 'CLICK', 'parameters': {'x': 960.123456, 'y': 722}},
+        'started_s': 7.128817319869995, 'finished_s': 7.132425546646118,
+        'duration_s': 0.003609571000001921,
+        'capture_interval_s': [7.136947870, 7.273297310],
+    }]}}
+    original = copy.deepcopy((result, execution))
+    messages = wire.tool_results([({'id': 'frame'}, result), ({'id': 'action'}, execution)])
+    serialized = json.dumps(messages)
+    for expected in ('31.716', '15.235', '29.875', '7.129', '7.132', '0.004', '7.137', '7.273'):
+        assert expected in serialized
+    for raw in ('31.715886116', '7.128817319869995', '0.003609571000001921'):
+        assert raw not in serialized
+    assert '960.123456' in serialized  # Coordinates are not rounded.
+    assert IMAGE['data'] in serialized
+    assert (result, execution) == original
+
+
+def test_screenshot_time_precision_does_not_change_action_execution_precision():
+    wire = ModelWire('mock', 'anthropic_messages')
+    action = {'action_type': 'WAIT', 'parameters': {'duration_s': 0.123456}}
+    wire.request = Mock(return_value=native_reply(wire.protocol, text=json.dumps(action)))
+    agent = RealtimeAgent(sequence=True, frames=False, wire=wire)
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 1.234567})[1] == [action]
+    messages = wire.request.call_args.args[1]
+    assert 'Screenshot task time: 1.235 seconds.' in json.dumps(messages)
+    assert agent.observations[-1]['task_time_s'] == 1.234567
 
 
 def test_sequence_controller_uses_one_http_request_and_original_durations(monkeypatch):

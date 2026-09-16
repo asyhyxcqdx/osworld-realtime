@@ -82,6 +82,32 @@ def test_frames_actual_times_wait_duration_and_old_decision_labels(trajectory):
     assert d['evaluation']['details']['pass_at_1'] == 0
 
 
+def test_relative_response_markers_use_recorded_protocol_without_rewriting_calls(tmp_path, png):
+    (tmp_path / 'input.png').write_bytes(png)
+    raw_calls = [
+        {'name': 'computer_click', 'arguments': {'x': 518, 'y': 670}},
+        {'name': 'computer_click', 'arguments': {'x': 1600, 'y': 880}},
+    ]
+    path = write_log(tmp_path, [
+        {'event': 'model_request', 'request_id': 1, 'coordinate_system': 'normalized_0_999',
+         'observation': {'screenshot_file': 'input.png', 'task_time_s': 0}},
+        {'event': 'model_response', 'request_id': 1, 'calls': raw_calls},
+        {'event': 'model_request', 'request_id': 2, 'coordinate_system': 'unknown-contract'},
+        {'event': 'model_response', 'request_id': 2, 'calls': raw_calls},
+    ])
+    before = path.read_bytes()
+    data = build_trajectory_data(path)
+    response = data['events'][1]
+    assert response['calls'] == raw_calls
+    assert response['_view']['coordinate_system'] == 'normalized_0_999'
+    assert response['_view']['marks'] == [
+        {'x': 994, 'y': 723, 'label': '1', 'action': 'computer_click'},
+    ]
+    assert not data['events'][3]['_view']['marks']
+    assert any('未知坐标协议' in warning for warning in data['warnings'])
+    assert path.read_bytes() == before
+
+
 def test_nested_inline_images_are_embedded_once(tmp_path, png):
     source = {'type': 'base64', 'media_type': 'image/png', 'data': base64.b64encode(png).decode()}
     path = write_log(tmp_path, [{'event': 'model_request', 'request_messages': [{'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': 'q', 'content': [{'type': 'image', 'source': source}, {'type': 'image', 'source': source}]}]}]}])
@@ -149,6 +175,17 @@ def test_cli_renders_existing_task_and_recursive_root(trajectory):
 def test_browser_navigation_frames_history_and_safe_text(trajectory):
     playwright = pytest.importorskip('playwright.sync_api')
     attack = '</script><script>window.viewerPwned=1</script>'
+    rows = [json.loads(line) for line in trajectory.read_text().splitlines()]
+    timing_result = json.dumps({'duration_s': 0.003609571000001921,
+                               'started_s': 7.128817319869995,
+                               'finished_s': 7.132425546646118,
+                               'times_s': [1.234567, 2], 'x': 960.123456})
+    request = next(row for row in rows if row['event'] == 'model_request')
+    request['wall_time'] = '2026-09-16T11:00:00.123456+00:00'
+    request['request_messages'].append({'role': 'user', 'content': [
+        {'type': 'tool_result', 'tool_use_id': 'timing', 'content': [{'type': 'text', 'text': timing_result}]},
+    ]})
+    write_log(trajectory.parent, rows)
     with trajectory.open('a') as stream:
         stream.write(json.dumps({'event': 'model_response', 'decision_id': 2, 'text': attack}) + '\n')
     html = render_trajectory(trajectory)
@@ -170,10 +207,23 @@ def test_browser_navigation_frames_history_and_safe_text(trajectory):
         page.select_option('#filter','model')
         page.locator('#timeline button').filter(has_text='模型请求').first.click()
         page.get_by_text('展开完整请求历史',exact=True).click()
-        page.wait_for_function('document.querySelectorAll(".message").length === 3')
+        page.wait_for_function('document.querySelectorAll(".message").length === 4')
         assert '任务说明 2 份' in page.locator('#content').inner_text()
+        assert '11:00:00.123+00:00' in page.locator('#event-meta').inner_text()
+        assert '123456' not in page.locator('#event-meta').inner_text()
         page.locator('.message>summary').nth(2).click()
         page.wait_for_function('document.querySelectorAll(".message img").length === 1')
+        page.locator('.message>summary').nth(3).click()
+        timing_message = page.locator('.message').nth(3)
+        # The details toggle lazily renders its body after the click completes.
+        playwright.expect(timing_message).to_contain_text('"duration_s": 0.004')
+        displayed = timing_message.inner_text()
+        assert '"started_s": 7.129' in displayed
+        assert '"finished_s": 7.132' in displayed
+        assert '1.235' in displayed and '2.000' in displayed
+        assert '960.123456' in displayed
+        assert '0.003609571' not in displayed
+        assert page.evaluate('D.messages[D.events.find(e=>e.event==="model_request")._message_refs[3]].content[0].content[0].text') == timing_result
         page.fill('#search','viewerPwned')
         assert attack in page.locator('#content').inner_text()
         assert page.evaluate('window.viewerPwned') is None

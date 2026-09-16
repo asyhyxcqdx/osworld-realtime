@@ -4,6 +4,8 @@ import re
 
 import yaml
 
+from mm_agents.realtime_coordinates import CoordinateAdapter
+
 
 VARIANT_TO_AGENT_ID = {
     "agent1": "vanilla",
@@ -76,7 +78,8 @@ def load_realtime_config(path, *, variant=None):
     protocol = api.get("protocol")
     thinking = api.get("thinking")
     if "coordinate_mapping" in api:
-        raise ValueError("coordinate_mapping was removed; use native 1920x1080 coordinates")
+        raise ValueError("coordinate_mapping was removed; use api.coordinate_system")
+    CoordinateAdapter(api.get("coordinate_system", "native_pixels"))
     if not isinstance(api.get("model"), str) or not api["model"].strip():
         raise ValueError("api.model must be a non-empty string")
     if (action.get("allow_done") is not True or action.get("allow_fail") is not False
@@ -149,6 +152,7 @@ def agent_kwargs(config):
         "frames": observation["enabled"],
         "api_format": api["protocol"],
         "api_key_env": api.get("key_env"),
+        "coordinate_system": api.get("coordinate_system", "native_pixels"),
         "max_tokens": api["max_output_tokens"],
         "temperature": api["temperature"],
         "max_trajectory_length": None,

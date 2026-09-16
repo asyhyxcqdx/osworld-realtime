@@ -48,6 +48,7 @@ def run_realtime_example(
         "api_key_env": getattr(agent.wire, "api_key_env", None),
         "stream_requested": True,
         "tool_format": agent.tool_format,
+        "coordinate_system": getattr(agent, "coordinate_system", "native_pixels"),
         "implicit_action_sleep_s": 0,
         "environment_ready_wait_s": args.environment_ready_wait_s,
         "recording_fragment_ms": args.recording_fragment_ms,
@@ -77,6 +78,7 @@ def run_realtime_example(
     execution_error = None
     run_error = None
     done = False
+    termination_reason = "interrupted"
 
     def write_event(event, decision_id=None):
         # Persist every model and environment event in one chronological stream.
@@ -209,11 +211,16 @@ def run_realtime_example(
         time.sleep(args.evaluation_settle_s)
         if page_identity is not None:
             verify_realtime_page_identity(env, page_config, page_identity)
-        result = _evaluate_with_details(env, str(out), result_root=args.result_dir)
+        completion_reason = "done" if done else "decision_limit"
+        result = _evaluate_with_details(
+            env, str(out),
+            termination_reason=completion_reason,
+        )
         write_event(
             {
                 "event": "evaluation",
                 "result": result,
+                "termination_reason": completion_reason,
                 "details": getattr(env, "_evaluation_details", None),
             },
             decision_id=decision_count,
@@ -221,7 +228,9 @@ def run_realtime_example(
         scores.append(result)
         (out / "result.txt").write_text(f"{result}\n")
         log_task_completion(example, result, str(out), args)
+        termination_reason = completion_reason
     except Exception as exc:
+        termination_reason = "execution_error" if execution_error is not None else "run_error"
         run_error = {"type": type(exc).__name__, "message": str(exc)}
         write_event({"event": "run_error", **run_error}, decision_id=decision_count)
         raise
@@ -238,6 +247,7 @@ def run_realtime_example(
                     "action_decisions": decision_count,
                     "trajectory_events": event_count,
                     "done": done,
+                    "termination_reason": termination_reason,
                     "execution_error": execution_error,
                     "run_error": run_error,
                 },

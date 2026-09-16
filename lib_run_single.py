@@ -6,25 +6,27 @@ import time
 from multiprocessing import current_process
 
 from wrapt_timeout_decorator import *
-from lib_results_logger import log_task_completion, update_realtime_gui_bench_summary
+from lib_results_logger import log_task_completion
 
 logger = logging.getLogger("desktopenv.experiment")
 
 
-def _evaluate_with_details(env, example_result_dir, *args, result_root=None):
+def _evaluate_with_details(env, example_result_dir, *args, termination_reason=None):
     """Evaluate a task and atomically persist optional structured details."""
 
     env._evaluation_details = None
     result = env.evaluate(*args)
     details = getattr(env, "_evaluation_details", None)
     if details is not None:
+        if termination_reason is not None:
+            # Runner completion is distinct from the game's ready/running status.
+            details["termination_reason"] = termination_reason
         result_path = os.path.join(example_result_dir, "result.json")
         temporary_path = f"{result_path}.tmp.{os.getpid()}"
         with open(temporary_path, "w", encoding="utf-8") as result_file:
             json.dump(details, result_file, ensure_ascii=False, indent=2)
             result_file.write("\n")
         os.replace(temporary_path, result_path)
-        update_realtime_gui_bench_summary(example_result_dir, result_root=result_root)
     return result
 
 

@@ -25,6 +25,11 @@ MODELS = {
     'MiniMax-M3': ('anthropic_messages', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
 }
 COORDS = {'x': 754, 'y': 549}
+NATIVE_FROM_RELATIVE = {'x': 1447, 'y': 592}
+COORDINATE_SYSTEMS = {
+    'gemini-3.8-flash': 'normalized_0_1000',
+    'MiniMax-M3': 'normalized_0_1000_unclipped',
+}
 
 
 def reply(protocol, name='computer_click', args=None):
@@ -50,7 +55,7 @@ def screenshot():
 
 @pytest.mark.parametrize('model', MODELS)
 @pytest.mark.parametrize('variant', ['agent1', 'agent2', 'agent3', 'agent4'])
-def test_packy_config_request_and_native_coordinates(monkeypatch, screenshot, model, variant):
+def test_packy_config_request_and_coordinate_contract(monkeypatch, screenshot, model, variant):
     protocol, key_env, output_limit = MODELS[model]
     monkeypatch.setenv(key_env, 'selected-test-credential')
     monkeypatch.setenv('PACKY_API_KEY', 'wrong-other-model-credential')
@@ -59,8 +64,13 @@ def test_packy_config_request_and_native_coordinates(monkeypatch, screenshot, mo
     agent.wire.session.post = Mock(return_value=http(reply(protocol)))
     events = []
     agent.bind_event_sink(events.append)
+    expected_coords = NATIVE_FROM_RELATIVE if model in COORDINATE_SYSTEMS else COORDS
     assert agent.predict('task', {'screenshot': screenshot, 'task_time_s': 0})[1] == [
-        {'action_type': 'CLICK', 'parameters': COORDS}]
+        {'action_type': 'CLICK', 'parameters': expected_coords}]
+    coordinate_system = COORDINATE_SYSTEMS.get(model, 'native_pixels')
+    assert agent.coordinate_system == coordinate_system
+    assert next(e for e in events if e['event'] == 'model_request')['coordinate_system'] == coordinate_system
+    assert next(e for e in events if e['event'] == 'model_response')['provider_response'] == reply(protocol)
     assert agent.frames is (variant in {'agent3', 'agent4'})
     assert agent.sequence is (variant in {'agent2', 'agent4'})
     assert agent.max_actions == (100 if agent.sequence else 1)
@@ -68,6 +78,23 @@ def test_packy_config_request_and_native_coordinates(monkeypatch, screenshot, mo
     assert agent.history_length is None
     kw = agent.wire.session.post.call_args.kwargs
     payload = kw['json']
+    tool = next(t.get('function', t) for t in payload['tools']
+                if t.get('function', t)['name'] == 'computer_click')
+    properties = tool.get('input_schema', tool.get('parameters'))['properties']
+    if model in COORDINATE_SYSTEMS:
+        assert properties['x']['type'] == properties['y']['type'] == 'integer'
+        limit = 1000
+        assert properties['x']['maximum'] == properties['y']['maximum'] == limit
+        assert f'normalized integers in [0, {limit}]' in agent.system
+        assert 'Always submit x/y action parameters in native screen pixels' not in agent.system
+        endpoint = {'x': 1920, 'y': 1080} if model == 'MiniMax-M3' else {'x': 1919, 'y': 1079}
+        assert agent._decode_action_calls([
+            {'name': 'computer_click', 'arguments': {'x': 1000, 'y': 1000}},
+        ], {}) == [{'action_type': 'CLICK', 'parameters': endpoint}]
+    else:
+        assert properties['x']['maximum'] == 1920
+        assert properties['y']['maximum'] == 1080
+        assert 'Always submit x/y action parameters in native screen pixels' in agent.system
     assert payload['stream'] is True
     assert kw['stream'] is True
     assert kw['timeout'] == 120
@@ -122,7 +149,7 @@ def test_gemini_history_frame_result_and_reasoning_are_preserved(monkeypatch, sc
         'requested_time_s': 0.1, 'image': {'type': 'base64', 'media_type': 'image/png', 'data': base64.b64encode(screenshot).decode()}}]})
     agent.bind_frame_query(query)
     actions = agent.predict('task', {'screenshot': screenshot, 'task_time_s': 1})[1]
-    assert actions == [{'action_type': 'CLICK', 'parameters': COORDS}]
+    assert actions == [{'action_type': 'CLICK', 'parameters': NATIVE_FROM_RELATIVE}]
     query.assert_called_once_with([0.1])
     messages = request_payloads[1]['messages']
     assert message in messages
@@ -184,6 +211,8 @@ def test_minimax_may_omit_effort_in_a_custom_config(tmp_path):
 @pytest.mark.parametrize('patch', [
     {'max_output_tokens': 65537}, {'max_output_tokens': 0}, {'max_output_tokens': True},
     {'key_env': 'sk-not-an-environment-name'},
+    {'coordinate_system': 'guess'}, {'coordinate_system': None},
+    {'coordinate_system': {'width': 1000}},
     {'thinking': {'enabled': True, 'summary': True, 'effort': 'max'}},
     {'model': 'unimplemented-chat-thinking-model'},
 ])

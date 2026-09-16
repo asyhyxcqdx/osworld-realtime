@@ -203,7 +203,7 @@ checker 通过 Chrome DevTools Protocol 执行 `window.BENCH` 的只读表达式
 2. 校验第 2 节的必需字段、类型、范围和不变量。
 3. 只读取 `pass_at_1` 和 `pass_at_3` 作为分数。
 4. 将完整的 `BENCH` 对象原样保存到详细结果，便于复查。
-5. 对 `status=ready` 或 `status=running` 的任务标记为未完成，兼容标量为 0，不将它改写为 failed。当前汇总只对 passed/failed 计算终态均值，未完成与缺少有效结果计入 unscored_tasks；因此该均值不是覆盖全部 69 题的最终成功率。接口错误或运行级失效不产生伪造的游戏评分。
+5. 游戏 `status=ready/running` 保留原值，标量为 0，不改写为 failed。正常评估完成后，runner 在单任务 `result.json` 增加唯一的结束状态字段 `termination_reason`：`done` 表示提交结束动作并正常评分，`decision_limit` 表示耗尽动作回合预算并正常评分。提前 DONE 或耗尽预算未成功均为有效 0 分。`agent_metrics.json` 同时记录 `termination_reason`；异常为 `execution_error`（执行阶段）、`run_error`（其他运行错误）或 `interrupted`（中断），保留错误详情，不伪造游戏评分。不另设 `run_status`。实验总表直接读取单任务记录；不再生成整体和 A/B/C/D 分类汇总。旧结果缺少结束状态时需核对原始运行证据，不能仅凭游戏状态回填。
 6. 对 `status=passed` 或 `status=failed` 的任务记录终态和游戏直接提供的两个分数。
 
 checker **不得**：
@@ -217,7 +217,7 @@ OSWorld 的兼容标量结果可以使用游戏提供的 `pass_at_3`；详细结
 
 ## 7. Agent 终止动作
 
-游戏显示成功，或者 `status` 变为 `failed` 后，模型必须通过 action tool 提交明确的终止动作：
+游戏显示成功，或者 `status` 变为 `failed` 后，模型必须调用注册的 `computer_done` 工具，参数为空对象 `{}`。运行器将该工具调用转换为内部终止动作：
 
 ```json
 {"action_type":"DONE"}
@@ -225,7 +225,7 @@ OSWorld 的兼容标量结果可以使用游戏提供的 `pass_at_3`；详细结
 
 普通文字回复、停止调用模型、点击网页上的成功提示或等待超时，都不能替代 `DONE`。`DONE` 由 OSWorld 运行器解释为“停止当前任务并读取最终评分”。
 
-实时基准动作空间不提供 `FAIL`。Agent 只能使用 `DONE` 结束任务；如果网页仍为 `ready` 或 `running` 就提交 `DONE`，运行器按 Agent 未完成处理。
+实时基准动作空间不提供 `FAIL`。Agent 只能通过 `computer_done({})` 提交 `DONE` 结束任务；如果网页仍为 `ready` 或 `running` 就提交，正常评估未成功记有效 0 分，结束原因为 `done`，游戏状态不改写为 failed。
 
 ## 8. 可选诊断接口
 

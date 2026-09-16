@@ -2,8 +2,9 @@
 
 项目基于 OSWorld，当前接入最终 RealtimeGame v1.1(3) 的 69 道网页游戏和四类 Agent。
 
-- 新增八款模型各四组配置，保留 `claude-fable-5`、`gpt-6-astra` 基线；使用 Packy 和系统 HTTPS 代理。
-- 所有模型接收原始 1920×1080 截图，返回坐标原样执行。
+- 当前八款实验模型各有四组配置，另保留 `claude-fable-5`、`gpt-6-astra` 历史基线，共 40 份 YAML；使用 Packy 和系统 HTTPS 代理。当前计划为 combine × 八模型 × 69 任务 × 一次。
+- 所有模型接收原始 1920×1080 截图。Gemini、MiniMax M3 参考 OSWorld-V2 的 0–1000 整数相对坐标配置 prompt、工具与转换，按 1000 换算成 VM 原生像素，其余模型保持原生坐标。适配后的完整游戏结果需另行验证。
+- 69 个实时任务启动 Chrome 时关闭 `OutdatedBuildDetector`，避免旧版浏览器更新弹窗干扰；此启动参数在宿主机任务配置中生效，无需重打镜像。
 - 最终镜像：`docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`，已验证源码和实际 WAIT。
 - Fable5、Astra 的 combine 均已实际通过 C1；新增模型配置与接口验证不等同于完整游戏成绩，完整模型矩阵尚未运行。
 
@@ -15,6 +16,8 @@
 | agent4 / combine | 有 | 1–100 |
 
 Agent3 每次模型回复最多一个工具调用（get_frames 或动作）；取帧结果返回后可继续查询，单次 get_frames 仍可取 1–8 张帧。Agent4 可以同一回复提交多个查询。
+
+所有组共享先观察探索、谨慎试探并珍惜 attempt 的公共 prompt。每任务默认 100 个动作决策，三次游戏机会共用；正常评估时预算内未成功记有效 0 分，异常未取得有效成绩时不伪造分数。续跑和批量错误处理按 [运行说明](SETUP_GUIDELINE_CN.md) 执行，美元账单及结果总表由项目外流程整理。
 
 从 [项目总览](REALTIME_GUI_PROJECT.md) 和 [运行说明](SETUP_GUIDELINE_CN.md) 开始阅读。实现细节见 [配置协议](REALTIME_AGENT_CONFIG_PROTOCOL.md)、[Agent loop](REALTIME_AGENT_LOOP_GUIDE.md) 和 [实验设计](AGENT_EXPERIMENT_DESIGN.md)。
 

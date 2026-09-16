@@ -203,11 +203,13 @@ def build_trajectory_data(path, output=None):
         return {'asset': asset, 'file': name, 'label': label, 'time': obs.get('task_time_s'), 'input': label == '决策输入'}
 
     request_images, decision_inputs, owners, pending_frames = {}, {}, {}, []
+    request_coordinates = {}
     last_image = None
     for index, event in enumerate(events):
         kind, decision = event['event'], event.get('decision_id')
         view = {'decision': decision, 'images': [], 'marks': [], 'hidden': False}
         if kind == 'model_request':
+            request_coordinates[event.get('request_id')] = event.get('coordinate_system', 'native_pixels')
             img = screenshot(event.get('observation'), '决策输入')
             if img:
                 request_images[event.get('request_id')] = img
@@ -218,6 +220,29 @@ def build_trajectory_data(path, output=None):
             if img:
                 view['images'] = [img]
             view['marks'] = _marks(_calls(event))
+            coordinate_system = request_coordinates.get(event.get('request_id'), 'native_pixels')
+            view['coordinate_system'] = coordinate_system
+            if coordinate_system != 'native_pixels':
+                from mm_agents.realtime_coordinates import CoordinateAdapter
+
+                try:
+                    coordinates = CoordinateAdapter(coordinate_system)
+                except ValueError:
+                    warnings.append(f'未知坐标协议，未标注模型坐标：{coordinate_system}')
+                    view['marks'] = []
+                else:
+                    native_marks = []
+                    for mark in view['marks']:
+                        try:
+                            native_marks.append({**mark,
+                                'x': coordinates.to_native_value('x', mark['x']),
+                                'y': coordinates.to_native_value('y', mark['y']),
+                            })
+                        except ValueError:
+                            # Raw arguments remain visible; invalid outputs are
+                            # not guessed or silently clipped into screen bounds.
+                            pass
+                    view['marks'] = native_marks
             for call in _calls(event):
                 if call.get('id'):
                     owners[call['id']] = decision

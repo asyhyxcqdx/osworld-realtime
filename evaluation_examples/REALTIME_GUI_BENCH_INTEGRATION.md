@@ -28,7 +28,7 @@
 
 每道 Config：上传单个 HTML → 本地 HTTP 8765 → Chrome/CDP → 打开对应 URL → 激活窗口 → 等 3 秒。Config 不提前点击 Start。
 
-评分唯一来源是游戏直接写入的 BENCH 双指标，result.txt=pass_at_3，原始 BENCH 保存到 result.json.raw_bench。results 数组、URL hash 和 __dbg 都不参与正式评分。当前汇总仅统计 passed/failed 终态，ready/running 以及接口异常仍单列。更改任务或实验设置时用新的结果批次，不覆盖旧轨迹。
+评分唯一来源是游戏直接写入的 BENCH 双指标，result.txt=pass_at_3，原始 BENCH 保存到 result.json.raw_bench。results 数组、URL hash 和 __dbg 都不参与正式评分。正常评估时，提前 DONE 或回合上限后仍 ready/running 且未成功记有效 0 分，保留原始状态；接口或环境异常无有效成绩。结束原因由 termination_reason 单独记录，项目不生成整体/分类汇总。更改任务或实验设置时用新批次；同批次续跑会清空无 result.txt 的旧任务记录后重跑，具体行为见 [运行说明](../SETUP_GUIDELINE_CN.md)。
 
 原始历史报告仍在本地结果目录，旧交付讨论稿和过时配置从活动文档删除；需要追溯时使用 Git 历史。
 

@@ -48,7 +48,7 @@ def test_resume_and_scores_do_not_cross_models_or_agents(tmp_path, monkeypatch, 
         for i in range(1, 5):
             variant = f"agent{i}"
             args = configure(runner, monkeypatch, tmp_path, model, variant)
-            assert args.max_steps == 70
+            assert args.max_steps == 100
             run = Path(runner["get_result_dir"](
                 args.result_dir, args.action_space, args.observation_type, model, variant
             ))
@@ -117,7 +117,7 @@ def test_query_limit_is_optional_and_defaults_to_unlimited(monkeypatch, runner, 
         runner["config"]()
 
 
-def test_task_evaluation_summaries_stay_with_each_model_and_agent(tmp_path, monkeypatch, runner):
+def test_task_results_stay_with_each_model_and_agent_without_category_summary(tmp_path, monkeypatch, runner):
     runs = []
     for model in ("claude-fable-5", "gpt-6-astra"):
         for i in range(1, 5):
@@ -135,15 +135,15 @@ def test_task_evaluation_summaries_stay_with_each_model_and_agent(tmp_path, monk
                     }
                     return score
 
-            result = _evaluate_with_details(Env(), str(task), result_root=args.result_dir)
+            result = _evaluate_with_details(Env(), str(task))
             log_task_completion({"id": "task-a1"}, result, str(task), args)
             runs.append((root, score))
 
     for root, score in runs:
-        metrics = json.loads((root / "summary/realtime_gui_bench_metrics.json").read_text())
         results = json.loads((root / "summary/results.json").read_text())
-        assert metrics["overall"]["scored_tasks"] == 1
-        assert metrics["overall"]["pass_at_1"] == score
+        details = json.loads((root / "computer_13/screenshot/realtime_gui_bench/task-a1/result.json").read_text())
+        assert details["pass_at_1"] == score
+        assert {p.name for p in (root / "summary").iterdir()} == {"results.json"}
         assert len(results) == 1 and results[0]["score"] == score
     assert not (tmp_path / "summary").exists()
     assert not (tmp_path / "claude-fable-5/summary").exists()

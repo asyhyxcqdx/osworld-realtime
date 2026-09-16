@@ -17,12 +17,14 @@ CAPABILITIES = {
 
 @pytest.mark.parametrize("variant", list(CAPABILITIES))
 @pytest.mark.parametrize("export_fails", [False, True])
+@pytest.mark.parametrize("limit_reached", [False, True])
 def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
-    tmp_path, monkeypatch, variant, export_fails
+    tmp_path, monkeypatch, variant, export_fails, limit_reached
 ):
     monkeypatch.setattr("lib_run_realtime.time.sleep", lambda _: None)
     monkeypatch.setattr("lib_run_single.setup_logger", lambda *args: None)
-    monkeypatch.setattr("lib_run_single._evaluate_with_details", lambda *args, **kwargs: 1)
+    evaluate = Mock(return_value=0 if limit_reached else 1)
+    monkeypatch.setattr("lib_run_single._evaluate_with_details", evaluate)
     monkeypatch.setattr("lib_run_realtime.log_task_completion", lambda *args: None)
     if export_fails:
         monkeypatch.setattr("lib_realtime_trajectory.render_trajectory", Mock(side_effect=RuntimeError('HTML export failed')))
@@ -38,14 +40,16 @@ def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
         controller=controller,
         reset=Mock(),
         _get_obs=Mock(return_value=observation),
-        step=Mock(return_value=(observation, 0, True, {})),
-        step_sequence=Mock(return_value=(observation, 0, True, {})),
+        step=Mock(return_value=(observation, 0, not limit_reached, {})),
+        step_sequence=Mock(return_value=(observation, 0, not limit_reached, {})),
     )
     actions = (
         [{"action_type": "WAIT"}, {"action_type": "DONE"}]
         if mode.sequence
         else [{"action_type": "DONE"}]
     )
+    if limit_reached:
+        actions = [{"action_type": "WAIT"}] * (2 if mode.sequence else 1)
     agent = SimpleNamespace(
         reset=Mock(),
         variant=variant,
@@ -73,13 +77,17 @@ def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
     )
     scores = []
     run_realtime_example(agent, env, {}, 5, "task", args, str(tmp_path), scores)
-    assert scores == [1]
-    assert env.step.call_count == (0 if mode.sequence else 1)
-    assert env.step_sequence.call_count == (1 if mode.sequence else 0)
+    rounds = 5 if limit_reached else 1
+    assert scores == [0 if limit_reached else 1]
+    assert env.step.call_count == (0 if mode.sequence else rounds)
+    assert env.step_sequence.call_count == (rounds if mode.sequence else 0)
     assert controller.end_realtime_recording.call_count == 1
     stats = json.loads((tmp_path / "agent_metrics.json").read_text())
-    assert stats["executed_actions"] == len(actions)
-    assert stats["action_decisions"] == 1
+    assert stats["executed_actions"] == len(actions) * rounds
+    assert stats["action_decisions"] == rounds
+    assert "run_status" not in stats
+    assert stats["termination_reason"] == ("decision_limit" if limit_reached else "done")
+    assert evaluate.call_args.kwargs["termination_reason"] == stats["termination_reason"]
     assert (tmp_path / "trajectory.html").exists() is not export_fails
 
 
@@ -138,6 +146,10 @@ def test_model_events_are_saved_before_next_request_and_survive_api_failure(tmp_
     assert (tmp_path / "system_prompt.txt").read_text() == agent.system
     assert json.loads((tmp_path / "experiment.json").read_text())["frame_queries_unlimited"] is True
     assert agent.event_sink is None
+    metrics = json.loads((tmp_path / 'agent_metrics.json').read_text())
+    assert 'run_status' not in metrics
+    assert metrics['termination_reason'] == 'run_error'
+    assert not (tmp_path / 'result.json').exists()
     controller.end_realtime_recording.assert_called_once_with(str(tmp_path))
     assert (tmp_path / 'trajectory.html').exists()
 

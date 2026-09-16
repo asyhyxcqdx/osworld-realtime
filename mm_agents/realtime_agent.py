@@ -13,6 +13,7 @@ import time
 import requests
 
 from mm_agents.realtime_config import validate_key_env, validate_thinking
+from mm_agents.realtime_coordinates import CoordinateAdapter
 from mm_agents.realtime_stream import IncompleteStreamError, collect_stream
 
 from mm_agents.realtime_protocol import (
@@ -30,15 +31,26 @@ def text_block(text):
     return {"type": "text", "text": text}
 
 
+def rounded_time_fields(value, key=""):
+    """Round model-facing time metadata without changing execution or raw logs."""
+    if isinstance(value, dict):
+        return {name: rounded_time_fields(item, name) for name, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [rounded_time_fields(item, key) for item in value]
+    if type(value) is float and key.endswith(("_s", "_ms")):
+        return round(value, 3)
+    return value
+
+
 def result_blocks(result):
     blocks = []
     if "task_time_s" in result:
         blocks.append(
-            text_block(json.dumps({"query_completed_time_s": result["task_time_s"]}))
+            text_block(json.dumps(rounded_time_fields({"query_completed_time_s": result["task_time_s"]})))
         )
     for frame in result.get("frames", [result]):
         metadata = {k: v for k, v in frame.items() if k != "image"}
-        blocks.append(text_block(json.dumps(metadata, ensure_ascii=False)))
+        blocks.append(text_block(json.dumps(rounded_time_fields(metadata), ensure_ascii=False)))
         if frame.get("status") == "ok" and frame.get("image"):
             blocks.append({"type": "image", "source": frame["image"]})
     return blocks
@@ -478,6 +490,7 @@ class RealtimeAgent:
         thinking_effort=None,
         thinking_summary=False,
         system_prompt_text=None,
+        coordinate_system="native_pixels",
         wire=None,
     ):
         if sequence is None or frames is None:
@@ -495,6 +508,9 @@ class RealtimeAgent:
             raise ValueError("max_frame_queries must be nonnegative (0 means unlimited)")
         self.max_actions, self.max_queries = max_sequence_actions, max_frame_queries
         self.tool_format = tool_format
+        self.coordinates = CoordinateAdapter(coordinate_system)
+        self.coordinate_system = self.coordinates.name
+        self.action_tools = self.coordinates.action_tools(ACTION_TOOLS)
         self.wire = wire or ModelWire(
             model,
             api_format,
@@ -507,12 +523,7 @@ class RealtimeAgent:
         base_system = system_prompt_text or system_prompt(
             self.sequence, self.frames, self.max_actions, self.max_queries
         )
-        coordinate_guidance = (
-            "\nThe VM screen and screenshots use the native 1920x1080 pixel coordinate system. "
-            "Always submit x/y action parameters in native screen pixels measured from the "
-            "top-left corner. Do not rescale or multiply coordinates."
-        )
-        self.system = base_system + coordinate_guidance
+        self.system = base_system + "\n" + self.coordinates.guidance
         self.frame_query = None
         self.event_sink = None
         self.reset()
@@ -577,6 +588,10 @@ class RealtimeAgent:
                 result["info"] = info
             if error is not None:
                 result["error"] = error
+            if self.coordinates.maximum is not None and (info is not None or error is not None):
+                # VM timing records can echo executed actions. Label their pixel
+                # coordinates without rewriting either the VM log or raw calls.
+                result["execution_coordinate_system"] = "native_pixels"
             results.append((call, result))
         if self.active_round_messages is None:
             raise RuntimeError("The pending action round is no longer available.")
@@ -607,6 +622,7 @@ class RealtimeAgent:
             if arguments is None:
                 arguments = {}
             action = {"action_type": action_type, "parameters": arguments}
+            action = self.coordinates.to_native_action(action)
             try:
                 validate_action(action)
             except ForbiddenShortcutError:
@@ -630,7 +646,7 @@ class RealtimeAgent:
         }
         blocks = [
             text_block(
-                f"Screenshot task time: {obs['task_time_s']:.6f} seconds. "
+                f"Screenshot task time: {obs['task_time_s']:.3f} seconds. "
                 "This timestamp describes the screenshot, not the time your reply will execute."
             )
         ]
@@ -667,7 +683,7 @@ class RealtimeAgent:
             )
             request_tools = []
             if self.tool_format == "native":
-                request_tools.extend(ACTION_TOOLS)
+                request_tools.extend(self.action_tools)
                 if tools_enabled:
                     request_tools.insert(0, FRAME_TOOL)
             self.emit({
@@ -675,6 +691,7 @@ class RealtimeAgent:
                 "observation": observation, "history_observations": list(self.observations),
                 "tools_enabled": tools_enabled,
                 "protocol": self.wire.protocol,
+                "coordinate_system": self.coordinate_system,
                 "stream_requested": True,
                     "model": self.wire.model,
                     "max_tokens": self.max_tokens,

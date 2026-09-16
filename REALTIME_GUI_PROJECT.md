@@ -1,6 +1,6 @@
 # 实时 GUI Agent 项目总览
 
-当前环境：RealtimeGame v1.1(3) 的 69 道游戏与最终 realtime VM 镜像。模型配置新增 Packy 八模型，保留已验证的 Fable 5、Astra 基线；详见 [模型配置表](configs/realtime_agents/README.md)。截图和动作统一使用原生 1920×1080，不预缩放图片、不自动转换坐标。
+当前环境：RealtimeGame v1.1(3) 的 69 道游戏与最终 realtime VM 镜像。当前实验使用 Packy 八模型，另保留 Fable 5、Astra 的历史基线配置；详见 [模型配置表](configs/realtime_agents/README.md)。截图与 VM 执行坐标统一为原生 1920×1080，图片不预缩放。Gemini、MiniMax 的模型层按各自配置输出相对坐标并固定转换，其余模型保持原生坐标。
 
 ## 环境与任务
 
@@ -28,13 +28,17 @@
 
 所有组使用同一套原生工具和 VM 执行器。单动作也是长度为 1 的序列；多动作只在整段完成后返回当前截图。WAIT 在 VM 中按 `duration_s` 执行；推理期间游戏与录像持续进行。具体流程见 [Agent loop](REALTIME_AGENT_LOOP_GUIDE.md)。
 
+所有模型和四组的 system prompt 均要求先观察、探索机制、谨慎试探并珍惜 attempt，尤其在最后一次尝试前获取足够信息。探索只使用各组已有工具。每个“模型 × Agent × 游戏”默认最多 100 个动作决策，游戏内三次机会共用该预算。
+
 ## 评分与验证边界
 
-评分只读取游戏的 `window.BENCH.pass_at_1` 和 `pass_at_3`。三次机会属于同一次页面运行，不是三次独立实验。`passed`/`failed` 是可评分终态；当前汇总将 ready/running 或接口中断单列为未评分，不伪造失败终态。
+评分只读取游戏的 `window.BENCH.pass_at_1` 和 `pass_at_3`，`result.txt` 为 pass_at_3。三次机会属于同一次页面运行。正常评估结束时，提前 DONE 或达到回合上限仍未成功记有效 0 分，保留游戏真实的 ready/running 状态；API、执行或评分异常未取得有效成绩时不伪造分数。`termination_reason` 单独记录任务怎样结束。项目保存单任务结果，不再生成整体和 A/B/C/D 分类汇总。
 
-已确认的真实模型 C1 结果：Fable5 第二次成功，Astra 第三次成功，均提交 DONE；见 [原始试跑报告](PACKY_C1_FINAL_TRIAL_REPORT.md)。本次整理另以固定模拟回复验证两协议的四组 Agent 与真实 VM，共 8 组通过；这不是 8 条模型成绩。
+历史基线 C1 结果：Fable5 第二次成功，Astra 第三次成功，均提交 DONE；见 [原始试跑报告](PACKY_C1_FINAL_TRIAL_REPORT.md)。既有两协议 × 四组真实 VM 核验使用固定模拟回复，共 8 组通过；不作为真实模型成绩。新增八模型已有接口短测与旧版 C1 试跑记录，不能重记为当前 prompt 和坐标配置的实验成绩。
 
-仍未完成：69 道 × 4 Agent × 2 模型的大规模正式实验和成功率统计。不能把 C1 的两次通过概括为全部 C 类或全部任务都可解。
+接下来运行 combine × 八模型 × 69 任务 × 一次，共 552 次独立任务实验；四组配置均保留供后续对照。Gemini/MiniMax 当前相对坐标配置的真实 C1、新 prompt 下的统一能力实验仍需实跑。不能把已有 C1 成功概括为全部 C 类或全部任务都可解。
+
+批量任务异常后继续下一个任务；同一 run_id 续跑时跳过已有 result.txt 的任务，清空无 result.txt 的旧任务记录后重跑。初始化早期错误可能仅有运行日志。以上行为按当前实验要求保留，详见 [运行说明](SETUP_GUIDELINE_CN.md)。实际美元账单核对与结果总表统计在项目外完成。
 
 ## 文档入口
 

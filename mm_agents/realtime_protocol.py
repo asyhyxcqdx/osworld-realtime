@@ -190,9 +190,11 @@ def system_prompt(sequence, frames, max_actions, max_queries):
         else "Submit exactly one native computer action tool call per decision. "
     )
     prompt = (
-        "You control a desktop using native computer action tools. The VM screen is 1920x1080, "
-        "and all x/y action parameters use that native full-screen pixel coordinate system. "
-        "Always submit native screen pixels measured from the top-left corner; do not rescale or multiply coordinates. "
+        "You control a desktop using native computer action tools. The VM screen is 1920x1080. "
+        "Before starting task execution, thoroughly explore the environment and game mechanics; do not rush into action. "
+        "Many details of the game mechanics are not explicitly shown in the interface; discover them through observation and cautious probing using only the tools available to this agent. "
+        "Before any action that is irreversible, prevents returning to the current state, or consumes an attempt, first gather enough information to assess its consequences. "
+        "Value every attempt and avoid wasting opportunities. Perform critical or irreversible actions only when you have sufficient information and confidence in your decision, especially on the final attempt. "
         "Use key names exactly as listed; 'space' is the space bar. "
         "Do not invent action parameters or execute Python. Never refresh, reload, reopen, or navigate away from the game page. "
         "When the game shows success or no attempts remain, call the registered `computer_done` tool with empty arguments `{}`. "
