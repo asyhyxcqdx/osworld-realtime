@@ -29,7 +29,7 @@ python scripts/python/run_multienv.py \
   --test_all_meta_path evaluation_examples/test_realtime_gui_bench.json
 ```
 
-真实 Docker 运行还需要 provider、VM 镜像、模型、凭据和其他参数。完整模板见仓库根目录的 `AGENT_EXPERIMENT_DESIGN.md` 和 `README_CN.md`。
+真实 Docker 运行还需要 provider、VM 镜像、模型、凭据和其他参数。完整模板见仓库根目录的 `REALTIME_PROJECT_DESIGN.md` 和 `README_CN.md`。
 
 ## 其他脚本
 

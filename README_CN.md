@@ -28,7 +28,7 @@ python scripts/python/run_realtime_batch.py \
 ## 当前状态
 
 - **环境**：69 个游戏 + 69 个任务配置已接入并通过验收（A 22 / B 12 / C 17 / D 18）；最终镜像 `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`。
-- **Agent**：agent1 vanilla（单动作、无录像）、agent2 anticipatory（动作序列、无录像）、agent3 video（单动作、有录像）、agent4 combine（动作序列 + 录像）。能力矩阵与工具见 [项目总览](REALTIME_GUI_PROJECT.md)。
+- **Agent**：agent1 vanilla（单动作、无录像）、agent2 anticipatory（动作序列、无录像）、agent3 video（单动作、有录像）、agent4 combine（动作序列 + 录像）。能力矩阵、工具与时序见 [项目与实验设计](REALTIME_PROJECT_DESIGN.md)。
 - **模型**：8 款实验模型各 4 份配置，另留 `claude-fable-5`、`gpt-6-astra` 8 份历史基线，共 40 份 YAML；坐标协议与密钥分组见 [模型配置表](configs/realtime_agents/README.md)。
 - **进度与成绩**：正式全量实验由外部同学执行，逐任务成绩与逐模型金额记录在飞书总表；仓库只保留代码、配置和文档。
 
@@ -46,12 +46,7 @@ python scripts/python/run_realtime_batch.py \
 | [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 八模型并填飞书总表 |
 | [`AGENTS.md`](AGENTS.md) | **AI 助手操作规程**（仓库地图、命令、硬性约定、已知坑） |
 | [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) | 部署与运行：环境、镜像、命令、镜像构建、排错 |
-| [`REALTIME_GUI_PROJECT.md`](REALTIME_GUI_PROJECT.md) | 项目总览：环境、四组 Agent、评分与验证边界 |
-| [`AGENT_EXPERIMENT_DESIGN.md`](AGENT_EXPERIMENT_DESIGN.md) | 实验设计：受控变量、工具与时序、录像、预算 |
-| [`REALTIME_AGENT_LOOP_GUIDE.md`](REALTIME_AGENT_LOOP_GUIDE.md) | 实际程序流程（逐步骤） |
-| [`REALTIME_AGENT_CONFIG_PROTOCOL.md`](REALTIME_AGENT_CONFIG_PROTOCOL.md) | YAML 字段协议与校验规则 |
-| [`configs/realtime_agents/README.md`](configs/realtime_agents/README.md) | 模型配置表、坐标协议、密钥分组 |
-| [`REALTIME_GUI_BENCH_PROTOCOL.md`](REALTIME_GUI_BENCH_PROTOCOL.md) | 游戏接口协议（`window.BENCH` 字段、评分、验收清单） |
-| [`REALTIME_GUI_BENCH_SHORTCUT_POLICY.md`](REALTIME_GUI_BENCH_SHORTCUT_POLICY.md) | 禁用的快捷键与鼠标绕道规则 |
-| [`REALTIME_TRAJECTORY_VIEWER.md`](REALTIME_TRAJECTORY_VIEWER.md) | HTML 轨迹查看器用法 |
-| [`evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`](evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md) | 环境接入、镜像与评分来源记录 |
+| [`REALTIME_PROJECT_DESIGN.md`](REALTIME_PROJECT_DESIGN.md) | 项目与实验设计：环境与任务、接入与验收边界、四组 Agent、工具与时序、录像、预算、评分口径 |
+| [`REALTIME_AGENT_GUIDE.md`](REALTIME_AGENT_GUIDE.md) | Agent 配置与运行：YAML 字段协议、程序流程、三种 API 协议、日志字段、轨迹查看器 |
+| [`configs/realtime_agents/README.md`](configs/realtime_agents/README.md) | 模型↔协议↔密钥映射表、坐标适配与官方依据 |
+| [`REALTIME_GUI_BENCH_PROTOCOL.md`](REALTIME_GUI_BENCH_PROTOCOL.md) | 游戏接口协议：`window.BENCH` 字段、状态机、写入规则、禁用快捷键、验收清单 |

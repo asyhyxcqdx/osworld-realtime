@@ -214,12 +214,7 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 | [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 八模型并填飞书总表 |
 | [`README_CN.md`](README_CN.md) | 项目入口（给人看） |
 | [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) | 部署与运行：环境、镜像、命令、镜像构建、排错 |
-| [`REALTIME_GUI_PROJECT.md`](REALTIME_GUI_PROJECT.md) | 项目总览：环境、四组 Agent、评分与验证边界 |
-| [`AGENT_EXPERIMENT_DESIGN.md`](AGENT_EXPERIMENT_DESIGN.md) | 实验设计：受控变量、工具与时序、录像、预算 |
-| [`REALTIME_AGENT_LOOP_GUIDE.md`](REALTIME_AGENT_LOOP_GUIDE.md) | 实际程序流程与日志字段（逐步骤） |
-| [`REALTIME_AGENT_CONFIG_PROTOCOL.md`](REALTIME_AGENT_CONFIG_PROTOCOL.md) | YAML 字段协议与校验规则 |
-| [`configs/realtime_agents/README.md`](configs/realtime_agents/README.md) | **模型↔协议↔密钥映射表、坐标协议（唯一权威）** |
-| [`REALTIME_GUI_BENCH_PROTOCOL.md`](REALTIME_GUI_BENCH_PROTOCOL.md) | 游戏接口协议（`window.BENCH` 字段、评分、验收清单） |
-| [`REALTIME_GUI_BENCH_SHORTCUT_POLICY.md`](REALTIME_GUI_BENCH_SHORTCUT_POLICY.md) | 禁用的快捷键与鼠标绕道规则 |
-| [`REALTIME_TRAJECTORY_VIEWER.md`](REALTIME_TRAJECTORY_VIEWER.md) | HTML 轨迹查看器用法 |
-| [`evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`](evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md) | 环境接入、镜像与评分来源记录 |
+| [`REALTIME_PROJECT_DESIGN.md`](REALTIME_PROJECT_DESIGN.md) | 项目与实验设计：环境与任务、接入与验收边界、四组 Agent、工具与时序、录像、预算、评分口径 |
+| [`REALTIME_AGENT_GUIDE.md`](REALTIME_AGENT_GUIDE.md) | Agent 配置与运行：YAML 字段协议、程序流程、三种 API 协议、日志字段、轨迹查看器 |
+| [`configs/realtime_agents/README.md`](configs/realtime_agents/README.md) | **模型↔协议↔密钥映射表、坐标适配（唯一权威）** |
+| [`REALTIME_GUI_BENCH_PROTOCOL.md`](REALTIME_GUI_BENCH_PROTOCOL.md) | 游戏接口协议：`window.BENCH` 字段、状态机、写入规则、禁用快捷键、验收清单 |

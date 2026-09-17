@@ -19,7 +19,7 @@
 - `realtime_protocol.py`：模式配置、动作校验、工具 schema 和提示词。
 - `realtime_agent.py`：模型请求、工具调用、历史帧查询和响应日志。
 - 四个 Agent 的配置字段和内嵌 system prompt 规范见仓库根目录的
-  `REALTIME_AGENT_CONFIG_PROTOCOL.md`。配置文件按
+  `REALTIME_AGENT_GUIDE.md`。配置文件按
   `<agent_id>-<model>.yaml` 命名，例如 `vanilla-claude-fable-5.yaml`。
 
 最终实验要求所有 Agent 使用原生 API tool use。历史帧查询可以在一个回合内调用多次，但不计额外回合；Agent1/3 的行动工具必须限制为单个动作。当前正式接口不接受文本 JSON 代替原生工具。
@@ -28,7 +28,7 @@
 
 模型凭据从环境变量读取，例如 `OPENAI_API_KEY`、`ANTHROPIC_API_KEY` 或项目使用的中转站密钥。不要把密钥写入代码、配置文件或提交记录。
 
-实时实验通过 `scripts/python/run_multienv.py` 启动，而不是直接运行 Agent 文件。完整参数和结果目录约定见仓库根目录的 `README_CN.md` 与 `AGENT_EXPERIMENT_DESIGN.md`。
+实时实验通过 `scripts/python/run_multienv.py` 启动，而不是直接运行 Agent 文件。完整参数和结果目录约定见仓库根目录的 `README_CN.md` 与 `REALTIME_PROJECT_DESIGN.md`。
 
 ## 修改原则
 

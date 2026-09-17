@@ -40,48 +40,16 @@ cp .env.example .env && chmod 600 .env
 
 ## 4. 运行
 
-**冒烟（一个模型 + 一个任务）**
+跑实验的完整命令、参数、续跑与出表见 [执行同学作业单](HANDOFF_CN.md)；入口是 `scripts/python/run_realtime_batch.py`（逐模型记账、可续跑），它内部按模型顺序调用底层启动器 `scripts/python/run_multienv.py`（完整参数示例见 §6）。
 
-```bash
-python scripts/python/run_realtime_batch.py \
-  --agent_variant agent4 --models gemini-3.8-flash \
-  --run_id smoke_20260917 \
-  --task 5169e1b0-1a7d-538b-8e59-8785c39460ce \
-  --exclusive-keys-confirmed
-```
+- 结果落在 `<result_dir>/<model>/<run_id>/<agent>/computer_13/screenshot/realtime_gui_bench/<UUID>/`。
+- 账单与汇总落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`）：`cost_report.json`、`<model>_summary.json`、账单快照与网关明细；成本由 `--prices`（token × 单价）或 `--charges`（网关账单原值）计算。
+- 每个模型顺序执行，单个模型内失败的任务会继续下一个；**跨模型继续需要 `--keep-going`**。
+- `--num_envs N` 每个模型同时开 N 台 VM（默认 1，批量建议 4–8）。
+- 续跑用同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次；改 prompt 或配置时必须换新的 `run_id`。
+- 结果导出成飞书总表的 16 列用 `scripts/python/export_realtime_results.py`，字段口径见 [执行同学作业单](HANDOFF_CN.md) 第 9 节。
 
-**批量（默认全部 69 个任务）**
-
-```bash
-python scripts/python/run_realtime_batch.py \
-  --agent_variant agent4 \
-  --run_id packy_v11_batch01 \
-  --result_dir results_realtime_batches \
-  --num_envs 4 --keep-going \
-  --exclusive-keys-confirmed
-```
-
-- `--num_envs N`：每个模型同时开 N 台 VM；瓶颈通常是 CPU/内存与网关限流。
-- 每个模型顺序执行，结果落在 `<result_dir>/<model>/<run_id>/<agent>/computer_13/screenshot/realtime_gui_bench/<UUID>/`。
-- 账单与汇总落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`）：`cost_report.json`、`<model>_summary.json`、账单快照与网关明细。
-- 单任务异常记录到日志后继续下一个任务；正常游戏失败也继续。
-
-**续跑（同一目录补齐）**
-
-用同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次即可：runner 跳过已有 `result.txt` 的任务，清空没有 `result.txt` 的目录（避免 `trajectory.jsonl` 追加模式把新旧事件混在一起）后重跑。不需要额外参数。改 prompt 或配置时用新的 `run_id`。
-
-## 5. 结果与出表
-
-```bash
-python scripts/python/export_realtime_results.py \
-  --result_dir results_realtime_batches --run_id packy_v11_batch01 \
-  --prices prices.json \
-  --lark-base-token <base_token> --lark-table-id <table_id>
-```
-
-输出 `<result_dir>/export_<run_id>.csv`（utf-8-sig）与 `.json`，加 `--lark-*` 后可用 `lark-cli` 批量写入飞书总表。成本优先用 `--charges <cost_report.json>`（网关账单原值），否则用 `--prices`（token × 单价），都没有就留空。字段口径与注意事项见 [执行同学作业单](HANDOFF_CN.md)。
-
-## 6. 镜像与服务
+## 5. 镜像与服务
 
 只更新宿主 Agent 不需要重打镜像。VM 服务源码变化后：
 
@@ -94,7 +62,7 @@ python scripts/python/build_realtime_vm_image.py \
 
 构建器会重启新镜像，检查源码、WAIT 实际时长和 100 动作序列，并写 `.verification.json`；输出已存在时默认拒绝覆盖，有意重建才用 `--force`。
 
-## 7. 直接使用底层启动器
+## 6. 直接使用底层启动器
 
 批量脚本内部调用 `run_multienv.py`。需要单模型单变体的完整控制时：
 
@@ -124,7 +92,7 @@ python scripts/python/run_multienv.py \
 - HTTP 读取超时 120 秒、最多重试三次；执行失败的动作序列不自动重放。
 - 环境重置、初始页面检查或录制启动阶段报错时可能只有运行日志，没有 `agent_metrics.json`：这种情况**没有有效成绩，不记作 0 分**。
 
-## 8. 验证和排错
+## 7. 验证和排错
 
 - 回归测试：`python -m pytest -q tests/test_realtime_*.py tests/test_fmp4_live.py tests/test_recording_log_download.py`（需要 ffmpeg；查看器用例需要 Chromium，可用 `REALTIME_VIEWER_CHROMIUM` 指定已有浏览器）。
 - 真实 VM 链路自检（用模拟回复，不调付费 API、不产生成绩）：`python scripts/python/verify_realtime_runtime.py --artifacts /tmp/realtime-runtime-review`。

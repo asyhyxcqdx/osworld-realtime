@@ -33,7 +33,7 @@
 
 > **Realtime GUI project:** This fork adds a 69-game real-time benchmark and
 > four controlled GUI-agent variants. Start with the
-> [Realtime GUI Project Guide](REALTIME_GUI_PROJECT.md) for the benchmark
+> [Realtime GUI Project and Experiment Design](REALTIME_PROJECT_DESIGN.md) for the benchmark
 > layout, agent matrix, scoring rules, runtime architecture, and contributor
 > workflow. 中文开发者请先阅读 [README_CN.md](README_CN.md)。
 
