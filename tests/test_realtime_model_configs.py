@@ -235,6 +235,12 @@ ACTION_TIMING_NOTE = (
     'screen to update, so it may not yet show the state those actions produced. Check a '
     'later screenshot before concluding that an action had no effect.'
 )
+# Thinking and generating also take real time; the game keeps running meanwhile.
+REPLY_TIME_NOTE = (
+    'Real time passes while you think and reply: the game keeps running during your '
+    'reasoning and while the response is being generated, so the state you saw may already '
+    'have changed.'
+)
 # Lines removed per variant; the YAML prompts must not reintroduce them.
 REMOVED_PROMPT_LINES = {
     'vanilla': 'Do not request or infer historical video frames',
@@ -262,6 +268,9 @@ def test_all_agent_configs_share_prompt_opening_and_action_timing_note():
         assert prompt.splitlines()[0] == PROMPT_OPENING
         assert prompt.count(PROMPT_OPENING) == 1
         assert prompt.count(ACTION_TIMING_NOTE) == 1
+        assert prompt.count(REPLY_TIME_NOTE) == 1
+        # Both halves of the timing note sit together, before any strategy line.
+        assert prompt.index(ACTION_TIMING_NOTE) + len(ACTION_TIMING_NOTE) < prompt.index(REPLY_TIME_NOTE)
         # The note qualifies the screenshot the model receives, before any strategy line.
         assert (
             prompt.index('You receive the current screenshot and the complete task context.')
