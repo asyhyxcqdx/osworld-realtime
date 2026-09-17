@@ -450,16 +450,23 @@ class ModelWire:
         messages, images = [], []
         for call, result in results:
             blocks = result_blocks(result)
+            has_images = any(b["type"] == "image" for b in blocks)
+            # Chat carries images in a user message. Keep frame metadata beside
+            # those images instead of repeating it in the text-only tool reply.
+            content = (
+                "Frame results and images are in the following user message "
+                f"labeled Images for tool_call_id={call['id']}."
+                if has_images
+                else "\n".join(b["text"] for b in blocks if b["type"] == "text")
+            )
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": call["id"],
-                    "content": "\n".join(
-                        b["text"] for b in blocks if b["type"] == "text"
-                    ),
+                    "content": content,
                 }
             )
-            if any(b["type"] == "image" for b in blocks):
+            if has_images:
                 images.extend(
                     [text_block(f"Images for tool_call_id={call['id']}")] + blocks
                 )
@@ -575,6 +582,7 @@ class RealtimeAgent:
             raise RuntimeError("No pending native action calls to close.")
         if len(calls) != len(actions):
             raise ValueError("Environment returned a different number of action results.")
+        execution_records = (info or {}).get("sequence_actions", [])
         results = []
         for index, (call, action) in enumerate(zip(calls, actions)):
             result = {
@@ -584,14 +592,16 @@ class RealtimeAgent:
                 "done": bool(done),
                 "last_in_decision": index == len(actions) - 1,
             }
-            if info is not None:
-                result["info"] = info
+            if index < len(execution_records):
+                # The runner retains the complete VM receipt in action_executed.
+                # Each model-facing result needs only this call's measured times;
+                # its original arguments already remain in assistant history.
+                record = execution_records[index]
+                for field in ("started_s", "finished_s", "duration_s"):
+                    if field in record:
+                        result[field] = record[field]
             if error is not None:
                 result["error"] = error
-            if self.coordinates.maximum is not None and (info is not None or error is not None):
-                # VM timing records can echo executed actions. Label their pixel
-                # coordinates without rewriting either the VM log or raw calls.
-                result["execution_coordinate_system"] = "native_pixels"
             results.append((call, result))
         if self.active_round_messages is None:
             raise RuntimeError("The pending action round is no longer available.")

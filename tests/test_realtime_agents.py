@@ -302,6 +302,74 @@ def test_chat_parallel_results_precede_images():
     assert messages[0]["tool_call_id"] == "a"
 
 
+def test_chat_frame_details_appear_once_and_stay_with_their_images():
+    wire = ModelWire("mock", "openai_chat")
+    second_image = {**IMAGE, "data": base64.b64encode(b"second png").decode()}
+    results = [
+        ({"id": "a"}, {
+            "task_time_s": 5.123456,
+            "frames": [
+                {"requested_time_s": 1.0, "actual_time_s": 1.003456, "status": "ok", "image": IMAGE},
+                {"requested_time_s": 6.0, "status": "not_ready"},
+                {"requested_time_s": 2.0, "status": "error", "message": "Frame decode failed"},
+            ],
+        }),
+        ({"id": "b"}, {
+            "task_time_s": 5.234567,
+            "frames": [{"requested_time_s": 3.0, "actual_time_s": 3.005678, "status": "ok", "image": second_image}],
+        }),
+    ]
+    original = copy.deepcopy(results)
+    messages = wire.tool_results(results)
+    assert [m["role"] for m in messages] == ["tool", "tool", "user"]
+    for message, call_id in zip(messages[:2], ("a", "b")):
+        assert message["tool_call_id"] == call_id
+        assert f"Images for tool_call_id={call_id}" in message["content"]
+        assert "requested_time_s" not in message["content"]
+
+    groups = {}
+    for block in messages[-1]["content"]:
+        if block["type"] == "text" and block["text"].startswith("Images for tool_call_id="):
+            current = block["text"].split("=", 1)[1]
+            groups[current] = []
+        else:
+            groups[current].append(block)
+    assert list(groups) == ["a", "b"]
+    for call_id, image in (("a", IMAGE), ("b", second_image)):
+        group = groups[call_id]
+        assert group[2]["type"] == "image_url"
+        assert group[2]["image_url"]["url"] == "data:image/png;base64," + image["data"]
+        assert json.loads(group[1]["text"])["status"] == "ok"
+    assert json.loads(groups["a"][0]["text"]) == {"query_completed_time_s": 5.123}
+    assert json.loads(groups["a"][1]["text"])["actual_time_s"] == 1.003
+    assert json.loads(groups["a"][3]["text"])["status"] == "not_ready"
+    assert json.loads(groups["a"][4]["text"])["message"] == "Frame decode failed"
+    text = "\n".join(m["content"] for m in messages[:2]) + "\n".join(
+        b["text"] for b in messages[-1]["content"] if b["type"] == "text"
+    )
+    assert text.count('"requested_time_s"') == 4
+    assert text.count('"query_completed_time_s"') == 2
+    assert results == original
+
+
+@pytest.mark.parametrize("result", [
+    {"task_time_s": 5.123456, "frames": [{"requested_time_s": 6.0, "status": "not_ready"}]},
+    {"frames": [{"requested_time_s": 2.0, "status": "error", "message": "Frame decode failed"}]},
+    {"status": "error", "message": "Frame query failed"},
+])
+def test_chat_query_without_images_keeps_details_in_tool_reply(result):
+    wire = ModelWire("mock", "openai_chat")
+    messages = wire.tool_results([({"id": "query"}, result)])
+    assert len(messages) == 1
+    assert messages[0]["role"] == "tool"
+    assert messages[0]["tool_call_id"] == "query"
+    metadata = [json.loads(line) for line in messages[0]["content"].splitlines()]
+    expected = result.get("frames", [result])[-1]
+    assert metadata[-1] == expected
+    if "task_time_s" in result:
+        assert metadata[0] == {"query_completed_time_s": 5.123}
+
+
 @pytest.mark.parametrize('protocol', ['anthropic_messages', 'openai_responses', 'openai_chat'])
 def test_model_tool_results_round_only_time_fields_without_mutating_measurements(protocol):
     wire = ModelWire('mock', protocol)
@@ -338,6 +406,81 @@ def test_screenshot_time_precision_does_not_change_action_execution_precision():
     messages = wire.request.call_args.args[1]
     assert 'Screenshot task time: 1.235 seconds.' in json.dumps(messages)
     assert agent.observations[-1]['task_time_s'] == 1.234567
+
+
+@pytest.mark.parametrize('variant', CAPABILITIES)
+@pytest.mark.parametrize('protocol,coordinate_system', [
+    ('anthropic_messages', 'native_pixels'),
+    ('anthropic_messages', 'normalized_0_1000_unclipped'),
+    ('openai_chat', 'normalized_0_1000'),
+    ('openai_responses', 'native_pixels'),
+])
+def test_next_request_has_each_actions_own_times_without_vm_coordinates(variant, protocol, coordinate_system):
+    caps = CAPABILITIES[variant]
+    relative = coordinate_system != 'native_pixels'
+    raw_actions = [{
+        'action_type': 'CLICK',
+        'parameters': {'x': 518, 'y': 670} if relative else {'x': 994, 'y': 723},
+    }]
+    if caps.sequence:
+        raw_actions.extend([
+            {'action_type': 'WAIT', 'parameters': {'duration_s': .3}},
+            ACTION,
+        ])
+    wire = ModelWire('mock', protocol)
+    first_reply = native_reply(protocol, text=json.dumps(raw_actions))
+    raw_snapshot = copy.deepcopy(first_reply)
+    wire.request = Mock(side_effect=[
+        first_reply,
+        native_reply(protocol, text=json.dumps({'action_type': 'DONE', 'parameters': {}})),
+    ])
+    agent = RealtimeAgent(
+        variant=variant, sequence=caps.sequence, frames=caps.frames,
+        coordinate_system=coordinate_system, wire=wire,
+    )
+    events = []
+    agent.bind_event_sink(events.append)
+    _, actions = agent.predict('task', {'screenshot': b'input png', 'task_time_s': 1.0})
+    assert actions[0]['parameters'] == {'x': 994, 'y': 723}
+    measurements = [
+        (2.123456, 2.127891, .004435),
+        (2.128456, 2.428891, .300435),
+        (2.429456, 2.431891, .002435),
+    ][:len(actions)]
+    info = {'sequence_actions': [
+        {'action': copy.deepcopy(action), 'started_s': start, 'finished_s': end, 'duration_s': duration}
+        for action, (start, end, duration) in zip(actions, measurements)
+    ]}
+    original_info = copy.deepcopy(info)
+    agent.record_action_result(actions, reward=0, done=False, info=info)
+    recorded = next(e for e in events if e['event'] == 'action_tool_result')
+    for index, (_, result) in enumerate(recorded['calls']):
+        assert result['started_s'] == measurements[index][0]  # Raw logs keep original precision.
+        assert 'info' not in result
+        assert 'execution_coordinate_system' not in result
+    agent.predict('task', {'screenshot': b'after png', 'task_time_s': 3.0})
+    sent = wire.request.call_args.args[1]
+    if protocol == 'anthropic_messages':
+        outputs = [(b['tool_use_id'], json.loads(b['content'][0]['text']))
+                   for m in sent for b in m.get('content', []) if b.get('type') == 'tool_result']
+    elif protocol == 'openai_responses':
+        outputs = [(m['call_id'], json.loads(m['output'][0]['text']))
+                   for m in sent if m.get('type') == 'function_call_output']
+    else:
+        outputs = [(m['tool_call_id'], json.loads(m['content'])) for m in sent if m.get('role') == 'tool']
+    assert len(outputs) == len(actions)
+    for index, ((call_id, result), action, (start, end, duration)) in enumerate(zip(outputs, actions, measurements)):
+        assert call_id == f'a{index}'
+        assert result == {
+            'action_type': action['action_type'], 'executed': True,
+            'reward': 0, 'done': False, 'last_in_decision': index == len(actions) - 1,
+            'started_s': round(start, 3), 'finished_s': round(end, 3), 'duration_s': round(duration, 3),
+        }
+    assert info == original_info
+    assert first_reply == raw_snapshot
+    assert all(message in sent for message in wire.unpack(raw_snapshot)[2])
+    assert 'Screenshot task time: 3.000 seconds.' in json.dumps(sent[-1])
+    assert base64.b64encode(b'after png').decode() in json.dumps(sent[-1])
 
 
 def test_sequence_controller_uses_one_http_request_and_original_durations(monkeypatch):

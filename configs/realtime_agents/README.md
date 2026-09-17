@@ -35,7 +35,7 @@
 
 Gemini 和 MiniMax 的四组 YAML 均显式选择对应协议；两者输出范围相同，但端点处理分别跟随各自上游实现。Qwen 按本项目原生坐标实测结果保持现状。没有图片预缩放，也不根据某次返回值大小猜测坐标单位。相对协议不接受超范围、非整数的 x/y，沿用现有整段拒绝与工具错误纠正流程，不执行有效前缀。键盘、WAIT、滚动量、动作数量与历史查询规则不变。`tool_format: native` 指 API 原生工具调用，与坐标单位是两回事。
 
-实际 prompt 保存于 `system_prompt.txt`，协议保存于 `experiment.json` 和 `model_request.coordinate_system`。原始回复/工具参数保留在 `model_response`，转换后的提交和执行动作保留在 `action_submitted` / `action_executed`；不会把像素值写回 assistant 历史。VM 执行反馈可能包含动作坐标，相对协议的工具结果会标注 `execution_coordinate_system: native_pixels`。HTML 在原生图片上按记录的协议绘制模型坐标，工具参数仍展示原始值。
+实际 prompt 保存于 `system_prompt.txt`，协议保存于 `experiment.json` 和 `model_request.coordinate_system`。原始回复/工具参数保留在 `model_response`，转换后的提交和执行动作保留在 `action_submitted` / `action_executed`；不会把像素值写回 assistant 历史。正常执行后的模型工具反馈只包含该调用的动作类型、现有状态字段及自身开始/结束/耗时，不回显 VM 坐标、不附整段 `sequence_actions`，因此不再添加 `execution_coordinate_system`。完整 VM 参数及原精度时间仍保留在 `action_executed.info.sequence_actions`。HTML 在原生图片上按记录的协议绘制模型坐标，工具参数仍展示原始值。
 
 - Messages：保留完整 thinking/tool_use/tool_result。MiniMax M3 只发送 `thinking: {type: adaptive}`，不发送 `output_config.effort` 或 Claude 的 `thinking.display`。
 - Responses：`reasoning: {effort: high, summary: auto}`，保留 reasoning 内容，收齐完成响应才解析动作。

@@ -186,8 +186,11 @@ def test_production_config_runner_logs_and_viewer_keep_both_coordinate_spaces(tm
     assert response['_view']['marks'][0]['y'] == native_params['y']
     execution = next(e for e in data['events'] if e['event'] == 'action_executed')
     assert execution['actions'] == executed
+    assert execution['info'] == info
     assert execution['_view']['marks'][0]['x'] == native_params['x']  # No second conversion.
     feedback = next(e for e in data['events'] if e['event'] == 'action_tool_result')
-    assert feedback['calls'][0][1]['execution_coordinate_system'] == 'native_pixels'
-    assert feedback['calls'][0][1]['info'] == info
+    assert feedback['calls'][0][1] == {
+        'action_type': 'CLICK', 'executed': True, 'reward': 0, 'done': True,
+        'last_in_decision': False, 'duration_s': .1,
+    }
     assert (tmp_path / 'trajectory.html').exists()
