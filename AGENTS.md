@@ -45,6 +45,7 @@
 # ① Python 3.12 + 依赖
 uv sync                      # 或 pip install -r requirements.txt
 pip install pytest imageio-ffmpeg   # 跑测试额外需要（ffmpeg 供 test_fmp4_live）
+python -m playwright install chromium   # 查看器测试需要；不装则该项被 skip（不是失败）
 
 # ② 容器镜像（运行环境的容器，不是虚拟机镜像）
 docker pull happysixd/osworld-docker
