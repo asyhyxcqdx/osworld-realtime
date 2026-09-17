@@ -21,7 +21,7 @@
 |---|---|
 | 代码 | GitHub 公开仓库 `https://github.com/asyhyxcqdx/osworld-realtime`（`git clone` 即可，无需权限） |
 | 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`（公开仓库） |
-| 结果总表 | 飞书多维表格（负责人给链接，**16 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
+| 结果总表 | 飞书多维表格：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>（**16 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
 | 模型密钥 | 你们公司网关自己的 key，不用给别人 |
 
 镜像下载后**必须核对大小**：`24493359104` 字节（`ls -l` 看一下，差一点就是没下完）。
@@ -159,27 +159,22 @@ python scripts/python/run_realtime_batch.py \
   --exclusive-keys-confirmed
 ```
 
-**耗时与费用（重要）**
+**耗时与费用**
 
 | 项 | 参考值 |
 |---|---|
 | 单模型 69 任务 | 约 2–6 小时（`--num_envs 4`，取决于任务难度和模型速度） |
 | 八模型 | 约 1–2 天（模型是**顺序**跑的，同一时刻只有一个模型在跑） |
-| 费用 | 按 C1 单任务实测（下表）线性外推，八模型 × 69 任务在 **$2500 量级**，其中 `gpt-5.6-sol` + `claude-sonnet-5` 占 **89%** |
 
-| 模型 | C1 单任务实测花费（USD） | 备注 |
-|---|---|---|
-| gpt-5.6-sol | 22.53 | 有一次退化刷屏，撞满 128k 输出上限，那轮照样计费 |
-| claude-sonnet-5 | 10.40 | |
-| kimi-k3 | 2.65 | 含一次中断重跑的合计花费 |
-| qwen3.8-max-0902 | 0.87 | |
-| gemini-3.8-flash | 0.24 | |
-| deepseek-flash | 0.21 | |
-| glm-5.3-flash | 0.14 | |
-| MiniMax-M3 | 0.03 | 那次是 key 余额不足报错，只跑了 3 个请求 |
+C1 单任务实测花费（仅作记录口径参考，不用于限制跑量）：`gpt-5.6-sol` 22.53、`claude-sonnet-5` 10.40、
+`kimi-k3` 2.65、`qwen3.8-max-0902` 0.87、`gemini-3.8-flash` 0.24、`deepseek-flash` 0.21、
+`glm-5.3-flash` 0.14、`MiniMax-M3` 0.03（美元；sol 那次含一轮退化刷屏，kimi 含一次中断重跑）。
 
-建议顺序：**先跑 6 个便宜模型 → 看结果和余额 → 再决定 sol / sonnet 是否跑满 69 个任务**。
-预算不确定就先把 sol / sonnet 排除，跑完其余六个再补。
+费用不设限，按你们网关的实际消耗如实记录进 `成本` 列即可；需要的话可以用 `--prices` 先算，
+或者拿到网关账单后用 `--charges` 覆盖。
+
+**模型顺序**可以按你们网关的可用性和配额自行安排；`--models` 写几个就跑几个，之后补齐用同样的
+`--run_id` 再跑一次（已完成的会自动跳过）。
 
 **中途断了怎么办**：把**同一条命令、同样的 `--run_id` 和 `--result_dir`** 再执行一次即可。
 已有成绩的任务会自动跳过，没有成绩的会被清空重跑（`trajectory.jsonl` 是追加模式，不清会新旧混写）。
@@ -209,6 +204,24 @@ api:
 
 ## 9. 导出结果并写入飞书
 
+### 先装飞书 CLI（一次）
+
+写入用官方 CLI [`@larksuite/cli`](https://www.npmjs.com/package/@larksuite/cli)（需要 Node.js）：
+
+```bash
+npm install -g @larksuite/cli
+lark-cli --version
+lark-cli auth login          # 浏览器里完成授权；按提示打开链接即可
+lark-cli auth status         # 确认 user 身份为 valid
+```
+
+授权时至少要包含多维表格读写权限（`base:record:read`、`base:record:create`）和 `wiki:node:retrieve`。
+`lark-cli` 会把自己的 token 存在本机，之后不用重复登录。
+
+### 再导出并写入
+
+结果总表：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>
+
 ```bash
 # 先干跑，确认要写进去的内容
 python scripts/python/export_realtime_results.py \
@@ -222,7 +235,8 @@ python scripts/python/export_realtime_results.py \
   --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf --lark-table-id tblhBdTpZMEqX5Qh
 ```
 
-同时会在 `results_realtime_batches/export_batch01.csv`（可用 Excel 打开）和 `.json` 落一份副本。
+不想用 CLI 也可以：加 `--out results_realtime_batches/export_batch01` 只生成 CSV，
+在飞书表里用「导入」把 CSV 贴进去（列名已经和表头一致，utf-8-sig 编码，Excel 直接可开）。
 
 **⚠️ 不要重复导入同一个 run**：写入是"新增记录"，不是覆盖，重复执行会多出一倍行。
 要重导就先在飞书里删掉旧行。

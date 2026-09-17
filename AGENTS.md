@@ -131,9 +131,9 @@ python scripts/python/export_realtime_results.py \
   --lark-table-id tblhBdTpZMEqX5Qh [--lark-dry-run]
 ```
 
-- 输出 `<result_dir>/export_<run_id>.csv`（utf-8-sig，Excel 可直接开）与 `.json`；加 `--lark-*` 后用 `lark-cli base +record-batch-create` 每 200 行一批写入。
-- `--charges <cost_report.json>` 用账单原值填成本；不给 `--prices/--charges` 则成本列留空。
-- 列口径见 [`HANDOFF_CN.md`](HANDOFF_CN.md) 第 9 节；**同一次 run 只导一次**，写入是新增不是覆盖。
+- 输出 `<result_dir>/export_<run_id>.csv`（utf-8-sig，Excel 可直接开）与 `.json`；加 `--lark-*` 后用 `lark-cli base +record-batch-create` 每 200 行一批写入。表格链接与 16 列口径见 [`HANDOFF_CN.md`](HANDOFF_CN.md) 第 9 节。
+- 写入前需要 `npm install -g @larksuite/cli` + `lark-cli auth login`（需要 `base:record:create`、`base:record:read`、`wiki:node:retrieve` 权限）；不想用 CLI 就只产 CSV，用飞书表自带的「导入」。
+- `--charges <cost_report.json>` 用账单原值填成本；不给 `--prices/--charges` 则成本列留空。**同一次 run 只导一次**，写入是新增不是覆盖。
 
 ### 续跑（补齐没成绩的任务）
 
