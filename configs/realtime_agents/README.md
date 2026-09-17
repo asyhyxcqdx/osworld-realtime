@@ -52,7 +52,9 @@ Gemini 和 MiniMax 的四组 YAML 均显式选择对应协议；两者输出范�
 
 真实密钥不写进 YAML、源码、示例或报告。`api.key_env` 只保存环境变量名；指定后只读取该变量，缺失时在 CLI 启动 VM 前报错，不回退到其他模型的 `PACKY_API_KEY`。
 
-在同一个 Bash 终端按需输入对应组密钥（输入不回显）：
+**推荐做法**：在仓库根目录 `cp .env.example .env`（`.env` 已被 git 忽略），把上面表格里的变量名和 key 填进去。批量脚本和 `run_multienv.py` 会自动加载它，之后不需要再传任何 key 参数；所有模型共用一把 key 时只填 `REALTIME_API_KEY` 即可兜底。换非 Packy 网关时在同一个文件里设 `REALTIME_API_BASE_URL`（或按协议设 `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`）。
+
+也可以临时在终端里按需输入对应组密钥（输入不回显）：
 
 ```bash
 read -r -s -p 'Packy 通用组 key: ' PACKY_COMMON_API_KEY

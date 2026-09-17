@@ -6,17 +6,18 @@
 
 ## 快速接手
 
-最短路径只有五步，完整细节、排错与验收见 [运行说明](SETUP_GUIDELINE_CN.md)。
+最短路径只有五步，完整细节、排错与验收见 [运行说明](SETUP_GUIDELINE_CN.md)；**只负责跑批量的同学直接照 [`HANDOFF_CN.md`](HANDOFF_CN.md) 做**，那是一页版作业单。
 
-1. **准备环境**：Python 3.12 + `uv sync`，再 `pip install pytest imageio-ffmpeg`；`docker pull happysixd/osworld-docker`；确认 `ls -l /dev/kvm` 可用（没有 KVM 会极慢）。
+1. **准备环境**：Python 3.12 + `uv sync`，再 `pip install pytest imageio-ffmpeg` 与 `python -m playwright install chromium`；`docker pull happysixd/osworld-docker`；确认 `ls -l /dev/kvm` 可用（没有 KVM 会极慢）。
 2. **取 VM 镜像**（约 22.8 GiB，不入仓库，需从 HuggingFace 下载）：
    `hf download bright-star123/osworld-realtime-vm Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`
-3. **配密钥**：按 YAML 里的 `api.key_env` 设置 `PACKY_COMMON_API_KEY` / `PACKY_KIMI_API_KEY` / `PACKY_GLM_MINIMAX_API_KEY`；也支持无回显 stdin 或 0600 的 keys 文件。**密钥只从环境变量读，绝不写进仓库任何文件。**
+3. **配密钥**：`cp .env.example .env` 后填网关地址与 key（`.env` 已被 git 忽略）。按 YAML 里的 `api.key_env` 读取 `PACKY_COMMON_API_KEY` / `PACKY_KIMI_API_KEY` / `PACKY_GLM_MINIMAX_API_KEY`；所有模型共用一把 key 时只填 `REALTIME_API_KEY`。**密钥只从环境变量读，绝不写进仓库任何文件。**
 4. **冒烟一个模型一个任务**：
    `python scripts/python/run_realtime_batch.py --agent_variant agent4 --models gemini-3.8-flash --run_id smoke_$(date +%Y%m%d) --task 5169e1b0-1a7d-538b-8e59-8785c39460ce --exclusive-keys-confirmed`
 5. **正式批量**：同一条命令去掉 `--task`，加上 `--num_envs 4 --keep-going --result_dir results_realtime_batches`。**续跑就是同一条命令、同样的 `--run_id` 和 `--result_dir` 再跑一次**：已有成绩的任务自动跳过，没成绩的目录会被清空重跑，无需额外参数。
+6. **出表**：`scripts/python/export_realtime_results.py` 把结果目录导出成飞书总表需要的 16 列（CSV/JSON），加 `--lark-base-token/--lark-table-id` 可直接用 `lark-cli` 批量写入。
 
-结果和账单都不入库：单任务目录里有 `trajectory.html`（离线查看器）、`result.txt`、`system_prompt.txt`、逐事件 `trajectory.jsonl`；逐模型金额在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`），含 `cost_report.json` 与网关明细。成绩与金额总表在仓库外单独整理。
+结果和账单都不入库：单任务目录里有 `trajectory.html`（离线查看器）、`result.txt`、`system_prompt.txt`、逐事件 `trajectory.jsonl`；逐模型金额在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`），含 `cost_report.json` 与网关明细；换成非 Packy 网关时用 `--skip-billing --prices prices.json` 按 token 计成本。成绩与金额总表在仓库外单独整理。
 
 ## 当前状态
 
@@ -41,6 +42,7 @@ Agent3 每次模型回复最多一个工具调用（get_frames 或动作）；�
 
 | 文档 | 内容 |
 | --- | --- |
+| [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 八模型并填飞书总表的一页版指引 |
 | [`AGENTS.md`](AGENTS.md) | **AI 助手操作规程**（接手前先读） |
 | [`REALTIME_GUI_PROJECT.md`](REALTIME_GUI_PROJECT.md) | 项目总览：环境、四组 Agent、评分边界 |
 | [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) | 部署与运行 + 接手准备 + 批量与续跑命令 |

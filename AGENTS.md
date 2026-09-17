@@ -28,11 +28,13 @@
 | `evaluation_examples/examples/realtime_gui_bench/<uuid>.json` | 69 个任务配置 | ❌ 同上 |
 | `evaluation_examples/test_realtime_gui_bench.json` | 任务清单（69 个 UUID） | ⚠️ 只在需要子集时新增文件，别改原文件 |
 | `configs/realtime_agents/*.yaml` | **40 份 Agent 配置，唯一的 system prompt 来源** | ✅ 可改，但改 prompt = 换新 run_id |
-| `mm_agents/realtime_*.py` | 宿主侧 Agent（协议 / 坐标 / 流式 / 配置） | ✅ 可改，改完跑测试 |
+| `mm_agents/realtime_*.py` | 宿主侧 Agent（协议 / 坐标 / 流式 / 配置 / `.env` 加载） | ✅ 可改，改完跑测试 |
 | `lib_run_realtime.py`、`lib_realtime_trajectory.py` | 单任务运行器与轨迹渲染 | ✅ |
 | `desktop_env/server/realtime.py`、`fmp4.py` | **VM 内部服务** | ⚠️ 改了必须重装/重打镜像（`scripts/python/install_realtime_server.py`） |
 | `desktop_env/evaluators/{getters,metrics}/realtime_gui.py` | 评测与评分 | ⚠️ 改评分逻辑会让新旧成绩不可比 |
 | `scripts/python/run_realtime_batch.py` | **批量运行 + 逐模型记账**（首选入口） | ✅ |
+| `scripts/python/export_realtime_results.py` | 结果目录 → 飞书总表 16 列（CSV/JSON + `lark-cli` 批量写入） | ✅ |
+| `mm_agents/realtime_env.py`、`.env.example` | `.env` 配置层（网关、key、代理、运行默认值） | ✅ |
 | `scripts/python/run_multienv.py` | 底层启动器（`--num_envs` 并行、自动续跑） | ⚠️ 改了要跑全量回归 |
 | `tests/test_realtime_*.py` | 回归测试 | ✅ 改代码必须同步改这里 |
 | `results_*`、`docker_vm_data/` | 结果 / 镜像 | 🚫 已被 `.gitignore` 挡住，**不要试图提交** |
@@ -58,13 +60,17 @@ hf download bright-star123/osworld-realtime-vm \
   Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data
 ls -l docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2   # 应为 24493359104 字节
 
-# ⑤ 密钥（按 YAML 的 api.key_env 读取，缺失会在启动 VM 前报错）
-export PACKY_COMMON_API_KEY=...        # sonnet-5 / sol / gemini / qwen / deepseek
-export PACKY_KIMI_API_KEY=...          # kimi-k3
-export PACKY_GLM_MINIMAX_API_KEY=...   # glm-5.3-flash / MiniMax-M3
+# ⑤ 密钥与网关：复制 .env.example 为 .env（已被 git 忽略）一次配好，
+#    也可以临时用环境变量。变量名按 YAML 的 api.key_env：
+#      PACKY_COMMON_API_KEY          sonnet-5 / sol / gemini / qwen / deepseek
+#      PACKY_KIMI_API_KEY            kimi-k3
+#      PACKY_GLM_MINIMAX_API_KEY     glm-5.3-flash / MiniMax-M3
+#      REALTIME_API_KEY              所有模型共用一把时的兜底
+#    换非 Packy 网关时设 REALTIME_API_BASE_URL（或按协议设 ANTHROPIC_/OPENAI_BASE_URL）
 
-# ⑥ 网络：需要能访问 https://www.packyapi.ai；走代理时同时设 NO_PROXY 排除 VM 地址
+# ⑥ 网络：走代理时同时设 NO_PROXY 排除 VM 地址
 export HTTPS_PROXY=http://127.0.0.1:7890 HTTP_PROXY=$HTTPS_PROXY
+export NO_PROXY=localhost,127.0.0.1,::1
 ```
 
 **游戏数据集**（可选，仓库里已有同内容）：`hf download bright-star123/osworld-realtime-games --repo-type dataset --local-dir realtime-games`
@@ -81,9 +87,9 @@ PYTHONPATH=/tmp/rt-deps \
 python -m pytest -q tests/test_realtime_*.py tests/test_fmp4_live.py tests/test_recording_log_download.py
 ```
 
-- 期望全绿（当前基线：**319 通过**；全量 `tests/` 除 `test_maestro_minimax_provider.py` 外 **329 通过**）。
+- 期望全绿（当前基线：**356 通过**；全量 `tests/` 除 `test_maestro_minimax_provider.py` 外再加其余用例）。
 - `test_maestro_minimax_provider.py` 缺上游依赖 `zhipuai`，与本项目无关，忽略即可。
-- HTML 查看器测试需要 Chromium，可用 `REALTIME_VIEWER_CHROMIUM` 指定已有浏览器，否则该项跳过。
+- HTML 查看器测试需要 Chromium：`python -m playwright install chromium`；也可以临时用 `REALTIME_VIEWER_CHROMIUM` 指定已有浏览器。**不要把它设成空字符串**（`Path('')` 等于 `.`，会被判为存在，然后启动目录报 `EACCES`）。
 
 ### 冒烟：一个模型、一个任务
 
@@ -95,7 +101,7 @@ python scripts/python/run_realtime_batch.py \
   --exclusive-keys-confirmed
 ```
 
-密钥默认从**无回显 stdin** 读（看到 `READY_KEYS_NO_ECHO` 后粘贴一行 `{"<model>": "sk-..."}`）；脚本化运行用 `--keys-file <0600 JSON>`，所有模型共用一个 key 时写 `{"*": "sk-..."}`。
+密钥来源优先级：`.env` / 环境变量（模型自己的 `api.key_env`，再 `REALTIME_API_KEY`、`PACKY_API_KEY` 兜底）→ `--keys-file <0600 JSON>` → **无回显 stdin**（看到 `READY_KEYS_NO_ECHO` 后粘贴一行 `{"<model>": "sk-..."}`）。只有仍然缺 key 的模型才会走后面两种；启动时会打印每个模型用了哪种来源（`KEY_SOURCE`），不打印密钥本身。
 
 ### 正式批量（69 任务 × 多模型）
 
@@ -113,6 +119,21 @@ python scripts/python/run_realtime_batch.py \
 - 不传 `--task/--meta` 时默认跑全部 69 个任务。
 - 结果：`<result_dir>/<model>/<run_id>/<agent>/<action_space>/<observation_type>/<domain>/<uuid>/`
 - 账单与汇总：`--cost_dir`（默认 `<result_dir>/_cost/<run_id>`），含 `cost_report.json`、`<model>_summary.json`、账单快照与网关明细。
+- **换非 Packy 网关**：加 `--skip-billing --prices prices.json`。程序检测到网关不是 packyapi.ai 时会自动跳过那套账单接口（打印 `GATEWAY_BILLING_SKIPPED`），成本改由每条轨迹里的 token 用量 × 单价算出（写进 `computed_charge_usd`）。`cost_report.json` 的总额优先用网关值，没有才用算出来的值。
+- 网关地址解析顺序：`--api_base_url` → `$REALTIME_API_BASE_URL` → `$PACKY_API_BASE_URL` → 单个指向 Packy 的 `$ANTHROPIC_BASE_URL`/`$OPENAI_BASE_URL` → 内置 Packy 默认。其它网关**不强行下发** `--api_base_url`，交给 Agent 按协议各自解析，避免把 OpenAI 协议的模型打到 Anthropic 地址上。
+
+### 导出结果并写入飞书总表
+
+```bash
+python scripts/python/export_realtime_results.py \
+  --result_dir results_realtime_batches --run_id <run_id> --prices prices.json \
+  --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf \
+  --lark-table-id tblhBdTpZMEqX5Qh [--lark-dry-run]
+```
+
+- 输出 `<result_dir>/export_<run_id>.csv`（utf-8-sig，Excel 可直接开）与 `.json`；加 `--lark-*` 后用 `lark-cli base +record-batch-create` 每 200 行一批写入。
+- `--charges <cost_report.json>` 用账单原值填成本；不给 `--prices/--charges` 则成本列留空。
+- 列口径见 [`HANDOFF_CN.md`](HANDOFF_CN.md) 第 9 节；**同一次 run 只导一次**，写入是新增不是覆盖。
 
 ### 续跑（补齐没成绩的任务）
 
@@ -127,7 +148,7 @@ python scripts/python/run_realtime_batch.py \
 
 ## 5. 硬性约定（违反会破坏实验数据）
 
-1. **密钥绝不写进文件**：只从环境变量读；不写进 YAML、源码、文档、示例或结果。提交流前自查 `git diff`。
+1. **密钥绝不写进文件**：只从环境变量（或已被 git 忽略的 `.env`）读；不写进 YAML、源码、文档、示例或结果。`.env` 与 `.env.example` 是两个不同的文件，只有后者能提交。提交流前自查 `git diff`。
 2. **结果不入库**：`results_*`、`*.mp4`、`trajectory.jsonl`、`*_billing_*.json`、`docker_vm_data/` 都不提交。成绩与金额记在仓库外的结果表。
 3. **YAML 是 system prompt 的唯一来源**：不存在代码内置的默认 prompt；`RealtimeAgent` 缺 `system_prompt_text` 会直接报错。改 prompt 必须**新建 run_id**，不能与旧批次混。
 4. **不要改游戏 HTML 和 VM 服务**：会导致旧成绩不可比；确实要改就得重打镜像并重新验收。
@@ -147,6 +168,9 @@ python scripts/python/run_realtime_batch.py \
 | `get_frames` 返回 `not_ready` | 请求的时间比"已录完的片段"新。重查同一时间即可，不是错误 |
 | 线程/并发 | `--num_envs N` 会起 N 个进程 + N 台 VM，共用同一份 qcow2（容器内是**只读挂载**，不会互相写坏）。瓶颈是 CPU/内存与 API 限流，不是镜像 |
 | 网关明细的 `model_name` | 与配置里的模型名**逐字一致**（`qwen3.8-max-0902`、`glm-5.3-flash`），据此按模型归集金额 |
+| 飞书行数翻倍 | `export_realtime_results.py` 写入是**新增记录**，不是覆盖；同一次 run 只导一次，重导前先在飞书删旧行 |
+| 轨迹里的 token 比网关少 | 流中断/未完成的请求没有 `model_response` 事件，token 统计不到；金额仍以网关值为准（`--charges`） |
+| 换网关后脚本报账单接口错误 | 账单接口是 Packy 专用的；非 packyapi.ai 会自动跳过，也可显式加 `--skip-billing` |
 
 ---
 
@@ -184,6 +208,7 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 
 | 文档 | 内容 |
 |---|---|
+| [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 八模型并填飞书总表的一页版指引 |
 | [`README_CN.md`](README_CN.md) | 项目入口（给人看） |
 | [`REALTIME_GUI_PROJECT.md`](REALTIME_GUI_PROJECT.md) | 项目总览：环境、四组 Agent、评分边界 |
 | [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) | **部署与运行 + 接手准备 + 批量命令** |

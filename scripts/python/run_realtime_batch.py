@@ -11,12 +11,21 @@ parallel environments per model, and keeps the money record next to the run:
         --proxy http://127.0.0.1:7890 \
         --exclusive-keys-confirmed
 
-Keys are read once and never written to disk. Two input styles:
+Keys are read once and never written to disk. Three input styles, tried in order:
 
-    1) interactive TTY (no echo): the tool prints READY_KEYS_NO_ECHO and reads
-       one JSON line: {"<model>": "sk-...", ...}
-    2) --keys-file <path> with the same JSON, for scripted runs. A single key for
-       every model is accepted as {"*": "sk-..."}.
+    1) the environment: each model's own api.key_env from its YAML, then
+       REALTIME_API_KEY, then PACKY_API_KEY as a catch-all;
+    2) a repository .env file (git-ignored) is loaded first, so a machine only has
+       to be configured once: copy .env.example to .env and fill it in;
+    3) interactive TTY (no echo) or --keys-file <path>, both taking
+       {"<model>": "sk-...", ...}; {"*": "sk-..."} serves every model.
+       Only models still missing a key are asked for.
+
+Gateway: --api_base_url, else REALTIME_API_BASE_URL, else PACKY_API_BASE_URL,
+else per-protocol ANTHROPIC_BASE_URL / OPENAI_BASE_URL (left to the Agent),
+else the built-in Packy default. The Packy-only billing endpoints are used only
+when the gateway really is packyapi.ai; otherwise they are skipped and cost can
+be computed from the token usage recorded in every trajectory with --prices.
 
 Per-model results go to
     <result_dir>/<model>/<run_id>/<agent_variant>/<action_space>/<observation_type>/<domain>/<task>/
@@ -52,6 +61,8 @@ import requests
 
 REPO = Path(__file__).resolve().parents[2]
 QUOTA_PER_USD = 500000
+DEFAULT_PACKY_BASE_URL = 'https://www.packyapi.ai'
+GENERIC_KEY_ENVS = ('REALTIME_API_KEY', 'PACKY_API_KEY')
 VARIANT_TO_AGENT_ID = {'agent1': 'vanilla', 'agent2': 'anticipatory',
                        'agent3': 'video', 'agent4': 'combine'}
 DEFAULT_MODELS = ['claude-sonnet-5', 'gpt-5.6-sol', 'gemini-3.8-flash',
@@ -59,9 +70,10 @@ DEFAULT_MODELS = ['claude-sonnet-5', 'gpt-5.6-sol', 'gemini-3.8-flash',
                   'glm-5.3-flash', 'MiniMax-M3']
 SUMMARY_FIELDS = ('model', 'key_env', 'run_id', 'return_code', 'elapsed_s', 'requests',
                   'responses', 'decisions', 'frame_queries', 'pass_at_1', 'pass_at_3',
-                  'status', 'actual_charge_usd', 'gateway_log_charge_usd',
-                  'gateway_charge_count', 'gateway_prompt_tokens',
-                  'gateway_completion_tokens')
+                  'status', 'actual_charge_usd', 'computed_charge_usd',
+                  'gateway_log_charge_usd', 'gateway_charge_count',
+                  'gateway_prompt_tokens', 'gateway_completion_tokens',
+                  'input_tokens', 'output_tokens')
 
 
 def parse_args():
@@ -73,7 +85,8 @@ def parse_args():
                         help='comma-separated model names; each must have a YAML for the variant')
     parser.add_argument('--run_id', required=True,
                         help='batch id; reuse it exactly when resuming')
-    parser.add_argument('--result_dir', default='results_realtime_batches',
+    parser.add_argument('--result_dir',
+                        default=os.environ.get('REALTIME_RESULT_DIR') or 'results_realtime_batches',
                         help='root for model results (contents are git-ignored)')
     parser.add_argument('--cost_dir', default=None,
                         help='where billing and summaries go; default <result_dir>/_cost/<run_id>')
@@ -84,8 +97,13 @@ def parse_args():
     parser.add_argument('--action_space', default='computer_13')
     parser.add_argument('--observation_type', default='screenshot')
     parser.add_argument('--domain', default='realtime_gui_bench')
-    parser.add_argument('--path_to_vm', default='docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2')
-    parser.add_argument('--api_base_url', default='https://www.packyapi.ai')
+    parser.add_argument('--path_to_vm',
+                        default=os.environ.get('REALTIME_PATH_TO_VM')
+                        or 'docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2')
+    parser.add_argument('--api_base_url', default=None,
+                        help='model API gateway root; default: $REALTIME_API_BASE_URL, '
+                             '$PACKY_API_BASE_URL, per-protocol $ANTHROPIC_BASE_URL / '
+                             '$OPENAI_BASE_URL, else the Packy default')
     parser.add_argument('--proxy', default=os.environ.get('HTTPS_PROXY') or None,
                         help='HTTP(S) proxy for gateway calls and model requests; '
                              'default: $HTTPS_PROXY if set')
@@ -101,35 +119,132 @@ def parse_args():
     parser.add_argument('--pause-between', action='store_true',
                         help='wait for a review_continue_<model> marker before the next model')
     parser.add_argument('--skip-billing', action='store_true',
-                        help='run without the gateway billing/ledger calls')
+                        help='run without the gateway billing/ledger calls '
+                             '(automatic for gateways that are not packyapi.ai)')
+    parser.add_argument('--prices', default=None,
+                        help='JSON price table used to derive cost from the token usage in '
+                             'each trajectory: {"<model>": {"input_per_mtok": 3, '
+                             '"output_per_mtok": 15, "cached_input_per_mtok": 0.3}, "*": {...}}')
     parser.add_argument('--dry-run', action='store_true',
                         help='print the commands without calling models')
     return parser.parse_args()
 
 
-def model_key_env(variant, model):
-    """Read api.key_env from the same YAML the runner will load."""
+def model_key_envs(variant, models):
+    """Read api.key_env from the same YAMLs the runner will load."""
     sys.path.insert(0, str(REPO))
     from mm_agents.realtime_config import default_config_path, load_realtime_config
-    config = load_realtime_config(default_config_path(variant, model), variant=variant)
-    return config['api'].get('key_env') or 'PACKY_API_KEY'
+    envs = {}
+    for model in models:
+        config = load_realtime_config(default_config_path(variant, model), variant=variant)
+        envs[model] = config['api'].get('key_env') or 'PACKY_API_KEY'
+    return envs
 
 
-def read_keys(models, keys_file):
-    if keys_file:
-        payload = json.loads(Path(keys_file).read_text(encoding='utf-8'))
-    else:
-        attributes = termios.tcgetattr(sys.stdin.fileno())
-        attributes[3] &= ~termios.ECHO
-        termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, attributes)
-        print('READY_KEYS_NO_ECHO', flush=True)
-        payload = json.loads(sys.stdin.readline())
+def keys_from_environment(models, key_envs, environ=None):
+    """Per model: its own key_env, then the generic catch-all variables."""
+    environ = os.environ if environ is None else environ
+    found = {}
+    for model in models:
+        for name in (key_envs[model],) + GENERIC_KEY_ENVS:
+            if environ.get(name):
+                found[model] = environ[name]
+                break
+    return found
+
+
+def keys_from_payload(payload, models):
     if payload.get('*'):
         return {model: payload['*'] for model in models}
-    missing = [model for model in models if not payload.get(model)]
-    if missing:
-        raise SystemExit('missing keys for: ' + ', '.join(missing))
-    return {model: payload[model] for model in models}
+    return {model: payload[model] for model in models if payload.get(model)}
+
+
+def read_keys_interactive(models):
+    attributes = termios.tcgetattr(sys.stdin.fileno())
+    attributes[3] &= ~termios.ECHO
+    termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, attributes)
+    print('READY_KEYS_NO_ECHO', flush=True)
+    payload = json.loads(sys.stdin.readline())
+    return keys_from_payload(payload, models)
+
+
+def resolve_keys(models, key_envs, keys_file, environ=None):
+    """Environment/.env first; only the still-missing models are asked for."""
+    keys = keys_from_environment(models, key_envs, environ)
+    sources = {model: 'environment' for model in keys}
+    missing = [model for model in models if model not in keys]
+    if missing and keys_file:
+        payload = json.loads(Path(keys_file).read_text(encoding='utf-8'))
+        keys.update(keys_from_payload(payload, missing))
+        sources.update({model: str(keys_file) for model in missing if model in keys})
+        missing = [model for model in missing if model not in keys]
+        if missing:
+            raise SystemExit('missing keys for: ' + ', '.join(missing))
+    elif missing:
+        keys.update(read_keys_interactive(missing))
+        sources.update({model: 'stdin' for model in missing})
+    return {model: keys[model] for model in models}, sources
+
+
+def is_packy(base_url):
+    from urllib.parse import urlparse
+    host = urlparse(base_url or '').hostname or ''
+    return host == 'packyapi.ai' or host.endswith('.packyapi.ai')
+
+
+def resolve_gateway(args, environ=None):
+    """Return (base_url_or_None, source); None lets the Agent use per-protocol env."""
+    environ = os.environ if environ is None else environ
+    if args.api_base_url:
+        return args.api_base_url, '--api_base_url'
+    for name in ('REALTIME_API_BASE_URL', 'PACKY_API_BASE_URL'):
+        if environ.get(name):
+            return environ[name], name
+    protocols = [(name, environ[name]) for name in ('ANTHROPIC_BASE_URL', 'OPENAI_BASE_URL')
+                 if environ.get(name)]
+    if protocols:
+        # A single protocol variable may be reused for every model only when it is
+        # the Packy gateway, which serves all three protocols; any other gateway is
+        # left to the Agent's per-protocol resolution rather than being forced on
+        # models that speak a different wire format.
+        if len(protocols) == 1 and is_packy(protocols[0][1]):
+            return protocols[0][1], '$' + protocols[0][0]
+        return None, 'per-protocol ' + '/'.join('$' + name for name, _ in protocols)
+    return DEFAULT_PACKY_BASE_URL, 'built-in default'
+
+
+def load_prices(path):
+    if not path:
+        return {}
+    payload = json.loads(Path(path).read_text(encoding='utf-8'))
+    if 'models' in payload and isinstance(payload['models'], dict):
+        payload = payload['models']
+    prices = {}
+    for name, value in payload.items():
+        if not isinstance(value, dict) or 'output_per_mtok' not in value:
+            raise SystemExit(f'price entry {name!r} must map to '
+                             '{"input_per_mtok": ..., "output_per_mtok": ...}')
+        prices[name] = {
+            'input': float(value.get('input_per_mtok', 0)),
+            'cached_input': float(value.get('cached_input_per_mtok',
+                                            value.get('input_per_mtok', 0))),
+            'output': float(value['output_per_mtok']),
+        }
+    return prices
+
+
+def price_for(prices, model):
+    return prices.get(model) or prices.get('*')
+
+
+def charge_usd(tokens, price):
+    """Cost of one task from its token usage; None without a price entry."""
+    if not price:
+        return None
+    cached = min(tokens.get('cached_input_tokens', 0), tokens.get('input_tokens', 0))
+    fresh = max(tokens.get('input_tokens', 0) - cached, 0)
+    return round((fresh * price['input'] + cached * price['cached_input']
+                  + tokens.get('output_tokens', 0) * price['output']) / 1_000_000, 6)
 
 
 def clean(value, secrets):
@@ -204,10 +319,25 @@ def settle(session, base_url, key, attempts=12, interval=10):
     return after, readings
 
 
+def usage_tokens(usage):
+    """Prompt/completion/cached token counts from one recorded model response."""
+    usage = usage or {}
+    prompt = usage.get('prompt_tokens')
+    if prompt is None:
+        prompt = usage.get('input_tokens')
+    completion = usage.get('completion_tokens')
+    if completion is None:
+        completion = usage.get('output_tokens')
+    details = usage.get('prompt_tokens_details') or usage.get('input_tokens_details') or {}
+    return {'input': int(prompt or 0), 'output': int(completion or 0),
+            'cached_input': int(details.get('cached_tokens') or 0)}
+
+
 def summarize(task_dir):
     result = {'task_dir': str(task_dir), 'requests': 0, 'responses': 0, 'decisions': 0,
               'frame_queries': 0, 'usage_records': [], 'evaluations': [], 'errors': [],
-              'stream_received': [], 'pass_at_1': None, 'pass_at_3': None, 'status': None}
+              'stream_received': [], 'pass_at_1': None, 'pass_at_3': None, 'status': None,
+              'input_tokens': 0, 'output_tokens': 0, 'cached_input_tokens': 0}
     trajectory = task_dir / 'trajectory.jsonl'
     if trajectory.exists():
         for line in trajectory.read_text(errors='replace').splitlines():
@@ -222,9 +352,14 @@ def summarize(task_dir):
             elif kind == 'model_response':
                 result['responses'] += 1
                 result['stream_received'].append(event.get('stream_received'))
+                usage = event.get('usage', event.get('provider_response', {}).get('usage', {}))
+                tokens = usage_tokens(usage)
+                result['input_tokens'] += tokens['input']
+                result['output_tokens'] += tokens['output']
+                result['cached_input_tokens'] += tokens['cached_input']
                 result['usage_records'].append({
                     'request_id': event.get('request_id'),
-                    'usage': event.get('usage', event.get('provider_response', {}).get('usage', {})),
+                    'usage': usage,
                 })
             elif kind == 'action_submitted':
                 result['decisions'] += 1
@@ -245,6 +380,15 @@ def summarize(task_dir):
     return result
 
 
+def charged_usd(row):
+    """Gateway ledger first, then the instant delta, then our own token math."""
+    for field in ('gateway_log_charge_usd', 'actual_charge_usd', 'computed_charge_usd'):
+        value = row.get(field)
+        if value is not None:
+            return value
+    return None
+
+
 def build_report(cost_dir, manifest):
     """Rebuild cost_report.json from every per-model summary so resume never drops rows."""
     order = {model: index for index, model in enumerate(manifest['models'])}
@@ -259,20 +403,29 @@ def build_report(cost_dir, manifest):
     rows.sort(key=lambda row: order.get(row['model'], 99))
     report = {key: value for key, value in manifest.items() if key != 'runs'}
     report['models'] = rows
-    report['total_charge_usd'] = round(sum(
-        row['gateway_log_charge_usd'] if row.get('gateway_log_charge_usd') is not None
-        else (row.get('actual_charge_usd') or 0) for row in rows), 6)
+    report['total_charge_usd'] = round(sum(charged_usd(row) or 0 for row in rows), 6)
+    report['charge_source'] = ('gateway ledger when available, otherwise the token usage '
+                               'recorded in each trajectory priced by --prices')
     return report
 
 
 def main():
+    sys.path.insert(0, str(REPO))
+    from mm_agents.realtime_env import describe_sources, load_env_file
+    # Loaded before parsing so .env can also supply the argument defaults below.
+    applied = load_env_file()
     args = parse_args()
+    print(describe_sources(applied), flush=True)
+
     models = [model.strip() for model in args.models.split(',') if model.strip()]
     result_dir = Path(args.result_dir)
     if not result_dir.is_absolute():
         result_dir = REPO / result_dir
     cost_dir = Path(args.cost_dir) if args.cost_dir else (result_dir / '_cost' / args.run_id)
     meta = load_tasks(args)
+    api_base_url, base_url_source = resolve_gateway(args)
+    billing = not args.skip_billing and is_packy(api_base_url)
+    prices = load_prices(args.prices)
 
     plans = []
     for model in models:
@@ -286,7 +439,11 @@ def main():
             '--agent_variant', args.agent_variant, '--model', model, '--run_id', args.run_id,
             '--action_space', args.action_space, '--observation_type', args.observation_type,
             '--provider_name', 'docker', '--path_to_vm', str(args.path_to_vm),
-            '--headless', '--api_base_url', args.api_base_url,
+            '--headless',
+        ]
+        if api_base_url:
+            command += ['--api_base_url', api_base_url]
+        command += [
             '--test_all_meta_path', str(cost_dir / 'batch_tasks.json'),
             '--max_steps', str(args.max_steps), '--sleep_after_execution', '0',
             '--environment_ready_wait_s', '3', '--evaluation_settle_s', '3',
@@ -296,6 +453,8 @@ def main():
 
     if args.dry_run:
         print(json.dumps({'result_dir': str(result_dir), 'cost_dir': str(cost_dir),
+                          'api_base_url': api_base_url, 'api_base_url_source': base_url_source,
+                          'packy_billing': billing, 'prices_file': args.prices,
                           'task_count': sum(len(v) for v in meta.values()),
                           'commands': [' '.join(plan['command']) for plan in plans]}, indent=2))
         return 0
@@ -304,17 +463,24 @@ def main():
         raise SystemExit('pass --exclusive-keys-confirmed after checking no other traffic uses these keys')
     if not meta.get(args.domain):
         raise SystemExit(f'task list has no {args.domain} entries')
+    if not billing and not args.skip_billing:
+        print('GATEWAY_BILLING_SKIPPED', base_url_source,
+              '- not packyapi.ai; cost comes from --prices when a price table is given', flush=True)
+    if not prices and not billing:
+        print('COST_NOT_RECORDED: pass --prices <json> to price the recorded token usage', flush=True)
 
     session = requests.Session()
     if args.proxy:
         session.proxies.update({'http': args.proxy, 'https': args.proxy})
 
-    keys = read_keys(models, args.keys_file)
+    key_envs = model_key_envs(args.agent_variant, models)
+    keys, key_sources = resolve_keys(models, key_envs, args.keys_file)
+    for model in models:
+        print('KEY_SOURCE', model, key_envs[model], key_sources[model], flush=True)
     secrets = list(keys.values())
     cost_dir.mkdir(parents=True, exist_ok=True)
     save(cost_dir / 'batch_tasks.json', meta, secrets)
 
-    key_envs = {model: model_key_env(args.agent_variant, model) for model in models}
     previous_runs = []
     if (cost_dir / 'manifest.json').exists():
         try:
@@ -327,12 +493,14 @@ def main():
         'task_count': sum(len(ids) for ids in meta.values()), 'domain': args.domain,
         'max_steps': args.max_steps, 'num_envs': args.num_envs,
         'result_dir': str(result_dir), 'cost_dir': str(cost_dir),
-        'path_to_vm': str(args.path_to_vm), 'api_base_url': args.api_base_url,
+        'path_to_vm': str(args.path_to_vm), 'api_base_url': api_base_url,
+        'api_base_url_source': base_url_source, 'packy_billing': billing,
+        'prices_file': args.prices,
         'quota_per_usd': QUOTA_PER_USD,
         'currency_note': 'Gateway ledger charge in USD, quota/500000. No RMB conversion or extrapolation.',
         'exclusive_key_use_confirmed_by_user': True,
         'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),
-        'key_env_per_model': key_envs,
+        'key_env_per_model': key_envs, 'key_source_per_model': key_sources,
         'runs': previous_runs,
     }
     save(cost_dir / 'manifest.json', manifest, secrets)
@@ -345,12 +513,13 @@ def main():
         print('START_BATCH_MODEL', model, args.run_id, flush=True)
 
         before = None
-        if not args.skip_billing:
-            before = balance(session, args.api_base_url, key)
+        if billing:
+            before = balance(session, api_base_url, key)
             save(cost_dir / f'{model}_billing_before.json', before, secrets)
 
         environment = os.environ.copy()
-        for name in ('PACKY_COMMON_API_KEY', 'PACKY_KIMI_API_KEY', 'PACKY_GLM_MINIMAX_API_KEY', 'PACKY_API_KEY'):
+        for name in ('PACKY_COMMON_API_KEY', 'PACKY_KIMI_API_KEY',
+                     'PACKY_GLM_MINIMAX_API_KEY') + GENERIC_KEY_ENVS:
             environment.pop(name, None)
         environment[key_env] = key
         environment['PYTHONPATH'] = str(REPO)
@@ -373,6 +542,9 @@ def main():
 
         # One summarized row per task; models normally run the whole task list.
         summaries = [summarize(task_dir) for task_dir in plan['task_dirs'].values()]
+        price = price_for(prices, model)
+        for row in summaries:
+            row['computed_charge_usd'] = charge_usd(row, price)
         result = summaries[0].copy()
         result['tasks'] = summaries
         result.update(model=model, key_env=key_env, run_id=args.run_id,
@@ -380,12 +552,24 @@ def main():
                       tasks_total=len(summaries),
                       tasks_scored=sum(1 for row in summaries if row['status'] is not None),
                       pass_at_3_mean=round(sum(row['pass_at_3'] or 0 for row in summaries) / len(summaries), 4))
+        result.update(
+            input_tokens=sum(row['input_tokens'] for row in summaries),
+            output_tokens=sum(row['output_tokens'] for row in summaries),
+            cached_input_tokens=sum(row['cached_input_tokens'] for row in summaries),
+        )
+        if price:
+            result['computed_charge_usd'] = round(
+                sum(row['computed_charge_usd'] or 0 for row in summaries), 6)
+            result['price_per_mtok'] = {'input': price['input'], 'output': price['output'],
+                                        'cached_input': price['cached_input']}
+        elif not billing:
+            result['computed_charge_usd'] = None
 
-        if not args.skip_billing:
+        if billing:
             # A local proxy or gateway blip must never abort a batch that already
             # spent money; record it on the row and keep going.
             try:
-                after, readings = settle(session, args.api_base_url, key)
+                after, readings = settle(session, api_base_url, key)
                 save(cost_dir / f'{model}_billing_after.json', after, secrets)
                 save(cost_dir / f'{model}_billing_checks.json', readings, secrets)
                 result.update(billing_before_usage=before['body']['total_usage'],
@@ -396,7 +580,7 @@ def main():
                 print('BILLING_ERROR', model, result['billing_error'][:160], flush=True)
             cutoff = datetime.datetime.fromisoformat(before['time_utc']).timestamp()
             try:
-                logs = gateway_get(session, args.api_base_url, '/api/log/token', key, params={'key': key})
+                logs = gateway_get(session, api_base_url, '/api/log/token', key, params={'key': key})
                 save(cost_dir / f'{model}_gateway_logs.json', logs, secrets)
                 rows = [row for row in logs.get('data', [])
                         if row.get('model_name') == model and (row.get('created_at') or 0) >= cutoff]

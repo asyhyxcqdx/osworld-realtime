@@ -25,8 +25,10 @@
    镜像与仓库里的 `desktop_env/server/realtime.py`、`fmp4.py` 必须配套：录制前程序会比对两份源码哈希，不一致时先用 `--install_realtime_server` 安装当前服务，或重新构建镜像。
 
 3. **密钥与网络**
-   - 密钥按 YAML 的 `api.key_env` 读取：`PACKY_COMMON_API_KEY`、`PACKY_KIMI_API_KEY`、`PACKY_GLM_MINIMAX_API_KEY`（历史 Fable/Astra 配置用 `PACKY_API_KEY`）。缺少对应变量会在启动 VM 前报错，不回退其他密钥。
-   - 需要能访问 `https://www.packyapi.ai`。如走代理，设置 `HTTPS_PROXY` / `HTTP_PROXY`，并把 VM 地址放进 `NO_PROXY`。
+   - 推荐一次配好：`cp .env.example .env`（`.env` 已被 `.gitignore` 忽略，`.env.example` 才是模板），填网关地址与 key。批量脚本与 `run_multienv.py` 会自动加载它，之后**不需要再传任何 key 参数**。
+   - 变量名必须与 YAML 的 `api.key_env` 一致：`PACKY_COMMON_API_KEY`、`PACKY_KIMI_API_KEY`、`PACKY_GLM_MINIMAX_API_KEY`（历史 Fable/Astra 配置用 `PACKY_API_KEY`）；所有模型共用一把 key 时只填 `REALTIME_API_KEY` 兜底。也仍然支持直接设环境变量、`--keys-file <0600 JSON>`（`{"*": "sk-..."}` 表示全部模型）和无回显 stdin；只有仍然缺 key 的模型才会走到后面两种。
+   - 换非 Packy 网关：设 `REALTIME_API_BASE_URL`（一个地址作用于所有协议），或按协议设 `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`。地址只写到网关根，程序自动补 `/v1/messages`、`/v1/chat/completions`。网关不是 packyapi.ai 时 Packy 专用账单接口会自动跳过，成本改用 `--skip-billing --prices prices.json` 从轨迹里的 token 用量计算。
+   - 需要能访问对应网关。如走代理，设置 `HTTPS_PROXY` / `HTTP_PROXY`，并把 VM 地址放进 `NO_PROXY`。
    - 真实密钥不写进 YAML、源码、结果或提交。
 
 4. **冒烟验证（一个模型 + 一个任务）**
@@ -39,7 +41,7 @@
      --exclusive-keys-confirmed
    ```
 
-   密钥默认从无回显 stdin 读取（提示 `READY_KEYS_NO_ECHO` 后粘贴一行 `{"<model>": "sk-..."}`）；脚本化运行可用 `--keys-file <0600 JSON>`，所有模型共用一个 key 时写 `{"*": "sk-..."}`。
+   密钥来源优先级：`.env` / 环境变量 → `--keys-file <0600 JSON>` → 无回显 stdin（提示 `READY_KEYS_NO_ECHO` 后粘贴一行 `{"<model>": "sk-..."}`）。所有模型共用一个 key 时写 `{"*": "sk-..."}`。
 
 5. **正式批量与金额记录**
    `scripts/python/run_realtime_batch.py` 顺序跑多个模型，并逐模型记录金额；不传 `--task/--meta` 时默认跑全部 69 个任务。结果落在 `--result_dir/<model>/<run_id>/...`，账单、逐模型汇总和 `cost_report.json` 落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`，在 git 忽略的目录树内；要放到仓库外就传绝对路径）。金额以网关消费明细为准，即时账单差额只作交叉核对。
@@ -55,7 +57,19 @@
 
    单个模型内的任务并行用 `--num_envs N`（每个 env 一台 VM，按机器资源决定，默认 1）。
 
-6. **续跑（同一目录补齐）**
+6. **导出并写入飞书总表**
+   `scripts/python/export_realtime_results.py` 把结果目录导出成总表要的 16 列（CSV/JSON），并可用 `lark-cli` 批量写入飞书多维表格：
+
+   ```bash
+   python scripts/python/export_realtime_results.py \
+     --result_dir results_realtime_batches --run_id packy_v11_batch01 \
+     --prices prices.json \
+     --lark-base-token <base_token> --lark-table-id <table_id>
+   ```
+
+   成本优先用 `--charges <cost_report.json>`（账单原值），否则用 `--prices`（token × 单价），都没有就留空。字段口径与注意事项见 [执行同学作业单](HANDOFF_CN.md)。
+
+7. **续跑（同一目录补齐）**
    用**同一条命令、同样的 `--result_dir` / `--run_id`** 再跑一次即可：runner 会自动跳过已有 `result.txt` 的任务，清空没有 `result.txt` 的目录（避免 `trajectory.jsonl` 追加模式把新旧事件混在一起）后重跑这些任务。不需要额外参数。
 
 ## 环境

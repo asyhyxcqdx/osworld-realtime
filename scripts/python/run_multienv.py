@@ -34,6 +34,11 @@ if os.path.exists(".env"):
 def config() -> argparse.Namespace:
     import sys
 
+    # A repository .env configures keys, gateway and proxy once per machine; it is
+    # applied before the parser is built so environment-backed defaults see it.
+    from mm_agents.realtime_env import load_env_file
+    load_env_file()
+
     parser = argparse.ArgumentParser(
         description="Run end-to-end evaluation on the benchmark"
     )

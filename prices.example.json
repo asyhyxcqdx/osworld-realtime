@@ -1,0 +1,12 @@
+{
+  "_comment": "复制成 prices.json 后按你们网关的真实单价修改（单位：美元 / 百万 token）。--prices 用它把轨迹里的 token 用量换算成成本；有缓存折扣就加 cached_input_per_mtok（不写则与 input_per_mtok 相同）。'*' 是兜底单价。",
+  "claude-sonnet-5": {"input_per_mtok": 3.0, "cached_input_per_mtok": 0.3, "output_per_mtok": 15.0},
+  "gpt-5.6-sol": {"input_per_mtok": 1.25, "output_per_mtok": 10.0},
+  "gemini-3.8-flash": {"input_per_mtok": 0.3, "output_per_mtok": 2.5},
+  "qwen3.8-max-0902": {"input_per_mtok": 1.0, "output_per_mtok": 4.0},
+  "deepseek-flash": {"input_per_mtok": 0.27, "output_per_mtok": 1.1},
+  "kimi-k3": {"input_per_mtok": 0.6, "output_per_mtok": 2.5},
+  "glm-5.3-flash": {"input_per_mtok": 0.1, "output_per_mtok": 0.4},
+  "MiniMax-M3": {"input_per_mtok": 0.3, "output_per_mtok": 1.2},
+  "*": {"input_per_mtok": 1.0, "output_per_mtok": 2.0}
+}
