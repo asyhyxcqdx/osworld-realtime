@@ -52,6 +52,6 @@ python scripts/python/run_realtime_batch.py \
 | [`REALTIME_AGENT_CONFIG_PROTOCOL.md`](REALTIME_AGENT_CONFIG_PROTOCOL.md) | YAML 字段协议与校验规则 |
 | [`configs/realtime_agents/README.md`](configs/realtime_agents/README.md) | 模型配置表、坐标协议、密钥分组 |
 | [`REALTIME_GUI_BENCH_PROTOCOL.md`](REALTIME_GUI_BENCH_PROTOCOL.md) | 游戏接口协议（`window.BENCH` 字段、评分、验收清单） |
-| [`REALTIME_GUI_BENCH_SHORTCUT_POLICY.md`](REALTIME_GUI_BENCH_SHORTCUT_POLICY.md) | 环境快捷键阻断策略（按键表、轨迹字段） |
+| [`REALTIME_GUI_BENCH_SHORTCUT_POLICY.md`](REALTIME_GUI_BENCH_SHORTCUT_POLICY.md) | 禁用的快捷键与鼠标绕道规则 |
 | [`REALTIME_TRAJECTORY_VIEWER.md`](REALTIME_TRAJECTORY_VIEWER.md) | HTML 轨迹查看器用法 |
 | [`evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`](evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md) | 环境接入、镜像与评分来源记录 |
