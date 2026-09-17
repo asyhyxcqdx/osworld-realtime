@@ -180,7 +180,7 @@ C1 单任务实测花费（仅作记录口径参考，不用于限制跑量）�
 
 ## 8. 如果你们的模型名跟我们不一样
 
-只跑 combine 的话，复制 `configs/realtime_agents/combine-<模型名>.yaml` 一份，改三个字段：
+**名字能对上就不要动任何配置**，直接跑 §5–§7 的命令即可。只有网关里的模型名和我们不同，才需要复制一份 `configs/realtime_agents/combine-<模型名>.yaml`，改三个字段：
 
 ```yaml
 api:

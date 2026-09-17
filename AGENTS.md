@@ -19,24 +19,28 @@
 
 ---
 
-## 2. 仓库地图（哪些能改、哪些别碰）
+## 2. 仓库结构（各部分是什么）
 
-| 路径 | 是什么 | 能改吗 |
-|---|---|---|
-| `evaluation_examples/websites/realtime_gui_bench/games/<id>/index.html` | 69 个游戏本体（环境） | ❌ 改了要重新验收、重打镜像 |
-| `evaluation_examples/examples/realtime_gui_bench/<uuid>.json` | 69 个任务配置 | ❌ 同上 |
-| `evaluation_examples/test_realtime_gui_bench.json` | 任务清单（69 个 UUID） | ⚠️ 只在需要子集时新增文件，别改原文件 |
-| `configs/realtime_agents/*.yaml` | **40 份 Agent 配置，唯一的 system prompt 来源** | ✅ 可改，但改 prompt = 换新 run_id |
-| `mm_agents/realtime_*.py` | 宿主侧 Agent（协议 / 坐标 / 流式 / 配置 / `.env` 加载） | ✅ 可改，改完跑测试 |
-| `lib_run_realtime.py`、`lib_realtime_trajectory.py` | 单任务运行器与轨迹渲染 | ✅ |
-| `desktop_env/server/realtime.py`、`fmp4.py` | **VM 内部服务** | ⚠️ 改了必须重装/重打镜像（`scripts/python/install_realtime_server.py`） |
-| `desktop_env/evaluators/{getters,metrics}/realtime_gui.py` | 评测与评分 | ⚠️ 改评分逻辑会让新旧成绩不可比 |
-| `scripts/python/run_realtime_batch.py` | **批量运行 + 逐模型记账**（首选入口） | ✅ |
-| `scripts/python/export_realtime_results.py` | 结果目录 → 飞书总表 16 列（CSV/JSON + `lark-cli` 批量写入） | ✅ |
-| `mm_agents/realtime_env.py`、`.env.example` | `.env` 配置层（网关、key、代理、运行默认值） | ✅ |
-| `scripts/python/run_multienv.py` | 底层启动器（`--num_envs` 并行、自动续跑） | ⚠️ 改了要跑全量回归 |
-| `tests/test_realtime_*.py` | 回归测试 | ✅ 改代码必须同步改这里 |
-| `results_*`、`docker_vm_data/` | 结果 / 镜像 | 🚫 不提交：`docker_vm_data` 与 `**/result*/**/*` 在 `.gitignore` 里，**目录本身不被忽略**，提交流前用 `git status` 确认 |
+代码、配置和环境已经整理定稿：**跑实验的同学不需要改任何代码**，直接用 `HANDOFF_CN.md` 的命令即可。这一节只是让人知道东西在哪。
+
+| 路径 | 是什么 |
+|---|---|
+| `evaluation_examples/websites/realtime_gui_bench/games/<id>/index.html` | 69 个游戏本体（环境） |
+| `evaluation_examples/examples/realtime_gui_bench/<uuid>.json` | 69 个任务配置 |
+| `evaluation_examples/test_realtime_gui_bench.json` | 任务清单（69 个 UUID） |
+| `configs/realtime_agents/*.yaml` | 40 份 Agent 配置，**system prompt 的唯一来源** |
+| `mm_agents/realtime_*.py` | 宿主侧 Agent（协议 / 坐标 / 流式 / 配置 / `.env` 加载） |
+| `lib_run_realtime.py`、`lib_realtime_trajectory.py` | 单任务运行器与轨迹渲染 |
+| `desktop_env/server/realtime.py`、`fmp4.py` | VM 内部服务 |
+| `desktop_env/evaluators/{getters,metrics}/realtime_gui.py` | 评测与评分 |
+| `scripts/python/run_realtime_batch.py` | **批量运行 + 逐模型记账**（首选入口） |
+| `scripts/python/export_realtime_results.py` | 结果目录 → 飞书总表 16 列（CSV/JSON + `lark-cli` 写入） |
+| `mm_agents/realtime_env.py`、`.env.example` | `.env` 配置层（网关、key、代理、运行默认值） |
+| `scripts/python/run_multienv.py` | 底层启动器（`--num_envs` 并行、自动续跑） |
+| `tests/test_realtime_*.py` | 回归测试 |
+| `results_*`、`docker_vm_data/` | 运行产物与镜像，不入库（`.gitignore`） |
+
+对维护者才有意义的一条影响面：游戏 HTML、任务配置、VM 服务或评分逻辑一改，**新旧成绩就不可比**，需要重新验收、必要时重打镜像，并换新的 `run_id`；改 prompt 同样要换 `run_id`。
 
 ---
 
@@ -76,20 +80,11 @@ export NO_PROXY=localhost,127.0.0.1,::1
 
 ---
 
-## 4. 常用命令
+## 4. 命令
 
-### 跑回归（改代码后必做）
+### 跑实验（同学只需要这三步）
 
-```bash
-REALTIME_VIEWER_CHROMIUM=<playwright chromium 路径> \
-PYTHONPATH=/tmp/rt-deps \
-python -m pytest -q tests/test_realtime_*.py tests/test_fmp4_live.py tests/test_recording_log_download.py
-```
-
-- 判据是**全绿**，不写死通过数量（用例数会随改动变化）。`test_maestro_minimax_provider.py` 缺上游依赖 `zhipuai`，与本项目无关，忽略即可。
-- HTML 查看器测试需要 Chromium：`python -m playwright install chromium`；也可以临时用 `REALTIME_VIEWER_CHROMIUM` 指定已有浏览器。**不要把它设成空字符串**（`Path('')` 等于 `.`，会被判为存在，然后启动目录报 `EACCES`）。
-
-### 冒烟：一个模型、一个任务
+冒烟（一个模型、一个任务）→ 批量（默认全部 69 个任务）→ 出表写飞书。完整说明见 [`HANDOFF_CN.md`](HANDOFF_CN.md)。
 
 ```bash
 python scripts/python/run_realtime_batch.py \
@@ -100,6 +95,16 @@ python scripts/python/run_realtime_batch.py \
 ```
 
 密钥来源优先级：`.env` / 环境变量（模型自己的 `api.key_env`，再 `REALTIME_API_KEY`、`PACKY_API_KEY` 兜底）→ `--keys-file <0600 JSON>` → **无回显 stdin**（看到 `READY_KEYS_NO_ECHO` 后粘贴一行 `{"<model>": "sk-..."}`）。只有仍然缺 key 的模型才会走后面两种；启动时会打印每个模型用了哪种来源（`KEY_SOURCE`），不打印密钥本身。
+
+### 维护者自测（只改代码时才需要，跑实验的同学可跳过）
+
+```bash
+REALTIME_VIEWER_CHROMIUM=<playwright chromium 路径> \
+PYTHONPATH=/tmp/rt-deps \
+python -m pytest -q tests/test_realtime_*.py tests/test_fmp4_live.py tests/test_recording_log_download.py
+```
+
+判据是**全绿**（不写死通过数量，用例数会随改动变化）。`test_maestro_minimax_provider.py` 缺上游依赖 `zhipuai`，与本项目无关，忽略即可；查看器用例需要 `python -m playwright install chromium`，未装时该项会 skip（不是失败）。
 
 ### 正式批量（69 任务 × 多模型）
 

@@ -45,18 +45,8 @@ python scripts/python/render_realtime_trajectory.py /path/to/results --recursive
 
 ## 图片与历史消息
 
-HTML 内嵌已有截图，所以单独复制 HTML 也能查看图片和文字。相同图片和相同历史消息只存一份内容，各次请求引用它们；**显示时每个请求仍保留原来的全部消息、重复次数和顺序**，不删除或合并用户能看到的历史。比如截图 A 出现在第 2、3 次请求中，展开两次请求都能看到截图 A。
-
-原日志中只有图片哈希时，会尝试与结果目录的截图匹配；文件缺失、超出目录或与记录哈希不一致时会提示，不将另一张图片冒充原图。HTML 的“事件字段”省略图片 base64 和不可读签名的长字符串，保留其引用/哈希/长度；完整原始记录仍在 JSONL 中。中途截断或损坏的 JSONL 行会提示行号，其他可读事件继续展示。
+HTML 内嵌已有截图，所以单独复制 HTML 也能看图看字。相同图片和历史消息只存一份、由各次请求引用，**显示时每个请求仍完整保留原来的消息、重复次数和顺序**（例如截图 A 出现在第 2、3 次请求，两次都能看到它）。
 
 `recording.mp4` 不嵌入 HTML，避免页面变成巨大的视频副本。要播放或定位录屏，请保留原结果目录中的录像；缺少录像不影响截图与文字浏览。不同浏览器的视频编码支持可能不同。
 
-## 验证
-
-Python 导出器只用标准库，浏览器端不依赖网络、CDN 或第三方脚本。
-
-```bash
-python -m pytest -q tests/test_realtime_trajectory_viewer.py tests/test_realtime_runner.py
-```
-
-浏览器交互用例需要 Playwright Chromium（`python -m playwright install chromium`）；未安装时该项会 **skip 而不是失败**，也可以用 `REALTIME_VIEWER_CHROMIUM` 指向已有浏览器（不要设成空字符串）。命令前缀与完整回归说明见 [AGENTS.md](AGENTS.md) 第 4 节。
+查看器只用 Python 标准库导出，浏览器端不依赖网络、CDN 或第三方脚本，重导出不会改动原始 JSONL 或已发送给模型的消息。维护者的测试入口见 [AGENTS.md](AGENTS.md) 第 4 节。
