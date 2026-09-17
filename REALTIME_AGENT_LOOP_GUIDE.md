@@ -1,8 +1,8 @@
 # 实时 Agent loop
 
-本文件描述实际程序流程；四组配置见 [配置协议](REALTIME_AGENT_CONFIG_PROTOCOL.md)，运行命令见 [部署说明](SETUP_GUIDELINE_CN.md)。
+本文件描述实际程序流程。批量入口是 `scripts/python/run_realtime_batch.py`（逐模型记账、可续跑），它按模型顺序调用 `scripts/python/run_multienv.py`；四组配置见 [配置协议](REALTIME_AGENT_CONFIG_PROTOCOL.md)，运行参数见 [部署与运行](SETUP_GUIDELINE_CN.md)。
 
-1. `run_multienv.py` 按模型和变体加载 YAML，校验 ID、感知与动作能力，再使用统一 `agent_kwargs()` 创建 Agent；YAML 的 `system_prompt` 是唯一 prompt 来源，缺失或为空时直接报错，代码不再内置默认 prompt。
+1. `run_multienv.py` 按模型和变体加载 YAML，校验 ID、感知与动作能力，再用统一 `agent_kwargs()` 创建 Agent；YAML 的 `system_prompt` 是唯一 prompt 来源，缺失或为空直接报错，代码里没有默认 prompt。
 2. `run_realtime_example()` 执行任务 reset；必要时安装服务；核对 VM 两份 realtime 源码哈希，开始 30 FPS 目标录像。
 3. 对话开头固定一条任务说明 user 消息，保留阅读游戏规则、继续尝试、禁止导航这三句；结束工具要求只放在 system prompt，避免重复。每个决策轮只追加截图时间和当前原始 1920×1080 截图。每次 API 请求包含任务说明、完整历史回复及工具结果和本轮观测，单次请求内任务说明只有一份。YAML system prompt 后追加 api.coordinate_system 对应的坐标约定，API tools 字段使用同一协议的 schema。Gemini、MiniMax 的相对坐标在动作校验/提交前转换成原生像素，原始 assistant 历史保持模型返回值；其他模型原样传递。
 4. 如模型调用 get_frames，VM 按所给秒数读取已完成视频片段，返回图片及实际时间；宿主保存查询图片并把结果回填 API。可重复，不增加决策数。Agent3 一次回复至多一个 get_frames，收到结果后才能再次查询；Agent4 允许一次回复多个 get_frames。
@@ -13,15 +13,15 @@
 
 正式游戏在 reset 后记录页面身份，在每次动作后及评分前比较标签页、URL 和加载时间。重载、换页或复制页面时写 run_error 并保持未评分。该检查发生在环境侧，不提供给模型，也不读取 __dbg。
 
-各配置的 system prompt 均包含先探索环境和游戏机制、谨慎试探、珍惜每次 attempt 的公共策略。四组 system prompt 的首句统一为 `You are the computer-using Agent in a real-time GUI benchmark.`；并在「收到当前截图」之后统一说明：动作执行需要一点时间，随动作结果返回的截图紧跟执行结束取得、未等待界面重绘，可能尚未反映动作执行后的状态，不能据此断定动作无效。该策略不增加强制 WAIT 或 get_frames，也不改变四组工具能力。模型可见的截图时间及工具结果时间保留三位小数；内部计时、动作执行、取帧选择和原始日志保留原值。
+各配置的 system prompt 都要求先探索环境与游戏机制、谨慎试探、珍惜每次 attempt（首句与动作时序说明四组一致，写在各 YAML 里）。模型可见的截图时间与工具结果时间保留三位小数，内部计时、动作执行、取帧选择和原始日志保留原值。
 
-任务正常结束或达到决策上限后读取 BENCH；未成功记有效 0 分，结束原因分别为 done / decision_limit。游戏内部 ready/running 状态仍照实保存。主循环中的异常保存执行/运行错误和指标，外层批量启动器记录失败后继续下一任务；reset、初始页面检查和录制启动等早期错误可能仅有运行日志，未取得游戏成绩。该批量行为保留，具体续跑替换规则见 [运行说明](SETUP_GUIDELINE_CN.md)。
+任务正常结束或达到决策上限后读取 BENCH：未成功记有效 0 分，结束原因分别是 `done` / `decision_limit`；游戏内部 ready/running 状态照实保存，无有效成绩的异常不会伪造成游戏失败。主循环中的异常保存执行/运行错误和指标；**跨模型继续需要批量的 `--keep-going`**，单个模型内的任务失败本来就会继续下一个任务。reset、初始页面检查和录制启动等早期错误可能只有运行日志。
 
 示例：`computer_press({"key":"space"})` 转为 `{"action_type":"PRESS","parameters":{"key":"space"}}`。空格键不是字面空格。模型未提交的动作不会从文字计划中自动补出。
 
-Agent3 同一回复多个 get_frames、混合 get_frames 与动作、非法参数或文字代替工具时，不执行该回复的动作；先回传每个调用的错误结果，再请求纠正，最多两次。执行阶段发生错误则不重放序列，以免重复已执行的前缀。
+Agent3 同一回复多个 `get_frames`、混合查询与动作、非法参数或文字代替工具时，该回复的动作一概不执行：先回传每个调用的错误结果，再请求纠正，最多两次；执行阶段出错则不重放序列，以免重复已执行的前缀。
 
-模型知道截图时间与之前动作的实际时间，不接收持续更新的视频流。它自己选择历史查询时间点与数量；get_frames 单次 1–8 张，not_ready 没有图片，框架不会自动重查。模型生成回复期间，游戏和录屏仍在继续。
+模型知道截图时间与之前动作的实际时间，不接收持续更新的视频流；它自己决定历史查询的时间点与数量（单次 1–8 张，`not_ready` 没有图片）。模型生成回复期间，游戏和录屏仍在继续。
 
 Gemini 当前使用 Chat 接口。取帧结果包含图片时，`role=tool` 只说明结果位于后续图片消息，并保留对应调用 ID；后续 `role=user` 按调用 ID 分组，依次放查询完成时间、各帧信息和图片，详细时间与状态只发送一份。部分帧失败时，其状态仍在该组中保留；整次查询没有图片时，详细结果直接留在 `role=tool`，不新增图片消息。Messages/Responses 的取帧封装保持原有结构。
 

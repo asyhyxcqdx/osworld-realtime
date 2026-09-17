@@ -13,10 +13,9 @@
 | 环境 | 69 个游戏 + 69 个任务配置已接入并通过验收 |
 | 配置 | 40 份 YAML（8 款实验模型 × 4 组 + Fable5/Astra 8 份历史基线） |
 | VM 镜像 | `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`（**不入仓库**，约 22.8 GiB / 24,493,359,104 字节） |
-| 已完成实验 | 仅 **C1 单任务 × 8 模型** 一轮；完整 69 任务 × 8 模型**尚未运行** |
-| 结果 | **成绩与金额记录在仓库外**，不提交进 Git |
+| 进度与成绩 | **不在仓库里**：批量实验由外部同学执行，逐任务成绩与逐模型金额写进飞书总表（表标识见 [`HANDOFF_CN.md`](HANDOFF_CN.md)）。不要在文档里写死"已跑/未跑" |
 
-> 接手的主要任务通常是：跑 **combine × 八模型 × 69 任务** 的大批量实验，并记录逐模型花费。
+> 接手的主要任务是**维护与支撑**：修 Agent/配置/文档、帮执行方排错、按 [`HANDOFF_CN.md`](HANDOFF_CN.md) 交付批量实验。
 
 ---
 
@@ -37,7 +36,7 @@
 | `mm_agents/realtime_env.py`、`.env.example` | `.env` 配置层（网关、key、代理、运行默认值） | ✅ |
 | `scripts/python/run_multienv.py` | 底层启动器（`--num_envs` 并行、自动续跑） | ⚠️ 改了要跑全量回归 |
 | `tests/test_realtime_*.py` | 回归测试 | ✅ 改代码必须同步改这里 |
-| `results_*`、`docker_vm_data/` | 结果 / 镜像 | 🚫 已被 `.gitignore` 挡住，**不要试图提交** |
+| `results_*`、`docker_vm_data/` | 结果 / 镜像 | 🚫 不提交：`docker_vm_data` 与 `**/result*/**/*` 在 `.gitignore` 里，**目录本身不被忽略**，提交流前用 `git status` 确认 |
 
 ---
 
@@ -87,8 +86,7 @@ PYTHONPATH=/tmp/rt-deps \
 python -m pytest -q tests/test_realtime_*.py tests/test_fmp4_live.py tests/test_recording_log_download.py
 ```
 
-- 期望全绿（当前基线：**356 通过**；全量 `tests/` 除 `test_maestro_minimax_provider.py` 外再加其余用例）。
-- `test_maestro_minimax_provider.py` 缺上游依赖 `zhipuai`，与本项目无关，忽略即可。
+- 判据是**全绿**，不写死通过数量（用例数会随改动变化）。`test_maestro_minimax_provider.py` 缺上游依赖 `zhipuai`，与本项目无关，忽略即可。
 - HTML 查看器测试需要 Chromium：`python -m playwright install chromium`；也可以临时用 `REALTIME_VIEWER_CHROMIUM` 指定已有浏览器。**不要把它设成空字符串**（`Path('')` 等于 `.`，会被判为存在，然后启动目录报 `EACCES`）。
 
 ### 冒烟：一个模型、一个任务
@@ -111,7 +109,7 @@ python scripts/python/run_realtime_batch.py \
   --run_id packy_v11_batch01 \
   --result_dir results_realtime_batches \
   --cost_dir /path/outside/repo/optional \
-  --num_envs 4 \          # 每个 env 一台 VM；同机可开 4–8
+  --num_envs 4 \          # 每个 env 一台 VM；默认 1，批量建议 4–8（按 CPU/内存与网关限流定）
   --keep-going \          # 单个模型失败不中断整批
   --exclusive-keys-confirmed
 ```
@@ -208,16 +206,15 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 
 | 文档 | 内容 |
 |---|---|
-| [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 八模型并填飞书总表的一页版指引 |
+| [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 八模型并填飞书总表 |
 | [`README_CN.md`](README_CN.md) | 项目入口（给人看） |
-| [`REALTIME_GUI_PROJECT.md`](REALTIME_GUI_PROJECT.md) | 项目总览：环境、四组 Agent、评分边界 |
-| [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) | **部署与运行 + 接手准备 + 批量命令** |
-| [`AGENT_EXPERIMENT_DESIGN.md`](AGENT_EXPERIMENT_DESIGN.md) | 实验设计：受控变量、工具与时序、预算、验证 |
-| [`REALTIME_AGENT_LOOP_GUIDE.md`](REALTIME_AGENT_LOOP_GUIDE.md) | 实际程序流程（逐步骤） |
-| [`REALTIME_AGENT_CONFIG_PROTOCOL.md`](REALTIME_AGENT_CONFIG_PROTOCOL.md) | YAML 字段协议 |
-| [`REALTIME_GUI_BENCH_PROTOCOL.md`](REALTIME_GUI_BENCH_PROTOCOL.md) | 游戏接口协议（`window.BENCH` 字段与评分） |
+| [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) | 部署与运行：环境、镜像、命令、镜像构建、排错 |
+| [`REALTIME_GUI_PROJECT.md`](REALTIME_GUI_PROJECT.md) | 项目总览：环境、四组 Agent、评分与验证边界 |
+| [`AGENT_EXPERIMENT_DESIGN.md`](AGENT_EXPERIMENT_DESIGN.md) | 实验设计：受控变量、工具与时序、录像、预算 |
+| [`REALTIME_AGENT_LOOP_GUIDE.md`](REALTIME_AGENT_LOOP_GUIDE.md) | 实际程序流程与日志字段（逐步骤） |
+| [`REALTIME_AGENT_CONFIG_PROTOCOL.md`](REALTIME_AGENT_CONFIG_PROTOCOL.md) | YAML 字段协议与校验规则 |
+| [`configs/realtime_agents/README.md`](configs/realtime_agents/README.md) | **模型↔协议↔密钥映射表、坐标协议（唯一权威）** |
+| [`REALTIME_GUI_BENCH_PROTOCOL.md`](REALTIME_GUI_BENCH_PROTOCOL.md) | 游戏接口协议（`window.BENCH` 字段、评分、验收清单） |
 | [`REALTIME_GUI_BENCH_SHORTCUT_POLICY.md`](REALTIME_GUI_BENCH_SHORTCUT_POLICY.md) | 环境快捷键阻断策略（按键表、轨迹字段） |
-| [`REALTIME_TRAJECTORY_VIEWER.md`](REALTIME_TRAJECTORY_VIEWER.md) | 轨迹查看器用法 |
-| [`REALTIME_REVIEW_REPORT.md`](REALTIME_REVIEW_REPORT.md) | 当前复核记录 |
-| [`evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`](evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md) | 环境接入与验收记录 |
-| [`configs/realtime_agents/README.md`](configs/realtime_agents/README.md) | 模型配置表、坐标协议、密钥分组 |
+| [`REALTIME_TRAJECTORY_VIEWER.md`](REALTIME_TRAJECTORY_VIEWER.md) | HTML 轨迹查看器用法 |
+| [`evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md`](evaluation_examples/REALTIME_GUI_BENCH_INTEGRATION.md) | 环境接入、镜像与评分来源记录 |

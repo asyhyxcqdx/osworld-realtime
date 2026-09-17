@@ -2,20 +2,13 @@
 
 版本：`realtime-gui-bench/1.1`
 
-本文是游戏制作 Agent 的正式接口规范。每个游戏网页必须在浏览器全局对象中暴露统一的 `window.BENCH` 状态，OSWorld checker 只读取这个状态中的正式字段评分。游戏内部可以有任意玩法和内部状态，但不能改变本协议规定的字段语义。
+本文是 69 道 Realtime GUI Bench 游戏网页的正式接口规范。每个网页必须在浏览器全局对象中暴露统一的 `window.BENCH` 状态，OSWorld checker 只读取这个状态中的正式字段评分。游戏内部可以有任意玩法和内部状态，但不能改变本协议规定的字段语义。协议版本 `realtime-gui-bench/1.1` 与基准包版本 `RealtimeGame v1.1(3)` 是两个不同的编号。
 
 ## 1. 适用范围
 
-本协议适用于当前 69 道 Realtime GUI Bench 游戏（A/B/C/D 四类）。每个游戏是一个独立的 OSWorld 任务，网页在 Chrome 中运行，Agent 通过真实键盘和鼠标动作操作网页。
+本协议适用于当前 69 道游戏（A/B/C/D 四类）。每个游戏是一个独立的 OSWorld 任务，网页在 Chrome 中运行，Agent 通过真实键盘和鼠标动作操作网页。
 
-本协议只规定：
-
-- 游戏状态如何暴露给 checker。
-- 三次机会如何计数。
-- `pass@1` 和 `pass@3` 如何由游戏直接提供。
-- 游戏结束后 Agent 如何结束 OSWorld 回合。
-
-本协议不规定游戏玩法、视觉设计、内部随机数、动画实现或调试信息的具体内容。
+本协议规定游戏状态如何暴露给 checker、三次机会如何计数、`pass@1`/`pass@3` 如何由游戏直接提供、游戏结束后 Agent 如何结束回合；不规定玩法、视觉设计、内部随机数、动画实现或调试信息。
 
 ## 2. 必需的 `window.BENCH`
 
@@ -41,7 +34,7 @@ window.BENCH = {
 | `protocol_version` | 字符串 | 必须为 `realtime-gui-bench/1.1` | 当前网页遵循的协议版本。整个游戏生命周期内不可改变。 | 否 |
 | `task` | 字符串 | 非空、建议使用小写 snake_case | 游戏的内部稳定名称，例如 `wall_jump`。用于日志和诊断，不用于决定分数。 | 否 |
 | `max_attempts` | 整数 | 当前基准必须为 `3` | 该游戏允许的最大完整尝试次数。不可在运行中改变。 | 间接校验 |
-| `attempts_completed` | 整数 | `0` 到 `max_attempts` | 已经结束并得到结果的完整尝试次数。成功或失败都算一次；当前尚未结束的尝试不计入。该字段单调递增，不能回退。 | 否 |
+| `attempts_completed` | 整数 | `0` 到 `max_attempts` | 已经结算的完整尝试数：成功、失败各计 1，进行中的那次不计，单调递增不回退。**不是失败次数、当前尝试编号或点击次数。** | 否 |
 | `passed` | 布尔值 | `true` 或 `false` | 游戏是否曾经成功。成功后保持 `true`，不能因后续逻辑或页面动画改回 `false`。 | 兼容校验 |
 | `status` | 字符串 | `ready`、`running`、`passed`、`failed` | 游戏生命周期状态，见第 3 节。 | 终态校验 |
 | `pass_at_1` | 数字 | 必须为 `0` 或 `1` | 第一次完整尝试是否成功。由游戏在第一次尝试结算时直接写入，之后保持不变。 | **是** |
@@ -51,7 +44,7 @@ window.BENCH = {
 
 ### 2.2 机器可读 schema
 
-制作 Agent 可以使用下面的 JSON Schema 校验核心状态。`additionalProperties`
+重写或新增游戏时，可以用下面的 JSON Schema 校验核心状态。`additionalProperties`
 设为 `true`，是为了允许游戏保存自定义诊断字段；自定义字段不能改变核心字段含义。
 
 ```json
@@ -110,29 +103,7 @@ running --本次失败且仍有机会--> running
 running --第三次失败--> failed
 ```
 
-### 3.1 `ready`
-
-- 页面已加载，规则和开始入口可见。
-- 游戏尚未开始，不能提前消耗机会。
-- `attempts_completed=0`、`pass_at_1=0`、`pass_at_3=0`。
-
-### 3.2 `running`
-
-- 游戏尚未进入终态，可以是当前尝试进行中，也可以是一次失败已经结算、页面正在等待下一次尝试入口。
-- `attempts_completed` 只统计已经结算的尝试，不包含尚未开始的下一次尝试。
-- Agent 可以继续观察和操作。
-
-### 3.3 `passed`
-
-- 至少一次尝试成功。
-- 页面应显示成功结果并保持终局画面。
-- 游戏不能再接受会改变结果的操作。
-
-### 3.4 `failed`
-
-- 三次完整尝试全部失败。
-- 页面应显示机会耗尽的结果并保持终局画面。
-- 游戏不能再接受会改变结果的操作。
+四个状态的字段取值由 §2.3 的不变量完全确定：`passed` 是唯一可以出现 `pass_at_* = 1` 的终态，`failed` 只在三次尝试全部结算后出现，两者一旦进入就冻结终局画面、不再接受改变结果的操作。
 
 ## 4. 尝试的统一定义
 
@@ -153,53 +124,17 @@ running --第三次失败--> failed
 
 ## 5. 分数写入规则
 
-游戏必须在每次尝试结算时原子地更新相关字段。推荐按以下顺序更新：
+游戏在每次尝试结算时**原子地**更新字段。四种结算情况必须写入的值：
 
-### 5.1 第一次成功
+| 结算情况 | attempts_completed | pass_at_1 | pass_at_3 | passed | status |
+| --- | --- | --- | --- | --- | --- |
+| 第一次尝试成功 | 1 | **1** | 1 | true | `passed` |
+| 第二次尝试成功 | 2 | 0 | 1 | true | `passed` |
+| 第三次尝试成功 | 3 | 0 | 1 | true | `passed` |
+| 失败但仍有机会（第 1、2 次失败） | +1 | 0 | 0 | false | `running` |
+| 第三次尝试失败 | 3 | 0 | 0 | false | `failed` |
 
-```javascript
-window.BENCH.attempts_completed = 1;
-window.BENCH.pass_at_1 = 1;
-window.BENCH.pass_at_3 = 1;
-window.BENCH.passed = true;
-window.BENCH.status = "passed";
-```
-
-### 5.2 第二次或第三次成功
-
-第二次成功时 `attempts_completed=2`，第三次成功时 `attempts_completed=3`；两种情况都必须写：
-
-```javascript
-window.BENCH.pass_at_1 = 0;
-window.BENCH.pass_at_3 = 1;
-window.BENCH.passed = true;
-window.BENCH.status = "passed";
-```
-
-### 5.3 失败但仍有机会
-
-失败结算后，将 `attempts_completed` 增加 1，保持：
-
-```javascript
-window.BENCH.pass_at_1 = 0;
-window.BENCH.pass_at_3 = 0;
-window.BENCH.passed = false;
-window.BENCH.status = "running";
-```
-
-随后显示下一次尝试入口。第三次失败不能继续显示可操作的下一次尝试。
-
-### 5.4 三次失败
-
-第三次失败结算后必须写：
-
-```javascript
-window.BENCH.attempts_completed = 3;
-window.BENCH.pass_at_1 = 0;
-window.BENCH.pass_at_3 = 0;
-window.BENCH.passed = false;
-window.BENCH.status = "failed";
-```
+规则：`attempts_completed` 在每次失败结算后加 1，成功后冻结在当时的次数；每次失败结算后必须显示下一次尝试入口，第三次失败后不能再显示可操作的入口。
 
 ## 6. OSWorld checker 的读取约定
 
@@ -209,7 +144,7 @@ checker 通过 Chrome DevTools Protocol 执行 `window.BENCH` 的只读表达式
 2. 校验第 2 节的必需字段、类型、范围和不变量。
 3. 只读取 `pass_at_1` 和 `pass_at_3` 作为分数。
 4. 将完整的 `BENCH` 对象原样保存到详细结果，便于复查。
-5. 游戏 `status=ready/running` 保留原值，标量为 0，不改写为 failed。正常评估完成后，runner 在单任务 `result.json` 增加唯一的结束状态字段 `termination_reason`：`done` 表示提交结束动作并正常评分，`decision_limit` 表示耗尽动作回合预算并正常评分。提前 DONE 或耗尽预算未成功均为有效 0 分。`agent_metrics.json` 同时记录 `termination_reason`；异常为 `execution_error`（执行阶段）、`run_error`（其他运行错误）或 `interrupted`（中断），保留错误详情，不伪造游戏评分。不另设 `run_status`。实验总表直接读取单任务记录；不再生成整体和 A/B/C/D 分类汇总。旧结果缺少结束状态时需核对原始运行证据，不能仅凭游戏状态回填。
+5. 游戏 `status=ready/running` 保留原值，标量为 0，不改写为 failed：提前 DONE 或耗尽回合预算而未成功都记**有效 0 分**。结束原因由 runner 写入唯一字段 `termination_reason`（`done` / `decision_limit` / `execution_error` / `run_error` / `interrupted`），`result.json` 与 `agent_metrics.json` 都会记录；异常保留错误详情，不伪造游戏评分。字段口径与出表见 [执行同学作业单](HANDOFF_CN.md)。
 6. 对 `status=passed` 或 `status=failed` 的任务记录终态和游戏直接提供的两个分数。
 
 checker **不得**：
@@ -229,9 +164,7 @@ OSWorld 的兼容标量结果可以使用游戏提供的 `pass_at_3`；详细结
 {"action_type":"DONE"}
 ```
 
-普通文字回复、停止调用模型、点击网页上的成功提示或等待超时，都不能替代 `DONE`。`DONE` 由 OSWorld 运行器解释为“停止当前任务并读取最终评分”。
-
-实时基准动作空间不提供 `FAIL`。Agent 只能通过 `computer_done({})` 提交 `DONE` 结束任务；如果网页仍为 `ready` 或 `running` 就提交，正常评估未成功记有效 0 分，结束原因为 `done`，游戏状态不改写为 failed。
+普通文字回复、停止调用模型、点击网页上的成功提示或等待超时，都不能替代 `DONE`。`DONE` 由 OSWorld 运行器解释为“停止当前任务并读取最终评分”。动作空间**不提供 `FAIL`**：脚本即使提前提交 `DONE`，也只是按当时状态正常评分，游戏状态不会被改写成 failed。
 
 ## 8. 可选诊断接口
 
@@ -261,34 +194,15 @@ window.__dbg = function () {
 };
 ```
 
-`__dbg()` 是测试专用只读接口。离线验收脚本可以通过 CDP 读取 `phase`、坐标、目标和随机状态等内部字段；正式 Agent 工具和上下文不会提供该接口，正式评分也不读取它。不得提供自动成功函数或修改 `BENCH` 的函数。
+`__dbg()` 是测试专用只读接口。离线验收脚本（`scripts/python/validate_realtime_gui_bench.py`）通过 CDP 只读取其中的 `phase`；正式 Agent 工具和上下文不会提供该接口，正式评分也不读取它。不得提供自动成功函数或修改 `BENCH` 的函数。
 
-## 9. 游戏制作 Agent 验收清单
+## 9. 新增或重写游戏的验收清单
 
-每个游戏提交前必须完成以下检查：
+字段语义与结算规则由 §2.3 的不变量和 §5 的写入表完整规定，逐条照抄没有意义。除那些硬性检查外，还必须确认：
 
-- [ ] 初始加载立即存在完整的 `window.BENCH`。
-- [ ] `protocol_version`、`task`、`max_attempts` 存在且稳定。
-- [ ] 页面开始前为 `status=ready`，不会提前消耗机会。
-- [ ] 当前尝试只在成功或失败结算时增加一次 `attempts_completed`。
-- [ ] 第一次成功、第二次成功、第三次成功和三次失败分别产生正确的两个 pass 字段。
-- [ ] 成功后 `passed=true` 且状态冻结为 `passed`。
-- [ ] 三次失败后状态冻结为 `failed`，不能开始第四次尝试。
-- [ ] `results`、DOM 文本和调试字段不会成为 checker 的必要依赖。
-- [ ] `window.__dbg()`（如果提供）为只读接口，不提供自动通关或修改 `BENCH` 的入口。
-- [ ] 使用真实鼠标/键盘事件可以完成一次成功路径和一次三次失败路径。
-- [ ] 页面没有依赖外部网络才能创建或更新 `window.BENCH`。
+- [ ] `window.__dbg()`（如果提供）是只读的，不提供自动通关或修改 `BENCH` 的入口。
+- [ ] 用真实鼠标/键盘事件可以走完一次成功路径和一次三次失败路径。
+- [ ] 页面不依赖外部网络就能创建和更新 `window.BENCH`。
+- [ ] `results`、DOM 文本、URL hash 和调试字段都不会成为 checker 的必要依赖。
 
-## 10. 旧接口迁移说明
-
-历史旧包使用 `attempts`、`results`、`passed` 和 `status`，并且部分代码把 `attempts` 当作失败次数。当前 69 道游戏已完成迁移，本节仅说明旧包差异。
-
-重写游戏时：
-
-1. 用 `attempts_completed` 替换 `attempts`。
-2. 新增并由游戏直接维护 `pass_at_1` 和 `pass_at_3`。
-3. `results` 如需保留，只能作为游戏自定义诊断数据，不能作为评分依据。
-4. 不要为了兼容旧 checker 同时维护两套可能不一致的计数。
-5. 任务配置、checker 测试和网页完成迁移后，再删除旧 getter 中的推导逻辑。
-
-协议变更必须升级 `protocol_version`，并使用新的实验 `run_id`；变更历史从 Git 提交记录追溯。
+协议变更必须升级 `protocol_version` 并使用新的实验 `run_id`；变更历史从 Git 提交记录追溯。

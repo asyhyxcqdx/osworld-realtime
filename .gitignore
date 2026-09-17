@@ -112,6 +112,9 @@ celerybeat.pid
 
 # Environments
 .env
+.env.local
+# local price table used by --prices (template: prices.example.json)
+prices.json
 .venv
 env/
 venv/

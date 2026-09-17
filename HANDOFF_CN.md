@@ -113,16 +113,11 @@ python scripts/python/run_realtime_batch.py \
 
 ## 6. 第二步：单模型全量（1 个便宜模型 × 69 任务）
 
-先写一份单价表 `prices.json`（用于把 token 换算成美元，单位：**美元 / 百万 token**）：
+单价表用仓库里的模板，按你们网关的单价改（单位：**美元 / 百万 token**；`"*"` 是兜底，有缓存折扣就加 `cached_input_per_mtok`）：
 
-```json
-{
-  "deepseek-flash": {"input_per_mtok": 0.27, "output_per_mtok": 1.1},
-  "*": {"input_per_mtok": 1.0, "output_per_mtok": 2.0}
-}
+```bash
+cp prices.example.json prices.json
 ```
-
-`"*"` 是兜底单价。有缓存折扣就再加 `"cached_input_per_mtok"`（不写则与 `input_per_mtok` 相同）。
 
 ```bash
 python scripts/python/run_realtime_batch.py \
@@ -136,7 +131,7 @@ python scripts/python/run_realtime_batch.py \
 跑完检查：
 
 ```bash
-ls results_realtime_batches/deepseek-flash/batch01/agent4/computer_13/screenshot/realtime_gui_bench/ | wc -l   # 应为 69
+ls -d results_realtime_batches/deepseek-flash/batch01/agent4/computer_13/screenshot/realtime_gui_bench/*/ | wc -l   # 应为 69
 cat results_realtime_batches/_cost/batch01/cost_report.json
 ```
 
@@ -268,12 +263,14 @@ python scripts/python/export_realtime_results.py \
 | 启动就报缺 key | `.env` 没填或变量名不对 | 对照 §4；跑一次带 `--dry-run` 的命令看解析结果 |
 | `KEY_SOURCE` 打印出来是 `stdin` | `.env` 里没有对应变量 | 补 `.env`；`stdin` 表示要你手动粘贴 key |
 | 某个任务没有 `result.txt` | API/执行/评分异常 → **无有效成绩，不是 0 分** | 记下任务 id，重跑同一条命令；判分时和真正的 0 分区分开 |
-| 单轮花费特别大 | 模型退化刷屏直到撞上 128k 输出上限，那轮照样计费 | 看 `cost_report.json` 的 token 数；必要时限制该模型预算 |
+| 单轮花费特别大 | 模型退化刷屏直到撞上 128k 输出上限，那轮照样计费 | 正常现象，照实记录该轮 token 与费用即可，不擅自改配置或削减预算 |
 | 跑一半整批中断 | 本机代理瞬断 | 账单抓取失败已经被降级为 `billing_error` 不会中断；模型请求失败会让该任务"无有效成绩"。断点续跑即可 |
 | 模型"来不及操作" | 环境是**实时**的，模型思考时游戏在继续跑 | 这是被测对象的行为，不用干预；不要在 prompt 里加时序提示 |
 | 虚拟机连不上/超时 | 代理把虚拟机地址也代理了 | `NO_PROXY` 必须包含 `localhost,127.0.0.1,::1` 和虚拟机 IP |
 | `get_frames` 返回 `not_ready` | 请求的时间比已录完的片段新 | 正常现象，不是错误 |
 | 两次导入飞书，行数翻倍 | 写入是新增不是覆盖 | 在飞书里删掉重复行，只导一次 |
+
+> 这里只列同学最可能遇到的几种；完整的坑与约定见 [AGENTS.md](AGENTS.md) 第 6 节。
 
 ---
 
