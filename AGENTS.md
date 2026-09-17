@@ -59,7 +59,7 @@ docker pull happysixd/osworld-docker
 ls -l /dev/kvm
 
 # ④ 虚拟机镜像（22.8 GiB，仓库里没有，需从 HuggingFace 下）
-hf download bright-star123/osworld-realtime-vm \
+hf download bright-star123/osworld-realtime-vm --repo-type dataset \
   Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data
 ls -l docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2   # 应为 24493359104 字节
 

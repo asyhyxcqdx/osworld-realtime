@@ -13,7 +13,7 @@
 ## 2. 取 VM 镜像（不入仓库）
 
 ```bash
-hf download bright-star123/osworld-realtime-vm \
+hf download bright-star123/osworld-realtime-vm --repo-type dataset \
   Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data
 ls -l docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2   # 应为 24493359104 字节
 ```

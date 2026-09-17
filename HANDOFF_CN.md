@@ -20,7 +20,7 @@
 | 内容 | 位置 |
 |---|---|
 | 代码 | GitHub 公开仓库 `https://github.com/asyhyxcqdx/osworld-realtime`（`git clone` 即可，无需权限） |
-| 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`（公开仓库） |
+| 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm --repo-type dataset Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`（公开 dataset 仓库） |
 | 结果总表 | 飞书多维表格：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>（**16 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
 | 模型密钥 | 你们公司网关自己的 key，不用给别人 |
 
@@ -49,7 +49,7 @@ pip install pytest imageio-ffmpeg huggingface_hub   # huggingface_hub 提供下�
 docker pull happysixd/osworld-docker
 ls -l /dev/kvm                           # 必须有输出
 
-hf download bright-star123/osworld-realtime-vm \
+hf download bright-star123/osworld-realtime-vm --repo-type dataset \
   Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data
 ls -l docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2   # 应为 24493359104
 ```

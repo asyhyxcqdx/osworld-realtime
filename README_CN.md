@@ -11,7 +11,7 @@
 ```bash
 uv sync && pip install pytest imageio-ffmpeg && python -m playwright install chromium
 docker pull happysixd/osworld-docker
-hf download bright-star123/osworld-realtime-vm \
+hf download bright-star123/osworld-realtime-vm --repo-type dataset \
   Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data
 cp .env.example .env                     # 填网关地址与 key（.env 不入库）
 
