@@ -19,9 +19,9 @@
 
 | 内容 | 位置 |
 |---|---|
-| 代码 | GitHub 公开仓库 `https://github.com/asyhyc…/osworld-realtime`（负责人给链接） |
-| 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data` |
-| 结果总表 | 飞书多维表格（负责人给链接，**16 列已建好，不要改列名**） |
+| 代码 | GitHub 公开仓库 `https://github.com/asyhyxcqdx/osworld-realtime`（`git clone` 即可，无需权限） |
+| 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`（公开仓库） |
+| 结果总表 | 飞书多维表格（负责人给链接，**16 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
 | 模型密钥 | 你们公司网关自己的 key，不用给别人 |
 
 镜像下载后**必须核对大小**：`24493359104` 字节（`ls -l` 看一下，差一点就是没下完）。
