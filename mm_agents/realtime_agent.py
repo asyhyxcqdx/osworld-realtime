@@ -22,7 +22,6 @@ from mm_agents.realtime_protocol import (
     FRAME_TOOL,
     GetFramesArgs,
     ForbiddenShortcutError,
-    system_prompt,
     validate_action,
 )
 
@@ -496,7 +495,7 @@ class RealtimeAgent:
         thinking_enabled=None,
         thinking_effort=None,
         thinking_summary=False,
-        system_prompt_text=None,
+        system_prompt_text,
         coordinate_system="native_pixels",
         wire=None,
     ):
@@ -504,6 +503,8 @@ class RealtimeAgent:
             raise ValueError("sequence and frames must come from a validated Agent config")
         if tool_format != "native":
             raise ValueError("Realtime Agents require native tool use")
+        if not isinstance(system_prompt_text, str) or not system_prompt_text.strip():
+            raise ValueError("system_prompt_text must be the non-empty Agent system prompt")
         self.variant = variant
         self.sequence = bool(sequence)
         self.frames = bool(frames)
@@ -527,10 +528,7 @@ class RealtimeAgent:
             thinking_effort=thinking_effort,
             api_key_env=api_key_env,
         )
-        base_system = system_prompt_text or system_prompt(
-            self.sequence, self.frames, self.max_actions, self.max_queries
-        )
-        self.system = base_system + "\n" + self.coordinates.guidance
+        self.system = system_prompt_text + "\n" + self.coordinates.guidance
         self.frame_query = None
         self.event_sink = None
         self.reset()

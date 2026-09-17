@@ -11,7 +11,6 @@ from mm_agents.realtime_config import agent_kwargs, load_realtime_config
 from mm_agents.realtime_protocol import (
     ACTION_TOOLS,
     GetFramesArgs,
-    system_prompt,
     validate_action,
 )
 
@@ -30,6 +29,9 @@ IMAGE = {
 }
 
 
+TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
+
+
 def test_action_validation_uses_registered_pydantic_models():
     assert validate_action(ACTION) == ACTION
     with pytest.raises(ValueError):
@@ -40,9 +42,15 @@ def test_action_validation_uses_registered_pydantic_models():
         validate_action({"action_type": "FAIL"})
 
 
-def test_action_tools_are_generated_from_pydantic_models():
-    from mm_agents.realtime_protocol import ACTION_TOOLS
+def test_a_missing_or_empty_system_prompt_is_rejected():
+    kwargs = dict(variant="agent1", sequence=False, frames=False, wire=ModelWire("mock", "openai_chat"))
+    with pytest.raises(TypeError):  # The system prompt is a required argument.
+        RealtimeAgent(**kwargs)
+    with pytest.raises(ValueError, match="system_prompt_text"):
+        RealtimeAgent(**kwargs, system_prompt_text="   ")
 
+
+def test_action_tools_are_generated_from_pydantic_models():
     move = next(tool for tool in ACTION_TOOLS if tool["name"] == "computer_move_to")
     wait = next(tool for tool in ACTION_TOOLS if tool["name"] == "computer_wait")
     assert move["parameters"]["required"] == ["x", "y", "duration_s"]
@@ -166,7 +174,7 @@ def test_four_variants_and_repeated_frame_queries(protocol, variant):
         return replies.pop(0)
 
     wire.request = request
-    agent = RealtimeAgent(variant=variant, sequence=mode.sequence, frames=mode.frames, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, variant=variant, sequence=mode.sequence, frames=mode.frames, wire=wire)
     query = Mock(
         return_value={
             "frames": [
@@ -207,7 +215,7 @@ def test_task_is_single_prefix_across_decisions_queries_and_reset(protocol, hist
         return next(replies)
 
     wire.request = request
-    agent = RealtimeAgent(variant="agent4", sequence=True, frames=True, wire=wire,
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, variant="agent4", sequence=True, frames=True, wire=wire,
                           max_trajectory_length=history_length)
     agent.bind_frame_query(lambda _: {"frames": [{"status": "not_ready"}]})
     events = []
@@ -259,7 +267,7 @@ def test_task_is_single_prefix_across_decisions_queries_and_reset(protocol, hist
 def test_text_json_tool_output_is_rejected():
     wire = ModelWire("mock", "anthropic_messages")
     with pytest.raises(ValueError, match="native tool use"):
-        RealtimeAgent(
+        RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT,
             variant="agent3", sequence=False, frames=True, wire=wire, tool_format="json"
         )
 
@@ -272,7 +280,7 @@ def test_single_action_repair_does_not_execute_first_invalid_action():
             native_reply(wire.protocol, text=json.dumps(ACTION)),
         ]
     )
-    agent = RealtimeAgent(sequence=False, frames=False, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=False, frames=False, wire=wire)
     assert agent.predict("t", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION]
     assert agent.counters["model_requests"] == 2
 
@@ -285,7 +293,7 @@ def test_sequence_action_limit_is_not_silently_truncated():
             native_reply(wire.protocol, text=json.dumps(ACTION)),
         ]
     )
-    agent = RealtimeAgent(
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT,
         variant="agent2", sequence=True, frames=False, wire=wire,
         max_sequence_actions=1,
     )
@@ -401,7 +409,7 @@ def test_screenshot_time_precision_does_not_change_action_execution_precision():
     wire = ModelWire('mock', 'anthropic_messages')
     action = {'action_type': 'WAIT', 'parameters': {'duration_s': 0.123456}}
     wire.request = Mock(return_value=native_reply(wire.protocol, text=json.dumps(action)))
-    agent = RealtimeAgent(sequence=True, frames=False, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=False, wire=wire)
     assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 1.234567})[1] == [action]
     messages = wire.request.call_args.args[1]
     assert 'Screenshot task time: 1.235 seconds.' in json.dumps(messages)
@@ -434,7 +442,7 @@ def test_next_request_has_each_actions_own_times_without_vm_coordinates(variant,
         first_reply,
         native_reply(protocol, text=json.dumps({'action_type': 'DONE', 'parameters': {}})),
     ])
-    agent = RealtimeAgent(
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT,
         variant=variant, sequence=caps.sequence, frames=caps.frames,
         coordinate_system=coordinate_system, wire=wire,
     )
@@ -576,13 +584,13 @@ def test_default_queries_have_no_query_or_request_count_limit(protocol, variant)
         native_reply(protocol, text=json.dumps(action)),
     ])
     mode = CAPABILITIES[variant]
-    agent = RealtimeAgent(variant=variant, sequence=mode.sequence, frames=mode.frames, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, variant=variant, sequence=mode.sequence, frames=mode.frames, wire=wire)
     agent.bind_frame_query(Mock(return_value={"frames": [{"status": "not_ready"}]}))
     assert agent.predict("t", {"screenshot": b"png", "task_time_s": 1})[1] == [ACTION]
     assert agent.counters["frame_queries"] == 12
     assert wire.request.call_count == 13
     assert all(c.kwargs["tools_enabled"] for c in wire.request.call_args_list)
-    assert "no query-count limit" in agent.system
+    assert agent.max_queries == 0  # 0 means the default has no query-count limit
 
 
 @pytest.mark.parametrize("protocol", ["anthropic_messages", "openai_chat", "openai_responses"])
@@ -608,7 +616,7 @@ def test_provider_reasoning_is_logged_and_preserved_in_tool_history(protocol):
         return native_reply(protocol, text=json.dumps(ACTION))
 
     wire.request = request
-    agent = RealtimeAgent(variant="agent3", sequence=False, frames=True, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, variant="agent3", sequence=False, frames=True, wire=wire)
     agent.bind_frame_query(lambda _: {"frames": []})
     events = []
     agent.bind_event_sink(events.append)
@@ -801,7 +809,7 @@ def test_mixed_frame_and_action_calls_are_rejected_and_retried():
         ]
     }
     wire.request = Mock(side_effect=[mixed, native_reply(wire.protocol, text=json.dumps(ACTION))])
-    agent = RealtimeAgent(sequence=True, frames=True, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, wire=wire)
     query = Mock()
     agent.bind_frame_query(query)
     assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION]
@@ -843,7 +851,7 @@ def test_responses_stream_requires_complete_turn_before_action_dispatch(monkeypa
     )
     wire = ModelWire("gpt-6-astra", "openai_responses")
     wire.session.post = Mock(return_value=response)
-    agent = RealtimeAgent(sequence=True, frames=False, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=False, wire=wire)
     if complete:
         assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION, ACTION]
     else:
@@ -862,7 +870,7 @@ def test_invalid_key_call_is_closed_before_model_correction(protocol):
         native_reply(protocol, text=json.dumps(invalid)),
         native_reply(protocol, text=json.dumps(ACTION)),
     ])
-    agent = RealtimeAgent(sequence=True, frames=False, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=False, wire=wire)
     assert agent.predict("task", {"screenshot": b"png", "task_time_s": 0})[1] == [ACTION]
     messages = wire.request.call_args_list[1].args[1]
     if protocol == "openai_responses":
@@ -905,7 +913,7 @@ def test_atomic_frame_batch_rejected_before_queries_and_budget_consumption(proto
         return replies.pop(0)
 
     wire.request = request
-    agent = RealtimeAgent(variant='agent3', sequence=False, frames=True, wire=wire, max_frame_queries=2)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, variant='agent3', sequence=False, frames=True, wire=wire, max_frame_queries=2)
     agent.bind_frame_query(query)
     assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 1})[1] == [ACTION]
     assert query.call_count == agent.counters['frame_queries'] == 2
@@ -931,7 +939,7 @@ def test_atomic_frame_batch_rejected_before_queries_and_budget_consumption(proto
 def test_combine_still_accepts_multiple_frame_queries_in_one_response(protocol):
     wire = ModelWire('mock', protocol)
     wire.request = Mock(side_effect=[frame_batch_reply(protocol), native_reply(protocol, text=json.dumps([ACTION, ACTION]))])
-    agent = RealtimeAgent(variant='agent4', sequence=True, frames=True, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, variant='agent4', sequence=True, frames=True, wire=wire)
     query = Mock(return_value={'frames': []})
     agent.bind_frame_query(query)
     assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 1})[1] == [ACTION, ACTION]

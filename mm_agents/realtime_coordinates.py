@@ -1,7 +1,8 @@
 """Explicit model coordinate contracts; screenshots and the VM stay 1920x1080.
 
 Gemini: OSWorld-V2 uses integer 0..1000; older action tables say 0..999.
-Both use denominator 1000. Keep the older contract for explicit configs/logs.
+Both use denominator 1000. Only the 0..1000 contract is offered; no config or
+saved trajectory uses the older 0..999 option.
 https://ai.google.dev/gemini-api/docs/computer-use
 https://github.com/xlang-ai/OSWorld-V2/blob/627a1d691fbd0fd93b6161ecafa81530d50f6138/mm_agents/gemini_agent.py
 MiniMax M3 OSWorld evaluation: relative 0..1000 on 1920x1080 images.
@@ -14,7 +15,6 @@ from dataclasses import dataclass
 
 COORDINATE_SYSTEMS = {
     "native_pixels": None,
-    "normalized_0_999": 999,
     "normalized_0_1000": 1000,
     "normalized_0_1000_unclipped": 1000,
 }
@@ -46,7 +46,6 @@ class CoordinateAdapter:
         endpoints = (
             "(0, 0) is the top-left corner and (1000, 1000) is the bottom-right "
             "corner, regardless of the screenshot resolution. "
-            if self.maximum == 1000 else "The origin is at the top-left. "
         )
         return (
             "The screenshot is the original 1920x1080 image. "

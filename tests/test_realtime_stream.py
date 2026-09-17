@@ -12,6 +12,9 @@ from mm_agents.realtime_stream import collect_stream
 PROTOCOLS = ['anthropic_messages', 'openai_chat', 'openai_responses']
 
 
+TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
+
+
 def sse(events, *, fail_after=False):
     def lines():
         yield b': keepalive'
@@ -54,7 +57,7 @@ def agent_with_http(monkeypatch, protocol, responses):
     monkeypatch.setattr('mm_agents.realtime_agent.time.sleep', Mock())
     wire = ModelWire('test-model', protocol, api_key_env='TEST_STREAM_API_KEY')
     wire.session.post = Mock(side_effect=responses)
-    return RealtimeAgent(sequence=True, frames=True, wire=wire)
+    return RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, wire=wire)
 
 
 @pytest.mark.parametrize('protocol', PROTOCOLS)

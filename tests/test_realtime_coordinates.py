@@ -12,11 +12,13 @@ from mm_agents.realtime_agent import ModelWire, RealtimeAgent
 from mm_agents.realtime_coordinates import CoordinateAdapter
 from mm_agents.realtime_protocol import ACTION_TOOLS, validate_action
 
-RELATIVE_SYSTEMS = ['normalized_0_999', 'normalized_0_1000', 'normalized_0_1000_unclipped']
+RELATIVE_SYSTEMS = ['normalized_0_1000', 'normalized_0_1000_unclipped']
+
+
+TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
 
 
 @pytest.mark.parametrize('system,maximum,edge', [
-    ('normalized_0_999', 999, {'x': 1918, 'y': 1078}),
     ('normalized_0_1000', 1000, {'x': 1919, 'y': 1079}),
     ('normalized_0_1000_unclipped', 1000, {'x': 1920, 'y': 1080}),
 ])
@@ -37,7 +39,7 @@ def test_mapping_uses_1000_denominator_and_selected_upstream_endpoint(system, ma
 
 @pytest.mark.parametrize('system', RELATIVE_SYSTEMS)
 def test_all_coordinate_actions_convert_without_touching_other_parameters(system):
-    agent = RealtimeAgent(sequence=True, frames=True, coordinate_system=system)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, coordinate_system=system)
     calls = []
     for index, kind in enumerate(['MOVE_TO', 'CLICK', 'RIGHT_CLICK', 'DOUBLE_CLICK', 'DRAG_TO']):
         params = {'x': 500, 'y': 500}
@@ -66,7 +68,7 @@ def test_all_coordinate_actions_convert_without_touching_other_parameters(system
 @pytest.mark.parametrize('system', RELATIVE_SYSTEMS)
 @pytest.mark.parametrize('value', [-1, 1001, 1920, True, '518', 518.2, float('nan'), float('inf')])
 def test_invalid_relative_coordinates_reject_entire_sequence(system, value):
-    agent = RealtimeAgent(sequence=True, frames=False, coordinate_system=system)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=False, coordinate_system=system)
     with pytest.raises(ValueError, match='normalized integer'):
         agent._decode_action_calls([
             {'name': 'computer_press', 'arguments': {'key': 'd'}},
@@ -77,7 +79,7 @@ def test_invalid_relative_coordinates_reject_entire_sequence(system, value):
 
 def test_normalized_tools_do_not_mutate_native_schemas_or_other_agent():
     original = copy.deepcopy(ACTION_TOOLS)
-    normalized = CoordinateAdapter('normalized_0_999').action_tools(ACTION_TOOLS)
+    normalized = CoordinateAdapter('normalized_0_1000').action_tools(ACTION_TOOLS)
     native = CoordinateAdapter().action_tools(ACTION_TOOLS)
     assert ACTION_TOOLS == native == original
     for tool in normalized:
@@ -85,12 +87,12 @@ def test_normalized_tools_do_not_mutate_native_schemas_or_other_agent():
             if name in {'x', 'y'}:
                 assert field['type'] == 'integer'
                 assert field['minimum'] == 0
-                assert field['maximum'] == 999
+                assert field['maximum'] == 1000
     assert CoordinateAdapter().to_native_action(
         {'action_type': 'CLICK', 'parameters': {'x': 994.5, 'y': 724}}
     )['parameters'] == {'x': 994.5, 'y': 724}
     with pytest.raises(ValueError, match='normalized integer'):
-        CoordinateAdapter('normalized_0_999').to_native_value('x', 1000)
+        CoordinateAdapter('normalized_0_1000').to_native_value('x', 1001)
 
 
 @pytest.mark.parametrize('system,protocol', [
@@ -113,7 +115,7 @@ def test_correction_history_retains_raw_coordinates_and_maps_only_once(system, p
         sent.append(copy.deepcopy(messages))
         return invalid if len(sent) == 1 else valid
     wire.request = Mock(side_effect=request)
-    agent = RealtimeAgent(sequence=True, frames=True, wire=wire, coordinate_system=system)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, wire=wire, coordinate_system=system)
     obs = {'screenshot': b'png', 'task_time_s': 1}
     actions = agent.predict('task', obs)[1]
     assert actions == [{'action_type': 'CLICK', 'parameters': {'x': 994, 'y': 723}}]

@@ -89,7 +89,7 @@ def test_relative_response_markers_use_recorded_protocol_without_rewriting_calls
         {'name': 'computer_click', 'arguments': {'x': 1600, 'y': 880}},
     ]
     path = write_log(tmp_path, [
-        {'event': 'model_request', 'request_id': 1, 'coordinate_system': 'normalized_0_999',
+        {'event': 'model_request', 'request_id': 1, 'coordinate_system': 'normalized_0_1000',
          'observation': {'screenshot_file': 'input.png', 'task_time_s': 0}},
         {'event': 'model_response', 'request_id': 1, 'calls': raw_calls},
         {'event': 'model_request', 'request_id': 2, 'coordinate_system': 'unknown-contract'},
@@ -99,7 +99,7 @@ def test_relative_response_markers_use_recorded_protocol_without_rewriting_calls
     data = build_trajectory_data(path)
     response = data['events'][1]
     assert response['calls'] == raw_calls
-    assert response['_view']['coordinate_system'] == 'normalized_0_999'
+    assert response['_view']['coordinate_system'] == 'normalized_0_1000'
     assert response['_view']['marks'] == [
         {'x': 994, 'y': 723, 'label': '1', 'action': 'computer_click'},
     ]

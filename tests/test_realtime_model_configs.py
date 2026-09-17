@@ -32,6 +32,9 @@ COORDINATE_SYSTEMS = {
 }
 
 
+TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
+
+
 def reply(protocol, name='computer_click', args=None):
     args = COORDS if args is None else args
     if protocol == 'anthropic_messages':
@@ -174,7 +177,7 @@ def test_truncated_response_never_dispatches_valid_partial_actions(protocol):
         body['choices'][0]['finish_reason'] = 'length'
     wire = ModelWire('test-model', protocol)
     wire.request = Mock(return_value=body)
-    agent = RealtimeAgent(sequence=True, frames=True, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, wire=wire)
     query = Mock()
     agent.bind_frame_query(query)
     with pytest.raises(RuntimeError, match='no actions dispatched'):
@@ -223,3 +226,48 @@ def test_gemini_config_rejects_unsupported_settings(tmp_path, patch):
     path.write_text(yaml.safe_dump(cfg))
     with pytest.raises(ValueError):
         load_realtime_config(path)
+
+
+PROMPT_OPENING = 'You are the computer-using Agent in a real-time GUI benchmark.'
+ACTION_TIMING_NOTE = (
+    'Actions take a short time to run. The screenshot returned with their results is '
+    'captured immediately after the computer finishes them, without waiting for the '
+    'screen to update, so it may not yet show the state those actions produced. Check a '
+    'later screenshot before concluding that an action had no effect.'
+)
+# Lines removed per variant; the YAML prompts must not reintroduce them.
+REMOVED_PROMPT_LINES = {
+    'vanilla': 'Do not request or infer historical video frames',
+    'video': 'Do not submit an action sequence',
+    'anticipatory': 'There is no historical-video tool',
+}
+
+
+def test_all_agent_configs_share_prompt_opening_and_action_timing_note():
+    from pathlib import Path
+
+    from mm_agents.realtime_config import VARIANT_TO_AGENT_ID
+
+    root = Path(__file__).resolve().parents[1] / 'configs' / 'realtime_agents'
+    paths = sorted(root.glob('*.yaml'))
+    assert len(paths) == 40
+    variants = {agent_id: variant for variant, agent_id in VARIANT_TO_AGENT_ID.items()}
+    seen = set()
+    for path in paths:
+        agent_id = path.name.split('-', 1)[0]
+        config = load_realtime_config(path, variant=variants[agent_id])
+        seen.add(config['agent_id'])
+        prompt = config['system_prompt']
+        # The four variants share one opening instead of naming themselves.
+        assert prompt.splitlines()[0] == PROMPT_OPENING
+        assert prompt.count(PROMPT_OPENING) == 1
+        assert prompt.count(ACTION_TIMING_NOTE) == 1
+        # The note qualifies the screenshot the model receives, before any strategy line.
+        assert (
+            prompt.index('You receive the current screenshot and the complete task context.')
+            < prompt.index(ACTION_TIMING_NOTE)
+            < prompt.index('Before starting task execution')
+        )
+        if agent_id in REMOVED_PROMPT_LINES:
+            assert REMOVED_PROMPT_LINES[agent_id] not in prompt
+    assert seen == set(VARIANT_TO_AGENT_ID.values())
