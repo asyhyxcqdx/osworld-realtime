@@ -82,6 +82,12 @@ window.BENCH = {
 }
 ```
 
+除 JSON Schema 外，仓库还提供离线校验脚本
+`scripts/python/check_realtime_gui_contract.py`：对导出的 BENCH JSON（单个
+`--input` 或整个目录 `--input-dir`，可用 `--manifest` 映射 benchmark id）做与
+checker 一致的字段与状态一致性检查，输出 `scored` / `agent_incomplete` /
+`unscored` 判定，全部合法时退出码为 0。它不启动虚拟机，适合写游戏时快速自检。
+
 ### 2.3 字段不变量
 
 游戏必须始终满足以下关系：
