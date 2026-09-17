@@ -1,8 +1,66 @@
 # 实时 GUI 部署与运行
 
+## 接手准备（第一次拿到本仓库）
+
+1. **环境**
+   - Python 3.12+。仓库用 uv 管理依赖：`uv sync`；或 `pip install -r requirements.txt`。
+   - 跑回归需要额外装 `pytest`；`tests/test_fmp4_live.py` 还需要 ffmpeg（可用 `pip install imageio-ffmpeg` 提供）。
+   - Docker，并提前拉镜像：`docker pull happysixd/osworld-docker`。
+   - `/dev/kvm` 必须可用（`ls -l /dev/kvm`），VM 依赖 KVM 加速。
+
+2. **取 VM 镜像（不进仓库，约 23 GB）**
+   把 `Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2` 放到：
+
+   ```bash
+   docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2
+   ```
+
+   下载渠道由交付方提供（HuggingFace dataset 或网盘）。拿到后建议核对大小与哈希：
+
+   ```bash
+   ls -lh docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2
+   sha256sum docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2
+   ```
+
+   镜像与仓库里的 `desktop_env/server/realtime.py`、`fmp4.py` 必须配套：录制前程序会比对两份源码哈希，不一致时先用 `--install_realtime_server` 安装当前服务，或重新构建镜像。
+
+3. **密钥与网络**
+   - 密钥按 YAML 的 `api.key_env` 读取：`PACKY_COMMON_API_KEY`、`PACKY_KIMI_API_KEY`、`PACKY_GLM_MINIMAX_API_KEY`（历史 Fable/Astra 配置用 `PACKY_API_KEY`）。缺少对应变量会在启动 VM 前报错，不回退其他密钥。
+   - 需要能访问 `https://www.packyapi.ai`。如走代理，设置 `HTTPS_PROXY` / `HTTP_PROXY`，并把 VM 地址放进 `NO_PROXY`。
+   - 真实密钥不写进 YAML、源码、结果或提交。
+
+4. **冒烟验证（一个模型 + 一个任务）**
+
+   ```bash
+   python scripts/python/run_realtime_batch.py \
+     --agent_variant agent4 --models gemini-3.8-flash \
+     --run_id smoke_20260917 \
+     --task 5169e1b0-1a7d-538b-8e59-8785c39460ce \
+     --exclusive-keys-confirmed
+   ```
+
+   密钥默认从无回显 stdin 读取（提示 `READY_KEYS_NO_ECHO` 后粘贴一行 `{"<model>": "sk-..."}`）；脚本化运行可用 `--keys-file <0600 JSON>`，所有模型共用一个 key 时写 `{"*": "sk-..."}`。
+
+5. **正式批量与金额记录**
+   `scripts/python/run_realtime_batch.py` 顺序跑多个模型，并逐模型记录金额；不传 `--task/--meta` 时默认跑全部 69 个任务。结果落在 `--result_dir/<model>/<run_id>/...`，账单、逐模型汇总和 `cost_report.json` 落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`，在 git 忽略的目录树内；要放到仓库外就传绝对路径）。金额以网关消费明细为准，即时账单差额只作交叉核对。
+
+   ```bash
+   python scripts/python/run_realtime_batch.py \
+     --agent_variant agent4 \
+     --run_id packy_v11_batch01 \
+     --result_dir results_realtime_batches \
+     --num_envs 1 --keep-going \
+     --exclusive-keys-confirmed
+   ```
+
+   单个模型内的任务并行用 `--num_envs N`（每个 env 一台 VM，按机器资源决定，默认 1）。
+
+6. **续跑（同一目录补齐）**
+   用**同一条命令、同样的 `--result_dir` / `--run_id`** 再跑一次即可：runner 会自动跳过已有 `result.txt` 的任务，清空没有 `result.txt` 的目录（避免 `trajectory.jsonl` 追加模式把新旧事件混在一起）后重跑这些任务。不需要额外参数。
+
 ## 环境
 
-使用 Python 3.12+、Docker/KVM 和本地最终镜像 `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`。本机 Python 为 `/mnt/zhaorunsong/anaconda3/envs/osworld/bin/python`。从 OSWorld 仓库根目录执行命令。
+使用 Python 3.12+、Docker/KVM 和最终镜像 `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`。镜像不入仓库，需单独获取后放到该路径。以下命令都在当前激活的 Python 环境（`python`）下、从 OSWorld 仓库根目录执行。
 
 最终中转站是 `https://www.packyapi.ai`。游戏网页在 VM 本地运行；模型请求需要保留已配置的 `HTTPS_PROXY` / `HTTP_PROXY`，本机 VM 地址保留在 `NO_PROXY`。本会话直连曾返回 region_restricted，代理请求通过。
 

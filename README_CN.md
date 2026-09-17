@@ -17,7 +17,7 @@
 
 Agent3 每次模型回复最多一个工具调用（get_frames 或动作）；取帧结果返回后可继续查询，单次 get_frames 仍可取 1–8 张帧。Agent4 可以同一回复提交多个查询。
 
-所有组共享先观察探索、谨慎试探并珍惜 attempt 的公共 prompt；四组首句统一，并统一说明动作结果附带的截图可能尚未反映执行后的状态。每任务默认 100 个动作决策，三次游戏机会共用；正常评估时预算内未成功记有效 0 分，异常未取得有效成绩时不伪造分数。续跑和批量错误处理按 [运行说明](SETUP_GUIDELINE_CN.md) 执行，美元账单及结果总表由项目外流程整理。
+所有组共享先观察探索、谨慎试探并珍惜 attempt 的公共 prompt；四组首句统一，并统一说明动作结果附带的截图可能尚未反映执行后的状态。每任务默认 100 个动作决策，三次游戏机会共用；正常评估时预算内未成功记有效 0 分，异常未取得有效成绩时不伪造分数。首次接手的环境与镜像准备见 [运行说明](SETUP_GUIDELINE_CN.md)；多模型批量与逐模型金额记录用 `scripts/python/run_realtime_batch.py`，同一 run_id 续跑自动跳过已有成绩的任务；美元账单及结果总表由项目外流程整理。
 
 从 [项目总览](REALTIME_GUI_PROJECT.md) 和 [运行说明](SETUP_GUIDELINE_CN.md) 开始阅读。实现细节见 [配置协议](REALTIME_AGENT_CONFIG_PROTOCOL.md)、[Agent loop](REALTIME_AGENT_LOOP_GUIDE.md) 和 [实验设计](AGENT_EXPERIMENT_DESIGN.md)。
 

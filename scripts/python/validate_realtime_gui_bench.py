@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import re
 import socket
 import subprocess
@@ -20,10 +21,30 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WEBSITE_ROOT = (
     PROJECT_ROOT / "evaluation_examples/websites/realtime_gui_bench/games"
 )
-DEFAULT_BROWSER = Path(
-    "/mnt/zhaorunsong/.cache/ms-playwright/chromium_headless_shell-1208/"
-    "chrome-headless-shell-linux64/chrome-headless-shell"
-)
+
+
+def _playwright_browser() -> Path | None:
+    """Locate a Playwright Chromium without hardcoding one machine's cache.
+
+    REALTIME_VIEWER_CHROMIUM wins; otherwise look for what playwright installed.
+    Returns None when nothing is found, and --browser then has to be passed.
+    """
+    override = os.environ.get("REALTIME_VIEWER_CHROMIUM")
+    if override:
+        return Path(override)
+    cache = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or (Path.home() / ".cache/ms-playwright"))
+    patterns = [
+        "chromium-*/chrome-linux64/chrome",
+        "chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell",
+        "chromium-*/chrome-linux/chrome",
+    ]
+    for pattern in patterns:
+        for candidate in sorted(cache.glob(pattern)):
+            return candidate
+    return None
+
+
+DEFAULT_BROWSER = _playwright_browser()
 ENTRY_LABELS = {
     "begin",
     "drop",
@@ -286,6 +307,12 @@ def main() -> None:
     args = parser.parse_args()
     if args.repetitions < 1 or args.settle_seconds < 0 or args.concurrency < 1:
         raise SystemExit("Invalid validation arguments")
+    if not args.browser or not Path(args.browser).exists():
+        raise SystemExit(
+            "No Playwright Chromium found for --browser. Install one "
+            "(`playwright install chromium`) or pass --browser /path/to/chrome, "
+            "or set REALTIME_VIEWER_CHROMIUM."
+        )
     raise SystemExit(asyncio.run(run(args)))
 
 
