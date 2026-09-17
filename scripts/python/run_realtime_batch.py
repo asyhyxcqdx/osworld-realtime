@@ -382,12 +382,18 @@ def main():
                       pass_at_3_mean=round(sum(row['pass_at_3'] or 0 for row in summaries) / len(summaries), 4))
 
         if not args.skip_billing:
-            after, readings = settle(session, args.api_base_url, key)
-            save(cost_dir / f'{model}_billing_after.json', after, secrets)
-            save(cost_dir / f'{model}_billing_checks.json', readings, secrets)
-            result.update(billing_before_usage=before['body']['total_usage'],
-                          billing_after_usage=after['body']['total_usage'],
-                          actual_charge_usd=round(usage_usd(after) - usage_usd(before), 6))
+            # A local proxy or gateway blip must never abort a batch that already
+            # spent money; record it on the row and keep going.
+            try:
+                after, readings = settle(session, args.api_base_url, key)
+                save(cost_dir / f'{model}_billing_after.json', after, secrets)
+                save(cost_dir / f'{model}_billing_checks.json', readings, secrets)
+                result.update(billing_before_usage=before['body']['total_usage'],
+                              billing_after_usage=after['body']['total_usage'],
+                              actual_charge_usd=round(usage_usd(after) - usage_usd(before), 6))
+            except Exception as exc:
+                result['billing_error'] = clean(str(exc), secrets)
+                print('BILLING_ERROR', model, result['billing_error'][:160], flush=True)
             cutoff = datetime.datetime.fromisoformat(before['time_utc']).timestamp()
             try:
                 logs = gateway_get(session, args.api_base_url, '/api/log/token', key, params={'key': key})
