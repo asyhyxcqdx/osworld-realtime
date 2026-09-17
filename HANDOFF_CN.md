@@ -45,7 +45,7 @@
 git clone <仓库地址> && cd osworld-realtime
 
 uv sync                                  # 或 pip install -r requirements.txt
-pip install pytest imageio-ffmpeg
+pip install pytest imageio-ffmpeg huggingface_hub   # huggingface_hub 提供下面的 hf 命令
 docker pull happysixd/osworld-docker
 ls -l /dev/kvm                           # 必须有输出
 
@@ -53,6 +53,9 @@ hf download bright-star123/osworld-realtime-vm \
   Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data
 ls -l docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2   # 应为 24493359104
 ```
+
+> `uv sync` 如果报 `mm_agents/surferH/agp_client does not appear to be a Python project`，那是上游 submodule 没初始化：改用 `pip install -r requirements.txt` 即可，实时基准不需要那个包。
+> 国内下载慢可以加 `HF_ENDPOINT=https://hf-mirror.com`（见 `.env.example` 第五节）。
 
 ---
 
