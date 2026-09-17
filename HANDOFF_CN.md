@@ -166,7 +166,7 @@ C1 单任务实测花费（仅作记录口径参考，不用于限制跑量）�
 `glm-5.3-flash` 0.14、`MiniMax-M3` 0.03（美元；sol 那次含一轮退化刷屏，kimi 含一次中断重跑）。
 
 费用不设限，按你们网关的实际消耗如实记录进 `成本` 列即可；需要的话可以用 `--prices` 先算，
-或者拿到网关账单后用 `--charges` 覆盖。
+或者拿到网关账单后，导出时用 `--charges <cost_report.json>` 覆盖（这是导出脚本的参数，不是跑批量的参数）。
 
 **模型顺序**可以按你们网关的可用性和配额自行安排；`--models` 写几个就跑几个，之后补齐用同样的
 `--run_id` 再跑一次（已完成的会自动跳过）。
@@ -230,8 +230,8 @@ python scripts/python/export_realtime_results.py \
   --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf --lark-table-id tblhBdTpZMEqX5Qh
 ```
 
-不想用 CLI 也可以：加 `--out results_realtime_batches/export_batch01` 只生成 CSV，
-在飞书表里用「导入」把 CSV 贴进去（列名已经和表头一致，utf-8-sig 编码，Excel 直接可开）。
+不想用 CLI 也可以：去掉 `--lark-*` 只生成 CSV，在飞书表里用「导入」把 CSV 贴进去——
+CSV 就是表头的 16 列（utf-8-sig 编码，Excel 直接可开）；同名 `.json` 里还多带 `task_id`/`run_id` 便于追溯。
 
 **⚠️ 不要重复导入同一个 run**：写入是"新增记录"，不是覆盖，重复执行会多出一倍行。
 要重导就先在飞书里删掉旧行。
@@ -251,7 +251,7 @@ python scripts/python/export_realtime_results.py \
 | attempts_completed | 已结算的游戏机会数（成功失败都算，进行中的不算） |
 | pass@1 / pass@3 | 第一次 / 三次内是否成功，0 或 1；无有效成绩留空 |
 | 结束状态 | `done`→正常结束、`decision_limit`→回合上限、`execution_error`→执行异常、`run_error`→其他运行异常、`interrupted`→中断 |
-| 成本 | token × `prices.json` 单价（美元）。给 `--charges <cost_report.json>` 则用账单原值 |
+| 成本 | token × `prices.json` 单价（美元）。导出时给 `--charges <cost_report.json>` 则改用账单原值 |
 | 输入/输出Token数量 | 逐条模型回复的用量求和。**注意**：流中断的请求可能没有记录，会比网关统计略低 |
 
 ---

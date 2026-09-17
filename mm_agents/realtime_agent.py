@@ -113,14 +113,6 @@ def loggable_messages(messages):
     return logged
 
 
-def completed_responses_stream(response):
-    """Collect a complete Responses SSE turn before dispatching any actions."""
-    try:
-        return collect_stream(response, "openai_responses")
-    finally:
-        response.close()
-
-
 class ModelWire:
     def __init__(
         self,

@@ -70,7 +70,9 @@ VM 目标 30 FPS、1920×1080 fMP4，目标片段 100 ms；时间原点为首次
 
 ## 评分与验证边界
 
-评分只读取游戏的 `window.BENCH.pass_at_1` 和 `pass_at_3`，`result.txt` 为 `pass_at_3`，三次机会属于同一次页面运行。正常评估结束时，提前 DONE 或达到回合上限仍未成功记**有效 0 分**，保留游戏真实的 ready/running 状态；API、执行或评分异常**未取得有效成绩时不伪造分数**。结束原因由 `termination_reason` 单独记录，项目只保存单任务结果，不生成整体或 A/B/C/D 分类汇总。
+评分只读取游戏的 `window.BENCH.pass_at_1` 和 `pass_at_3`，`result.txt` 为 `pass_at_3`，三次机会属于同一次页面运行。正常评估结束时，提前 DONE 或达到回合上限仍未成功记**有效 0 分**，保留游戏真实的 ready/running 状态；API、执行或评分异常**未取得有效成绩时不伪造分数**。结束原因由 `termination_reason` 单独记录。
+
+项目**不做 A/B/C/D 分类或整体统计表**：成绩与出表只读单任务 `result.json` / `result.txt`（见 [执行同学作业单](HANDOFF_CN.md)）。运行器会顺带写一个扁平的 `<result_dir>/<model>/<run_id>/<agent>/summary/results.json`（逐任务追加 `task_id` / `score` / `status`），它**没有任何下游依赖**，且其中的 `status: "success"` 只表示"评估正常跑完"，分数仍可能是 0，判分时不要用它。
 
 **不能把一次 C1 成功概括为全部任务可解**，接口短测也不等于游戏成绩。批量实验的执行方式见 [执行同学作业单](HANDOFF_CN.md)。
 

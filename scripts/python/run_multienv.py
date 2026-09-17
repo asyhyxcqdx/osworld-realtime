@@ -285,8 +285,6 @@ def write_run_configuration(args):
             "agent_variant": args.agent_variant,
             "agent_started_at": args.agent_started_at,
         }
-        with open(os.path.join(args.result_dir, "launches.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(launch) + "\n")
         batch_root = os.path.dirname(args.result_dir)
         os.makedirs(batch_root, exist_ok=True)
         manifest_path = os.path.join(batch_root, "experiment_manifest.json")
@@ -294,6 +292,10 @@ def write_run_configuration(args):
         # the batch creation time and serialize the shared append log.
         with open(os.path.join(batch_root, ".experiment.lock"), "a", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            # --num_envs starts several processes of the same agent at once, so both
+            # append logs are written under the same lock.
+            with open(os.path.join(args.result_dir, "launches.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps(launch) + "\n")
             if not os.path.exists(manifest_path):
                 manifest = {
                     "run_id": args.run_id,

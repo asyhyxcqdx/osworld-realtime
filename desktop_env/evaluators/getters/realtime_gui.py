@@ -12,69 +12,6 @@ from websockets.sync.client import connect
 logger = logging.getLogger("desktopenv.getter.realtime_gui")
 
 
-_PHOEBE_SAVE_EXPRESSION = r"""
-(async () => {
-  const databaseNames = new Set(['/userfs']);
-  if (typeof indexedDB.databases === 'function') {
-    for (const info of await indexedDB.databases()) {
-      if (info && info.name) databaseNames.add(info.name);
-    }
-  }
-
-  const openDatabase = (name) => new Promise((resolve, reject) => {
-    const request = indexedDB.open(name);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error(`Cannot open ${name}`));
-  });
-
-  const readEntries = (database) => new Promise((resolve, reject) => {
-    const transaction = database.transaction('FILE_DATA', 'readonly');
-    const request = transaction.objectStore('FILE_DATA').openCursor();
-    const entries = [];
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) {
-        resolve(entries);
-        return;
-      }
-      entries.push({key: String(cursor.key), value: cursor.value});
-      cursor.continue();
-    };
-    request.onerror = () => reject(request.error || new Error('Cannot read FILE_DATA'));
-  });
-
-  for (const databaseName of databaseNames) {
-    let database = null;
-    try {
-      database = await openDatabase(databaseName);
-      if (!database.objectStoreNames.contains('FILE_DATA')) continue;
-      const entries = await readEntries(database);
-      for (const entry of entries) {
-        if (!/\/savegame_web_[^/]+\.json$/.test(entry.key)) continue;
-        const rawContents = entry.value && entry.value.contents;
-        if (!rawContents) continue;
-        const bytes = rawContents instanceof Uint8Array
-          ? rawContents
-          : new Uint8Array(rawContents);
-        const saveData = JSON.parse(new TextDecoder('utf-8').decode(bytes));
-        if (saveData && typeof saveData.checkpoint === 'string') {
-          return {
-            checkpoint: saveData.checkpoint,
-            saveKey: entry.key,
-            database: databaseName
-          };
-        }
-      }
-    } catch (error) {
-      // Try the next database. The final Python-side log reports a miss.
-    } finally {
-      if (database) database.close();
-    }
-  }
-  return {checkpoint: null};
-})()
-"""
-
 _REALTIME_GUI_BENCH_EXPRESSION = r"""
 (() => {
   if (!window.BENCH || typeof window.BENCH !== 'object') return null;
@@ -138,55 +75,6 @@ def _evaluate_cdp_expression(websocket_url: str, expression: str, timeout: float
                     f"Chrome JavaScript error: {evaluation['exceptionDetails']}"
                 )
             return evaluation.get("result", {}).get("value")
-
-
-def get_phoebe_checkpoint(env, config: Dict[str, Any]) -> Optional[str]:
-    """Read the current I Wanna Be Phoebe checkpoint from Godot's IDBFS save."""
-
-    target_url_contains = config.get("target_url_contains", "bilibilitoy.com")
-    attempts = int(config.get("attempts", 5))
-    retry_interval = float(config.get("retry_interval", 1.0))
-    timeout = float(config.get("timeout", 15.0))
-    targets_url = f"http://{env.vm_ip}:{env.chromium_port}/json/list"
-
-    for attempt in range(1, attempts + 1):
-        try:
-            response = requests.get(targets_url, timeout=timeout)
-            response.raise_for_status()
-            targets = response.json()
-            matching_targets = [
-                target
-                for target in targets
-                if target_url_contains in target.get("url", "")
-                and target.get("webSocketDebuggerUrl")
-            ]
-            for target in matching_targets:
-                websocket_url = _rewrite_websocket_url(
-                    env, target["webSocketDebuggerUrl"]
-                )
-                result = _evaluate_cdp_expression(
-                    websocket_url, _PHOEBE_SAVE_EXPRESSION, timeout
-                )
-                checkpoint = result.get("checkpoint") if isinstance(result, dict) else None
-                if isinstance(checkpoint, str) and checkpoint:
-                    return checkpoint
-            logger.warning(
-                "Phoebe checkpoint not found (attempt %d/%d; matching targets: %d)",
-                attempt,
-                attempts,
-                len(matching_targets),
-            )
-        except Exception as error:
-            logger.warning(
-                "Failed to read Phoebe checkpoint (attempt %d/%d): %s",
-                attempt,
-                attempts,
-                error,
-            )
-        if attempt < attempts:
-            time.sleep(retry_interval)
-
-    return None
 
 
 def _normalize_realtime_gui_bench_state(

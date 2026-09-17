@@ -1,5 +1,7 @@
 # OSWorld Setup and Evaluation Guide
 
+> **This is the upstream OSWorld guide.** It covers the original Google-account, proxy and public-evaluation-platform setup and says nothing about this fork's realtime benchmark. For the 69-game realtime benchmark use [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) and [`HANDOFF_CN.md`](HANDOFF_CN.md) instead.
+
 This comprehensive guide covers all aspects of setting up and running OSWorld evaluations, including account configuration, proxy setup, and public evaluation platform deployment.
 
 ## Table of Contents

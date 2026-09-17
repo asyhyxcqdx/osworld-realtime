@@ -198,6 +198,30 @@ vmware_vm_data
 # result
 **/result*/**/*
 
+# local bundles and exports of realtime runs (results stay outside the repo)
+results_*.zip
+results_*.tar.gz
+export_*.csv
+export_*.json
+
+# single-run artifacts, in case a result tree is copied out of results_*
+trajectory.jsonl
+traj.jsonl
+*.mp4
+recording_index.json
+recording_ffmpeg.log
+result.txt
+result.json
+cost_report.json
+keys.json
+*_summary.json
+*_billing_*.json
+*_gateway_logs.json
+*.verification.json
+results_*.json
+.env.*
+!.env.example
+
 .vscode
 
 dataimpulse_proxy_config.json

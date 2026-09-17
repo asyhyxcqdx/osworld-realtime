@@ -2,6 +2,8 @@
 
 当前新增的 Packy 实验模型共 8 款，每款都有 vanilla / anticipatory / video / combine 四份 YAML。Fable 5、Astra 原有 8 份配置保留，目录合计 40 份 YAML。
 
+> Fable 5、Astra 这 8 份的 **prompt 也随统一契约改过**（首句、动作时序说明、删除的能力声明），不再是它们当年跑 C1 时的原文。所以**旧基线成绩不能与当前 prompt 下的新批次直接比较**；需要旧原文时从 Git 历史取（`git show 08949d4e^:configs/realtime_agents/<file>`）。
+
 | model（区分大小写） | 协议 | 上下文声明 | 输出上限 | 思考 | 密钥环境变量 |
 |---|---|---:|---:|---|---|
 | `claude-sonnet-5` | anthropic_messages | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
@@ -12,10 +14,17 @@
 | `deepseek-flash` | anthropic_messages | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
 | `glm-5.3-flash` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_GLM_MINIMAX_API_KEY` |
 | `MiniMax-M3` | anthropic_messages | 1000000 | 128000 | **adaptive，无 effort 档位** | `PACKY_GLM_MINIMAX_API_KEY` |
+| `claude-fable-5`（历史基线） | anthropic_messages | 1000000 | 128000 | high | `PACKY_API_KEY` |
+| `gpt-6-astra`（历史基线） | openai_responses | 1000000 | 128000 | high | `PACKY_API_KEY` |
 
 `Claude-sonnet-5.0` 不是此处的 API ID。GLM 5.3（非 Flash）只有文本输入、Seed 2.1 Turbo 未确认可用，均未加入截图 Agent 配置。
 
 上下文声明统一为 1000000，目前只用于配置校验，不发送给 API，也不据此在本地裁剪历史；不宣称它是各模型已经实测的真实上限。实际输入保留完整历史，服务端判断是否超限。输出上限则随请求实际发送；达到上限可能截断回答，思考 token 也可能占用输出预算。收到明确的 length/max_tokens/incomplete 结束状态时，不执行其中的部分动作。
+
+另外两点容易误解：
+
+- `temperature` 在全部 40 份里都是 `null`，而且**当前所有配置都开着 thinking**，两条路径（Messages、Gemini Chat）都会把它从请求里去掉、Responses 路径本来就不带它 —— 所以这个字段对实际请求**没有影响**，只是保留在 schema 里。校验器现在要求它必须存在，且为 `null` 或 0–2 之间的数字。
+- `observation.historical_video.max_queries_per_turn: 0` 表示**不限制每回合查询次数**（不是"禁止查询"）。40 份都写 0；有录像能力的组才能写非 0，无录像能力的组必须是 0。
 
 ## 公共任务策略
 
@@ -50,7 +59,7 @@ Gemini 和 MiniMax 的四组 YAML 均显式选择对应协议；两者输出范�
 
 ## 密钥与启动
 
-真实密钥不写进 YAML、源码、示例或报告。`api.key_env` 只保存环境变量名；指定后只读取该变量，缺失时在 CLI 启动 VM 前报错，不回退到其他模型的 `PACKY_API_KEY`。
+真实密钥不写进 YAML、源码、示例或报告。`api.key_env` 只保存环境变量名；Agent 层只读这一个变量，缺失即报错。**批量入口会多兜一层**：`run_realtime_batch.py` 按 `api.key_env` → `REALTIME_API_KEY` → `PACKY_API_KEY` 取第一把非空 key，再把它注入到该模型自己的变量名里，所以共用一把 key 时也能跑。
 
 **推荐做法**：在仓库根目录 `cp .env.example .env`（`.env` 已被 git 忽略），把上面表格里的变量名和 key 填进去。批量脚本和 `run_multienv.py` 会自动加载它，之后不需要再传任何 key 参数；所有模型共用一把 key 时只填 `REALTIME_API_KEY` 即可兜底。换非 Packy 网关时在同一个文件里设 `REALTIME_API_BASE_URL`（或按协议设 `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`）。
 

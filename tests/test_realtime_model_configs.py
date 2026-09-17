@@ -236,11 +236,11 @@ ACTION_TIMING_NOTE = (
     'later screenshot before concluding that an action had no effect.'
 )
 # Lines removed per variant; the YAML prompts must not reintroduce them.
-REMOVED_PROMPT_LINES = {
-    'vanilla': 'Do not request or infer historical video frames',
-    'video': 'Do not submit an action sequence',
-    'anticipatory': 'There is no historical-video tool',
-}
+REMOVED_PROMPT_LINES = (
+    'Do not request or infer historical video frames',
+    'Do not submit an action sequence',
+    'There is no historical-video tool',
+)
 
 
 def test_all_agent_configs_share_prompt_opening_and_action_timing_note():
@@ -268,6 +268,7 @@ def test_all_agent_configs_share_prompt_opening_and_action_timing_note():
             < prompt.index(ACTION_TIMING_NOTE)
             < prompt.index('Before starting task execution')
         )
-        if agent_id in REMOVED_PROMPT_LINES:
-            assert REMOVED_PROMPT_LINES[agent_id] not in prompt
+        # None of the removed capability lines may come back in any variant.
+        for removed in REMOVED_PROMPT_LINES:
+            assert removed not in prompt
     assert seen == set(VARIANT_TO_AGENT_ID.values())

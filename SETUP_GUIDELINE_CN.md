@@ -18,6 +18,8 @@ hf download bright-star123/osworld-realtime-vm \
 ls -l docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2   # 应为 24493359104 字节
 ```
 
+国内网络可以设 `HF_ENDPOINT=https://hf-mirror.com` 走镜像站（HuggingFace CLI 与仓库内下载器都认这个变量）；Docker provider 的等待与超时可用 `OSWORLD_DOCKER_LOCK_TIMEOUT_S` / `OSWORLD_DOCKER_API_TIMEOUT_S` 调整。这些可选变量都列在 `.env.example` 第五节。
+
 镜像与仓库里的 `desktop_env/server/realtime.py`、`fmp4.py` 必须配套：录制前程序会比对两份源码哈希，不一致时先用 `--install_realtime_server` 安装当前服务，或重新构建镜像（见 §6）。
 
 ## 3. 配置（一次）
@@ -43,7 +45,7 @@ cp .env.example .env && chmod 600 .env
 跑实验的完整命令、参数、续跑与出表见 [执行同学作业单](HANDOFF_CN.md)；入口是 `scripts/python/run_realtime_batch.py`（逐模型记账、可续跑），它内部按模型顺序调用底层启动器 `scripts/python/run_multienv.py`（完整参数示例见 §6）。
 
 - 结果落在 `<result_dir>/<model>/<run_id>/<agent>/computer_13/screenshot/realtime_gui_bench/<UUID>/`。
-- 账单与汇总落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`）：`cost_report.json`、`<model>_summary.json`、账单快照与网关明细；成本由 `--prices`（token × 单价）或 `--charges`（网关账单原值）计算。
+- 账单与汇总落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`）：`cost_report.json`、`<model>_summary.json`、账单快照与网关明细；成本列由导出脚本计算：`--prices`（token × 单价）或 `--charges`（网关账单原值）。
 - 每个模型顺序执行，单个模型内失败的任务会继续下一个；**跨模型继续需要 `--keep-going`**。
 - `--num_envs N` 每个模型同时开 N 台 VM（默认 1，批量建议 4–8）。
 - 续跑用同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次；改 prompt 或配置时必须换新的 `run_id`。
@@ -54,7 +56,8 @@ cp .env.example .env && chmod 600 .env
 只更新宿主 Agent 不需要重打镜像。VM 服务源码变化后：
 
 ```bash
-python scripts/python/install_realtime_server.py     # 只上传两份服务源码并重启服务
+python scripts/python/install_realtime_server.py \
+  --server_url http://<vm_ip>:5000        # 只上传两份服务源码并重启服务（--server_url 必填）
 python scripts/python/build_realtime_vm_image.py \
   --source docker_vm_data/Ubuntu-realtime-gui.qcow2 \
   --output docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2

@@ -130,6 +130,15 @@ def load_realtime_config(path, *, variant=None):
         raise ValueError("max_output_tokens must not exceed context_window_tokens.")
     if api["model"] == "gemini-3.8-flash" and api["max_output_tokens"] > 65536:
         raise ValueError("gemini-3.8-flash supports at most 65536 output tokens.")
+    if "temperature" not in api:
+        raise ValueError("api.temperature is required; use null when thinking is enabled")
+    temperature = api["temperature"]
+    if temperature is not None and (
+        isinstance(temperature, bool)
+        or not isinstance(temperature, (int, float))
+        or not 0 <= temperature <= 2
+    ):
+        raise ValueError("api.temperature must be null or a number between 0 and 2")
     if (context.get("history_policy") != "full" or context.get("include_screenshots") is not True
             or context.get("on_context_limit") != "fail_with_explicit_error"):
         raise ValueError("Realtime configs must preserve complete screenshot history.")

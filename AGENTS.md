@@ -192,6 +192,8 @@ initial_state.png / step_*.png / query_*.png
 recording.mp4 + recording_index.json + recording_ffmpeg.log
 ```
 
+**运行级文件**（`<result_dir>/<model>/<run_id>/`）：`experiment_manifest.json`、`.experiment.lock`、`<agent>/launches.jsonl`（启动记录）、`<agent>/summary/results.json`。最后这个是运行器顺带写的扁平汇总（逐任务追加 `task_id`/`score`/`status`），**没有任何下游依赖，判分不要读它**——里面的 `status: "success"` 只表示评估正常跑完，分数仍可能是 0。
+
 **逐模型金额**（`cost_dir`）：`cost_report.json`（总表，每模型一行）、`<model>_summary.json`、`<model>_billing_before/after/checks.json`、`<model>_gateway_logs.json`、`<model>.log`。
 金额口径：**以网关消费明细为准**（`gateway_log_charge_usd`），即时账单差额只作交叉核对；两者不一致都记录，不把"即时查询为 0"当免费。
 

@@ -77,6 +77,24 @@ Gemini Chat 的取帧回图封装：结果含图片时 `role=tool` 只说明结�
 
 `model_request.request_messages` 保存本次请求的完整消息快照，图片数据在日志中替换为哈希和长度；不同请求会重复显示同一段历史，新的决策轮不会再新增任务说明。模型回复进入后续请求的 assistant 消息（Responses 用原生输出项），Claude 的工具结果放在 user 消息的 tool_result 块里，**因此 user 不都代表任务指令**。每次请求的配置、图像哈希、原始回复、用量、动作与 VM 时长都落盘。
 
+`trajectory.jsonl` 里会出现的事件（写分析脚本时按事件名过滤，不要假设所有事件都有相同字段）：
+
+| 事件 | 含义 |
+| --- | --- |
+| `initial_observation` | 任务开始时的状态与首张截图 |
+| `model_request` / `model_response` | 每次模型请求与回复（回复含 `calls`、`usage`、思考、`stream_received`） |
+| `format_error` | 回复格式非法，已回传错误并要求纠正 |
+| `model_error` | 模型/接口层失败（该次请求没有可用回复） |
+| `tool_result` | `get_frames` 的返回（`result.frames[].status` = ok / not_ready / error） |
+| `frame_query_artifacts` | 取帧图片落盘记录（`query_<n>_<i>.png` 与请求/实际时刻） |
+| `action_submitted` | 模型本轮提交的完整动作序列 |
+| `action_executed` | VM 实际执行结果（`info.sequence_actions` 含实测耗时） |
+| `action_tool_result` | 每个动作工具调用回传给模型的回执 |
+| `action_rejected` | 命中了禁用快捷键，动作未发送（**该次运行没有有效成绩**） |
+| `action_execution_error` | 执行阶段报错（含被拒绝动作的执行错误详情） |
+| `evaluation` | 读分结果与 `termination_reason` |
+| `run_error` | 主循环异常结束（无有效成绩） |
+
 ---
 
 ## 5. 轨迹查看器
