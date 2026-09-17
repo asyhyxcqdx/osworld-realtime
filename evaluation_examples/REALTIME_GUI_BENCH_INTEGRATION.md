@@ -8,7 +8,7 @@
 
 69 个 `examples/realtime_gui_bench/<UUID>.json` 与 `test_realtime_gui_bench.json` 是必要接入配置，编号不重排。UUID 由既有 URL 的 UUIDv5 规则保持稳定。A/B/C/D 数量为 22/12/17/18。D1 现对应交付包的 D1_Random_Enemy；早期 C2 命名和手动删除页脚的约定已被最终包替代。
 
-逐文件 HTML/任务哈希、包级清单映射见 [来源清单](../validation/realtime_final/source_manifest.json)。
+逐文件 HTML/任务哈希与包级清单映射保存在项目外的验收记录中，不写入仓库。
 
 ## 三类证据分别记录
 

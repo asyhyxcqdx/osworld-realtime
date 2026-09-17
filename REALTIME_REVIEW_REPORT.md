@@ -8,7 +8,7 @@
 
 批量实验行为已确认保留：单任务异常后继续下一任务；同一 run_id 续跑清空无 result.txt 的旧任务记录后重跑，已取得结果的任务跳过；初始化早期错误可能只有日志，无统一指标文件。费用账单和结果总表统计继续在项目外完成，不作为本项目缺失功能。显示呈现延迟保留为已知现象，不做修复。
 
-环境哈希、配置加载及上一轮完整 realtime 回归见 [复核摘要](validation/realtime_final/project_review_20260917.json)：317 项全部通过，无跳过；该轮未发现需要额外修复的运行问题，未调用付费模型、未启动游戏 VM、未更改游戏 HTML 或 VM 服务，镜像不需要重打。
+环境哈希、配置加载及上一轮完整 realtime 回归：317 项全部通过，无跳过；该轮未发现需要额外修复的运行问题，未调用付费模型、未启动游戏 VM、未更改游戏 HTML 或 VM 服务，镜像不需要重打。
 
 ### 本轮 prompt 与代码变更（commit `0967af39`）
 
@@ -26,7 +26,7 @@ Gemini 官方口径复核（2026-09-17）：官方 Computer Use 正文与参考�
 
 本轮实时相关回归 **329 项**、全量 `tests/` **339 项** 通过，无失败；`tests/test_maestro_minimax_provider.py` 因本地缺少上游依赖 `zhipuai` 未被收集，属既有环境问题、与实时项目无关。40 份 YAML 全部加载通过。本轮未调用付费模型、未启动 VM、未改游戏 HTML 与 VM 服务，镜像不需要重打。
 
-Gemini/MiniMax 相对坐标沿用此前的真实调用记录（2026-09-16 受控定位相对协议 3/3 命中；2026-09-17 正式 combine 配置首次定位两模型均命中，误差 <4 px）。新 prompt 下 combine × 八模型 × 69 任务的正式实验尚待运行，成绩与逐模型金额将在完成后补入本节。
+Gemini/MiniMax 相对坐标沿用此前的真实调用记录（2026-09-16 受控定位相对协议 3/3 命中；2026-09-17 正式 combine 配置首次定位两模型均命中，误差 <4 px）。新 prompt 下 combine × 八模型 × 69 任务的正式实验尚待运行；成绩与逐模型金额在项目外的结果表单独记录，不写入仓库。
 
 ## 历史基线范围（2026-09-15）
 
@@ -41,7 +41,7 @@ Gemini/MiniMax 相对坐标沿用此前的真实调用记录（2026-09-16 受控
 - 复核发现实时 CLI 原先可接受与固定坐标协议冲突的屏幕尺寸，现已在启动 VM 前拒绝非 1920×1080 设置。没有改变图片或动作坐标。
 - 重新逐字节对比最新 ZIP 与当前 69 个 HTML，并核对 69 份任务配置哈希；两份 VM 服务源码未改变。模型 API 往返与原图测试使用此前实际完成的记录，不重复调用付费模型。
 - 当前实时相关回归 **212 项通过**；40 份 YAML 均可加载；终版 qcow2 完整 SHA-256 与既有验收值一致。
-- 可复核摘要见 [agent_model_review.json](validation/realtime_final/agent_model_review.json)。本次只提交宿主机 Agent、配置、测试与文档；环境源码不变，无需重打镜像。
+- 该轮只提交宿主机 Agent、配置、测试与文档；环境源码不变，无需重打镜像。
 
 ### 环境来源
 
@@ -51,7 +51,7 @@ Gemini/MiniMax 相对坐标沿用此前的真实调用记录（2026-09-16 受控
 - 交付方 69/69 自测仅作为其自测记录；OSWorld 已保存的 69 次独立页面加载及 138 个 BENCH 初始/延迟快照另用 checker 单文件和批量模式核对，错误为 0。
 - 最终镜像里的 realtime.py、fmp4.py 哈希与仓库匹配。真实 WAIT 0.25 执行 0.250326 秒，100 动作序列完整执行。
 
-来源与精简证据： [source_manifest.json](validation/realtime_final/source_manifest.json)、[checker_single.json](validation/realtime_final/checker_single.json)、[checker_batch.json](validation/realtime_final/checker_batch.json)、[image_execution_check.json](validation/realtime_final/image_execution_check.json)。
+来源与精简证据（HTML/任务哈希清单、checker 单文件与批量结果、镜像执行检查）保存在项目外的记录中，不写入仓库。
 
 ### 四组 Agent 核查和修正
 
@@ -67,8 +67,8 @@ Gemini/MiniMax 相对坐标沿用此前的真实调用记录（2026-09-16 受控
 ### 验证
 
 - 实时相关回归：138 passed，无跳过；包括 live fMP4 真实录制/解码测试。
-- 真实 VM + 模拟模型回复：两协议 × 四组，8/8 通过；检查工具能力、原图尺寸、实际 WAIT、按键无隐含 0.1 秒等待、真实历史帧和 DONE。全程顺序运行，没有付费模型请求。见 [runtime_matrix.json](validation/realtime_final/runtime_matrix.json)。
-- 真实模型成绩沿用此前独立 C1：Fable5 第二次通过，Astra 第三次通过；原始轨迹没有改写。这不是四组完整模型 benchmark；见 [C1 报告](PACKY_C1_FINAL_TRIAL_REPORT.md)。
+- 真实 VM + 模拟模型回复：两协议 × 四组，8/8 通过；检查工具能力、原图尺寸、实际 WAIT、按键无隐含 0.1 秒等待、真实历史帧和 DONE。全程顺序运行，没有付费模型请求。
+- 真实模型成绩沿用此前独立 C1：Fable5 第二次通过，Astra 第三次通过；原始轨迹没有改写。这不是四组完整模型 benchmark，也不代表全量成功率。
 - 本次未修改 69 个游戏 HTML 或 VM 两份服务源码，终版镜像无需重打。
 
 ### 清理

@@ -285,4 +285,4 @@ window.__dbg = function () {
 4. 不要为了兼容旧 checker 同时维护两套可能不一致的计数。
 5. 任务配置、checker 测试和网页完成迁移后，再删除旧 getter 中的推导逻辑。
 
-协议变更必须升级 `protocol_version`，并使用新的实验 `run_id`。`realtime-gui-bench/1.1` 的变更记录见 `REALTIME_GUI_BENCH_PROTOCOL_CHANGELOG.md`。
+协议变更必须升级 `protocol_version`，并使用新的实验 `run_id`；变更历史从 Git 提交记录追溯。

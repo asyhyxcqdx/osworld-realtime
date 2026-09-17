@@ -22,7 +22,7 @@
 
 VM 的 PyAutoGUI.PAUSE=0。发送序列只用一次 HTTP 请求，不在动作之间取当前截图、不隐藏等待。每个动作返回 started_s、finished_s、duration_s；系统调度可能造成小幅误差。禁止自动重放执行失败的序列，避免重复已执行前缀。
 
-刷新/导航快捷键在宿主控制器发送前校验，包括在多个原子回合中保持修饰键的组合。正式 Agent 无 Python、CDP、文件或源码工具。协议要求及限制见 [快捷键策略](REALTIME_GUI_BENCH_SHORTCUT_POLICY.md)。
+刷新/导航快捷键在宿主控制器发送前校验，包括在多个原子回合中保持修饰键的组合。正式 Agent 无 Python、CDP、文件或源码工具。被阻断的组合按同一规则记录进轨迹，不发送到 VM。
 
 ## 录像与时间轴
 
@@ -42,7 +42,7 @@ Messages 使用原生 tool_use/tool_result；Sol/Astra 使用 Responses；Gemini
 
 目录为 `<result_dir>/<model>/<run_id>/<agent>/computer_13/screenshot/<domain>/<UUID>/`。包含 system_prompt.txt、experiment.json、trajectory.jsonl、当前截图、查询帧、recording.mp4、索引、录屏日志及指标。
 
-评分读取游戏写入的 pass_at_1/pass_at_3，标量 result.txt=pass_at_3。正常评估时，提前 DONE 或回合上限后未成功均记有效 0 分，保留游戏 status；无有效成绩的接口、执行或评分异常不算游戏失败。唯一结束状态字段为 termination_reason。项目不生成整体/分类统计；实际美元扣费和结果总表由项目外流程整理。原始 provider_response 和实际动作时长是核查依据。历史 Fable/Astra C1 成功记录见 [试跑报告](PACKY_C1_FINAL_TRIAL_REPORT.md)，不能视为全量成功率。
+评分读取游戏写入的 pass_at_1/pass_at_3，标量 result.txt=pass_at_3。正常评估时，提前 DONE 或回合上限后未成功均记有效 0 分，保留游戏 status；无有效成绩的接口、执行或评分异常不算游戏失败。唯一结束状态字段为 termination_reason。项目不生成整体/分类统计；实际美元扣费和结果总表由项目外流程整理。原始 provider_response 和实际动作时长是核查依据。历史 Fable/Astra 的 C1 成功记录不能视为全量成功率，成绩记录在项目外。
 
 ## 验证
 
