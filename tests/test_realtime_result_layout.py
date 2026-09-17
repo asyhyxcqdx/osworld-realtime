@@ -214,10 +214,6 @@ def test_shared_batch_keeps_distinct_agent_and_resume_start_times(tmp_path, monk
     ('MiniMax-M3', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
 ])
 def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, monkeypatch, runner, model, key_env, limit):
-    # The CLI loads <repo>/.env; on a configured machine that would refill the very
-    # variable this test deletes, so keep the test hermetic.
-    import mm_agents.realtime_env as realtime_env
-    monkeypatch.setattr(realtime_env, 'load_env_file', lambda *args, **kwargs: {})
     monkeypatch.delenv(key_env, raising=False)
     monkeypatch.setenv('PACKY_API_KEY', 'unrelated-provider-key')
     with pytest.raises(SystemExit):

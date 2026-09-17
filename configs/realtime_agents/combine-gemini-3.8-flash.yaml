@@ -1,6 +1,6 @@
 config_version: realtime-agent-config/1.0
 agent_id: combine
-display_name: Combine Agent
+display_name: combine Agent
 description: Current screenshot and historical video queries; a sequence of up to 100 atomic action tool calls per decision.
 observation:
   current_screenshot: true

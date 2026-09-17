@@ -43,4 +43,4 @@ from .replay import get_replay
 from .vlc import get_vlc_playing_info, get_vlc_config, get_default_video_player
 from .vscode import get_vscode_config
 from .calc import get_conference_city_in_order
-from .realtime_gui import get_realtime_gui_bench_state
+from .realtime_gui import get_phoebe_checkpoint, get_realtime_gui_bench_state

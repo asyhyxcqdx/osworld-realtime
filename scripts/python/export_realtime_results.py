@@ -43,10 +43,6 @@ import sys
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-# Same token/cost maths as the runner; re-exported for the tests.
-from mm_agents.realtime_cost import (compute_charge,  # noqa: E402
-                                     load_prices, price_for as price_of)
-
 TASK_DIR = Path('evaluation_examples/examples/realtime_gui_bench')
 COLUMNS = ['benchmark_id', 'agent', 'model', 'effort', 'step', '模型请求数', '执行动作数',
            '工具调用数', 'result', 'attempts_completed', 'pass@1', 'pass@3', '结束状态',
@@ -105,6 +101,23 @@ def load_benchmark_ids(root=TASK_DIR):
         if isinstance(payload, dict) and payload.get('benchmark_id'):
             mapping[payload.get('id') or path.stem] = payload['benchmark_id']
     return mapping
+
+
+def load_prices(path):
+    if not path:
+        return {}
+    payload = load_json(path)
+    if 'models' in payload and isinstance(payload['models'], dict):
+        payload = payload['models']
+    prices = {}
+    for name, value in payload.items():
+        if not isinstance(value, dict):
+            continue
+        prices[name] = {'input': float(value.get('input_per_mtok', 0)),
+                        'cached_input': float(value.get('cached_input_per_mtok',
+                                                       value.get('input_per_mtok', 0))),
+                        'output': float(value.get('output_per_mtok', 0))}
+    return prices
 
 
 def load_charges(path):
@@ -174,6 +187,19 @@ def termination_label(metrics, scored_payload):
             return TERMINATION_LABELS['done']
         return None
     return TERMINATION_LABELS.get(reason, reason)
+
+
+def price_of(prices, model):
+    return prices.get(model) or prices.get('*')
+
+
+def compute_charge(tokens, price):
+    if not price:
+        return None
+    cached = min(tokens['cached_input_tokens'], tokens['input_tokens'])
+    fresh = max(tokens['input_tokens'] - cached, 0)
+    return round((fresh * price['input'] + cached * price['cached_input']
+                  + tokens['output_tokens'] * price['output']) / 1_000_000, 6)
 
 
 def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids):
@@ -302,9 +328,7 @@ def main():
     json_path = Path(base + '.json')
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open('w', newline='', encoding='utf-8-sig') as stream:
-        # Exactly the table's columns, so a CSV import maps 1:1. task_id/run_id stay
-        # in the JSON for tracing.
-        writer = csv.DictWriter(stream, fieldnames=COLUMNS, extrasaction='ignore')
+        writer = csv.DictWriter(stream, fieldnames=COLUMNS + ['task_id', 'run_id'])
         writer.writeheader()
         writer.writerows(rows)
     json_path.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

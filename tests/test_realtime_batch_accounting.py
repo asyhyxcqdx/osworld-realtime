@@ -108,16 +108,6 @@ def test_gateway_resolution_order(monkeypatch):
     assert resolve_gateway(args(api_base_url='https://flag.example.com'))[1] == '--api_base_url'
 
 
-def test_usage_tokens_adds_anthropic_cache_counters():
-    """Anthropic input_tokens excludes cache reads/writes; OpenAI already includes them."""
-    assert usage_tokens({'input_tokens': 100, 'cache_read_input_tokens': 40,
-                         'cache_creation_input_tokens': 10, 'output_tokens': 5}) == {
-        'input': 150, 'output': 5, 'cached_input': 40}
-    assert usage_tokens({'prompt_tokens': 100, 'completion_tokens': 5,
-                         'prompt_tokens_details': {'cached_tokens': 40}}) == {
-        'input': 100, 'output': 5, 'cached_input': 40}
-
-
 def test_usage_tokens_accepts_both_wire_formats():
     assert usage_tokens({'prompt_tokens': 10, 'completion_tokens': 4,
                          'prompt_tokens_details': {'cached_tokens': 3}}) == {

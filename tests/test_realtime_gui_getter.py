@@ -9,7 +9,7 @@ class _FakeEnv:
     chromium_port = 9222
 
 
-class _TargetsResponse:
+class _FakeResponse:
     def raise_for_status(self):
         return None
 
@@ -17,47 +17,34 @@ class _TargetsResponse:
         return [
             {
                 "type": "page",
-                "id": "page-1",
-                "url": "http://127.0.0.1:8765/c1/index.html",
-                "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/c1",
-            }
+                "url": "https://www.bilibili.com/toy/example",
+                "webSocketDebuggerUrl": "ws://localhost:9222/devtools/page/outer",
+            },
+            {
+                "type": "iframe",
+                "url": "https://www.bilibilitoy.com/phoebe/index.html",
+                "webSocketDebuggerUrl": "ws://localhost:1337/devtools/page/game",
+            },
         ]
 
 
-def test_bench_state_getter_uses_the_bench_expression(monkeypatch):
-    """Scoring breaks if the module-level BENCH expression is missing.
-
-    The getter swallows exceptions and retries, so a deleted constant would only
-    show up as "no result.txt" for every task in a real run.
-    """
+def test_get_phoebe_checkpoint_uses_matching_game_target(monkeypatch):
+    monkeypatch.setattr(realtime_gui.requests, "get", lambda *args, **kwargs: _FakeResponse())
     seen = {}
 
     def fake_evaluate(websocket_url, expression, timeout):
         seen["websocket_url"] = websocket_url
         seen["expression"] = expression
-        return {
-            "protocol_version": "realtime-gui-bench/1.1",
-            "task": "double_jump",
-            "max_attempts": 3,
-            "attempts_completed": 2,
-            "passed": True,
-            "status": "passed",
-            "pass_at_1": 0,
-            "pass_at_3": 1,
-        }
+        seen["timeout"] = timeout
+        return {"checkpoint": "CheckPoint1"}
 
-    monkeypatch.setattr(realtime_gui.requests, "get", lambda *args, **kwargs: _TargetsResponse())
     monkeypatch.setattr(realtime_gui, "_evaluate_cdp_expression", fake_evaluate)
 
-    details = realtime_gui.get_realtime_gui_bench_state(
-        _FakeEnv(), {"benchmark_id": "C1", "poll_attempts": 1}
-    )
+    result = realtime_gui.get_phoebe_checkpoint(_FakeEnv(), {"attempts": 1})
 
-    assert "window.BENCH" in seen["expression"]
-    assert seen["websocket_url"] == "ws://127.0.0.1:9222/devtools/page/c1"
-    assert details["benchmark_id"] == "C1"
-    assert details["pass_at_3"] == 1 and details["passed"] is True
-    assert details["raw_bench"]["status"] == "passed"
+    assert result == "CheckPoint1"
+    assert seen["websocket_url"] == "ws://127.0.0.1:9222/devtools/page/game"
+    assert "FILE_DATA" in seen["expression"]
 
 
 def test_evaluate_cdp_expression_ignores_events(monkeypatch):

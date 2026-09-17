@@ -60,13 +60,6 @@ import time
 import requests
 
 REPO = Path(__file__).resolve().parents[2]
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
-# Token/cost maths live in one place so the runner and the exporter cannot drift.
-from mm_agents.realtime_cost import (compute_charge as charge_usd,  # noqa: E402
-                                     load_prices, price_for, usage_tokens)
-
 QUOTA_PER_USD = 500000
 DEFAULT_PACKY_BASE_URL = 'https://www.packyapi.ai'
 GENERIC_KEY_ENVS = ('REALTIME_API_KEY', 'PACKY_API_KEY')
@@ -75,22 +68,12 @@ VARIANT_TO_AGENT_ID = {'agent1': 'vanilla', 'agent2': 'anticipatory',
 DEFAULT_MODELS = ['claude-sonnet-5', 'gpt-5.6-sol', 'gemini-3.8-flash',
                   'qwen3.8-max-0902', 'deepseek-flash', 'kimi-k3',
                   'glm-5.3-flash', 'MiniMax-M3']
-SUMMARY_FIELDS = ('model', 'key_env', 'run_id', 'return_code', 'elapsed_s', 'tasks_total',
-                  'tasks_scored', 'requests', 'responses', 'decisions', 'frame_queries',
-                  'pass_at_1', 'pass_at_3', 'pass_at_3_mean',
+SUMMARY_FIELDS = ('model', 'key_env', 'run_id', 'return_code', 'elapsed_s', 'requests',
+                  'responses', 'decisions', 'frame_queries', 'pass_at_1', 'pass_at_3',
                   'status', 'actual_charge_usd', 'computed_charge_usd',
                   'gateway_log_charge_usd', 'gateway_charge_count',
                   'gateway_prompt_tokens', 'gateway_completion_tokens',
                   'input_tokens', 'output_tokens')
-
-
-def _git_commit():
-    """HEAD sha when this is a git checkout; a zip download has no .git."""
-    try:
-        return subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO,
-                                       text=True, stderr=subprocess.DEVNULL).strip()
-    except (subprocess.SubprocessError, OSError):
-        return None
 
 
 def parse_args():
@@ -177,17 +160,11 @@ def keys_from_payload(payload, models):
 
 
 def read_keys_interactive(models):
-    fd = sys.stdin.fileno()
-    attributes = termios.tcgetattr(fd)
-    muted = list(attributes)
-    muted[3] &= ~termios.ECHO
-    termios.tcsetattr(fd, termios.TCSANOW, muted)
-    try:
-        print('READY_KEYS_NO_ECHO', flush=True)
-        payload = json.loads(sys.stdin.readline())
-    finally:
-        # Always restore echo, even when the pasted JSON is malformed.
-        termios.tcsetattr(fd, termios.TCSANOW, attributes)
+    attributes = termios.tcgetattr(sys.stdin.fileno())
+    attributes[3] &= ~termios.ECHO
+    termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, attributes)
+    print('READY_KEYS_NO_ECHO', flush=True)
+    payload = json.loads(sys.stdin.readline())
     return keys_from_payload(payload, models)
 
 
@@ -236,21 +213,180 @@ def resolve_gateway(args, environ=None):
     return DEFAULT_PACKY_BASE_URL, 'built-in default'
 
 
-def charged_usd(row):
-    """Charge for one model: gateway ledger, else the instant delta, else our token maths.
+def load_prices(path):
+    if not path:
+        return {}
+    payload = json.loads(Path(path).read_text(encoding='utf-8'))
+    if 'models' in payload and isinstance(payload['models'], dict):
+        payload = payload['models']
+    prices = {}
+    for name, value in payload.items():
+        if not isinstance(value, dict) or 'output_per_mtok' not in value:
+            raise SystemExit(f'price entry {name!r} must map to '
+                             '{"input_per_mtok": ..., "output_per_mtok": ...}')
+        prices[name] = {
+            'input': float(value.get('input_per_mtok', 0)),
+            'cached_input': float(value.get('cached_input_per_mtok',
+                                            value.get('input_per_mtok', 0))),
+            'output': float(value['output_per_mtok']),
+        }
+    return prices
 
-    A ledger value of 0.0 with no matched rows means "the ledger had nothing to
-    report", not "this model was free", so the ledger only wins when it actually
-    matched rows.
-    """
-    ledger = row.get('gateway_log_charge_usd')
-    if ledger is not None and (ledger != 0 or row.get('gateway_charge_count')):
-        return ledger
-    for field in ('actual_charge_usd', 'computed_charge_usd'):
+
+def price_for(prices, model):
+    return prices.get(model) or prices.get('*')
+
+
+def charge_usd(tokens, price):
+    """Cost of one task from its token usage; None without a price entry."""
+    if not price:
+        return None
+    cached = min(tokens.get('cached_input_tokens', 0), tokens.get('input_tokens', 0))
+    fresh = max(tokens.get('input_tokens', 0) - cached, 0)
+    return round((fresh * price['input'] + cached * price['cached_input']
+                  + tokens.get('output_tokens', 0) * price['output']) / 1_000_000, 6)
+
+
+def clean(value, secrets):
+    if isinstance(value, str):
+        for secret in secrets:
+            if secret:
+                value = value.replace(secret, '[REDACTED]').replace(secret.removeprefix('sk-'), '[REDACTED]')
+        return value
+    if isinstance(value, dict):
+        return {key: clean(item, secrets) for key, item in value.items()}
+    if isinstance(value, list):
+        return [clean(item, secrets) for item in value]
+    return value
+
+
+def save(path, data, secrets):
+    Path(path).write_text(json.dumps(clean(data, secrets), ensure_ascii=False, indent=2) + '\n',
+                          encoding='utf-8')
+
+
+def load_tasks(args):
+    if args.task:
+        return {args.domain: [args.task]}
+    meta = Path(args.meta) if args.meta else (REPO / 'evaluation_examples/test_realtime_gui_bench.json')
+    if not meta.exists():
+        raise SystemExit(f'task list not found: {meta}')
+    payload = json.loads(meta.read_text(encoding='utf-8'))
+    if not isinstance(payload, dict):
+        raise SystemExit(f'unsupported task list layout in {meta}')
+    return payload
+
+
+def gateway_get(session, base_url, path, key, params=None):
+    for attempt in range(5):
+        try:
+            response = session.get(base_url + path, headers={'Authorization': 'Bearer ' + key},
+                                   params=params, timeout=30)
+        except requests.RequestException:
+            if attempt == 4:
+                raise RuntimeError('gateway request failed')
+            time.sleep(10)
+            continue
+        if response.status_code == 200:
+            return response.json()
+        if response.status_code == 429 and attempt < 4:
+            print('BILLING_GET_RATE_LIMITED; no model request; waiting 20s', flush=True)
+            time.sleep(20)
+            continue
+        raise RuntimeError(f'billing endpoint {path}: HTTP {response.status_code}')
+    raise RuntimeError(f'billing endpoint {path}: retries exhausted')
+
+
+def balance(session, base_url, key):
+    return {'time_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            'body': gateway_get(session, base_url, '/v1/dashboard/billing/usage', key)}
+
+
+def usage_usd(snapshot):
+    return snapshot['body']['total_usage'] / 100
+
+
+def settle(session, base_url, key, attempts=12, interval=10):
+    readings, previous, after = [], None, None
+    for _ in range(attempts):
+        after = balance(session, base_url, key)
+        readings.append(after)
+        total = after['body']['total_usage']
+        if total == previous:
+            break
+        previous = total
+        time.sleep(interval)
+    return after, readings
+
+
+def usage_tokens(usage):
+    """Prompt/completion/cached token counts from one recorded model response."""
+    usage = usage or {}
+    prompt = usage.get('prompt_tokens')
+    if prompt is None:
+        prompt = usage.get('input_tokens')
+    completion = usage.get('completion_tokens')
+    if completion is None:
+        completion = usage.get('output_tokens')
+    details = usage.get('prompt_tokens_details') or usage.get('input_tokens_details') or {}
+    return {'input': int(prompt or 0), 'output': int(completion or 0),
+            'cached_input': int(details.get('cached_tokens') or 0)}
+
+
+def summarize(task_dir):
+    result = {'task_dir': str(task_dir), 'requests': 0, 'responses': 0, 'decisions': 0,
+              'frame_queries': 0, 'usage_records': [], 'evaluations': [], 'errors': [],
+              'stream_received': [], 'pass_at_1': None, 'pass_at_3': None, 'status': None,
+              'input_tokens': 0, 'output_tokens': 0, 'cached_input_tokens': 0}
+    trajectory = task_dir / 'trajectory.jsonl'
+    if trajectory.exists():
+        for line in trajectory.read_text(errors='replace').splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                result['errors'].append({'event': 'invalid_jsonl'})
+                continue
+            kind = event.get('event')
+            if kind == 'model_request':
+                result['requests'] += 1
+            elif kind == 'model_response':
+                result['responses'] += 1
+                result['stream_received'].append(event.get('stream_received'))
+                usage = event.get('usage', event.get('provider_response', {}).get('usage', {}))
+                tokens = usage_tokens(usage)
+                result['input_tokens'] += tokens['input']
+                result['output_tokens'] += tokens['output']
+                result['cached_input_tokens'] += tokens['cached_input']
+                result['usage_records'].append({
+                    'request_id': event.get('request_id'),
+                    'usage': usage,
+                })
+            elif kind == 'action_submitted':
+                result['decisions'] += 1
+            elif kind == 'tool_result':
+                result['frame_queries'] += 1
+            elif kind == 'evaluation':
+                result['evaluations'].append(event)
+            elif kind in ('run_error', 'model_error', 'action_execution_error'):
+                result['errors'].append(event)
+    metrics = task_dir / 'agent_metrics.json'
+    if metrics.exists():
+        result['metrics'] = json.loads(metrics.read_text(encoding='utf-8'))
+    scored = task_dir / 'result.json'
+    if scored.exists():
+        payload = json.loads(scored.read_text(encoding='utf-8'))
+        result.update(pass_at_1=payload.get('pass_at_1'), pass_at_3=payload.get('pass_at_3'),
+                      status=payload.get('status'), attempts=payload.get('attempts_completed'))
+    return result
+
+
+def charged_usd(row):
+    """Gateway ledger first, then the instant delta, then our own token math."""
+    for field in ('gateway_log_charge_usd', 'actual_charge_usd', 'computed_charge_usd'):
         value = row.get(field)
         if value is not None:
             return value
-    return ledger
+    return None
 
 
 def build_report(cost_dir, manifest):
@@ -286,8 +422,6 @@ def main():
     if not result_dir.is_absolute():
         result_dir = REPO / result_dir
     cost_dir = Path(args.cost_dir) if args.cost_dir else (result_dir / '_cost' / args.run_id)
-    if not cost_dir.is_absolute():
-        cost_dir = REPO / cost_dir
     meta = load_tasks(args)
     api_base_url, base_url_source = resolve_gateway(args)
     billing = not args.skip_billing and is_packy(api_base_url)
@@ -365,7 +499,7 @@ def main():
         'quota_per_usd': QUOTA_PER_USD,
         'currency_note': 'Gateway ledger charge in USD, quota/500000. No RMB conversion or extrapolation.',
         'exclusive_key_use_confirmed_by_user': True,
-        'commit': _git_commit(),
+        'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),
         'key_env_per_model': key_envs, 'key_source_per_model': key_sources,
         'runs': previous_runs,
     }
@@ -380,14 +514,8 @@ def main():
 
         before = None
         if billing:
-            try:
-                before = balance(session, api_base_url, key)
-                save(cost_dir / f'{model}_billing_before.json', before, secrets)
-            except Exception as exc:
-                # A gateway blip must not abort a batch that has not run yet.
-                billing = False
-                print('BILLING_ERROR', model, clean(str(exc), secrets)[:160],
-                      '- continuing without billing for this model', flush=True)
+            before = balance(session, api_base_url, key)
+            save(cost_dir / f'{model}_billing_before.json', before, secrets)
 
         environment = os.environ.copy()
         for name in ('PACKY_COMMON_API_KEY', 'PACKY_KIMI_API_KEY',
@@ -417,25 +545,13 @@ def main():
         price = price_for(prices, model)
         for row in summaries:
             row['computed_charge_usd'] = charge_usd(row, price)
-        scored = [row for row in summaries if row['pass_at_3'] is not None]
         result = summaries[0].copy()
         result['tasks'] = summaries
         result.update(model=model, key_env=key_env, run_id=args.run_id,
                       return_code=return_code, elapsed_s=round(elapsed, 1),
-                      tasks_total=len(summaries), tasks_scored=len(scored),
-                      requests=sum(row['requests'] for row in summaries),
-                      responses=sum(row['responses'] for row in summaries),
-                      decisions=sum(row['decisions'] for row in summaries),
-                      frame_queries=sum(row['frame_queries'] for row in summaries),
-                      pass_at_1=(round(sum(row['pass_at_1'] for row in scored) / len(scored), 4)
-                                 if scored else None),
-                      pass_at_3=(round(sum(row['pass_at_3'] for row in scored) / len(scored), 4)
-                                 if scored else None),
-                      pass_at_3_mean=(round(sum(row['pass_at_3'] for row in scored) / len(scored), 4)
-                                      if scored else None),
-                      status=None)
-        # Per-task rows stay in the report; the model row is the aggregate.
-        result.pop('task_dir', None)
+                      tasks_total=len(summaries),
+                      tasks_scored=sum(1 for row in summaries if row['status'] is not None),
+                      pass_at_3_mean=round(sum(row['pass_at_3'] or 0 for row in summaries) / len(summaries), 4))
         result.update(
             input_tokens=sum(row['input_tokens'] for row in summaries),
             output_tokens=sum(row['output_tokens'] for row in summaries),
