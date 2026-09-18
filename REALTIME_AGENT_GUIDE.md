@@ -6,7 +6,7 @@
 
 ## 1. 配置文件
 
-版本 `realtime-agent-config/1.0`，共 40 份：8 款实验模型 × 4 组 + Fable 5、Astra 的 8 份历史基线。
+版本 `realtime-agent-config/1.0`，共 40 份：10 款模型 × 4 组。
 
 文件命名 `<agent_id>-<model>.yaml`，agent1/2/3/4 分别映射 vanilla/anticipatory/video/combine。`--agent_config` 可显式指定文件；`--model` 若同时给出必须与文件 `api.model` 一致，缺失文件直接报错，不回退其他模型配置。不带 `--model` 时 `run_multienv.py` 默认 `claude-fable-5`，而批量脚本 `run_realtime_batch.py` 不传 `--models` 时默认八款实验模型。
 

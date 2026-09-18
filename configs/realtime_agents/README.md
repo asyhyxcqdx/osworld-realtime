@@ -1,8 +1,6 @@
 # Realtime 模型配置
 
-当前新增的 Packy 实验模型共 8 款，每款都有 vanilla / anticipatory / video / combine 四份 YAML。Fable 5、Astra 原有 8 份配置保留，目录合计 40 份 YAML。
-
-> Fable 5、Astra 这 8 份的 **prompt 也随统一契约改过**（首句、动作时序说明、思考与回复期间时间也在流逝的说明、删除的能力声明），不再是它们当年跑 C1 时的原文。所以**旧基线成绩不能与当前 prompt 下的新批次直接比较**；需要旧原文时从 Git 历史取（`git show 08949d4e^:configs/realtime_agents/<file>`）。
+10 款模型（`configs/realtime_agents/` 下的 10 个模型名），每款都有 vanilla / anticipatory / video / combine 四份 YAML，目录合计 40 份，**共用同一套 system prompt**。
 
 | model（区分大小写） | 协议 | 上下文声明 | 输出上限 | 思考 | 密钥环境变量 |
 |---|---|---:|---:|---|---|
@@ -14,8 +12,8 @@
 | `deepseek-flash` | anthropic_messages | 1000000 | 128000 | high | `PACKY_DEEPSEEK_FLASH_API_KEY` |
 | `glm-5.3-flash` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_GLM_5_3_FLASH_API_KEY` |
 | `MiniMax-M3` | anthropic_messages | 1000000 | 128000 | **adaptive，无 effort 档位** | `PACKY_MINIMAX_M3_API_KEY` |
-| `claude-fable-5`（历史基线） | anthropic_messages | 1000000 | 128000 | high | `PACKY_CLAUDE_FABLE_5_API_KEY` |
-| `gpt-6-astra`（历史基线） | openai_responses | 1000000 | 128000 | high | `PACKY_GPT_6_ASTRA_API_KEY` |
+| `claude-fable-5` | anthropic_messages | 1000000 | 128000 | high | `PACKY_CLAUDE_FABLE_5_API_KEY` |
+| `gpt-6-astra` | openai_responses | 1000000 | 128000 | high | `PACKY_GPT_6_ASTRA_API_KEY` |
 
 `Claude-sonnet-5.0` 不是此处的 API ID。GLM 5.3（非 Flash）只有文本输入、Seed 2.1 Turbo 未确认可用，均未加入截图 Agent 配置。
 
@@ -75,7 +73,6 @@ read -r -s -p 'kimi-k3 key: ' PACKY_KIMI_K3_API_KEY; export PACKY_KIMI_K3_API_KE
 read -r -s -p 'deepseek-flash key: ' PACKY_DEEPSEEK_FLASH_API_KEY; export PACKY_DEEPSEEK_FLASH_API_KEY
 read -r -s -p 'glm-5.3-flash key: ' PACKY_GLM_5_3_FLASH_API_KEY; export PACKY_GLM_5_3_FLASH_API_KEY
 read -r -s -p 'MiniMax-M3 key: ' PACKY_MINIMAX_M3_API_KEY; export PACKY_MINIMAX_M3_API_KEY
-# 历史基线
 read -r -s -p 'claude-fable-5 key: ' PACKY_CLAUDE_FABLE_5_API_KEY; export PACKY_CLAUDE_FABLE_5_API_KEY
 read -r -s -p 'gpt-6-astra key: ' PACKY_GPT_6_ASTRA_API_KEY; export PACKY_GPT_6_ASTRA_API_KEY
 ```
@@ -106,7 +103,7 @@ python scripts/python/run_multienv.py \
 
 替换 `--model`、`--agent_variant` 即自动选择对应 YAML。依次运行各组，一次一个 VM。不要用 CLI 的 `--max_tokens` 改正式预算：Realtime 运行值来自 YAML。
 
-40 份配置都显式写了 `api.key_env`，而且是**一个模型一个变量**：变量名 = `PACKY_` + 模型名（全大写，非字母数字换成 `_`）+ `_API_KEY`。10 款模型对应 10 个变量，没有两款模型默认共用同一把 key；`api.key_env` 缺失时才回退 `REALTIME_API_KEY` → `PACKY_API_KEY`。早期 Fable/Astra 省略 `key_env`、以及后来按组命名（`PACKY_COMMON_API_KEY` 等）的写法都已作废。
+40 份配置都显式写了 `api.key_env`，而且是**一个模型一个变量**：变量名 = `PACKY_` + 模型名（全大写，非字母数字换成 `_`）+ `_API_KEY`。10 款模型对应 10 个变量，没有两款模型默认共用同一把 key；`api.key_env` 缺失时才回退 `REALTIME_API_KEY` → `PACKY_API_KEY`。
 
 ## 验证范围
 

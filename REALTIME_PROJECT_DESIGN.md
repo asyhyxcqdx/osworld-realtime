@@ -39,7 +39,7 @@ VM 内运行 `desktop_env/server/realtime.py` 和 `fmp4.py`，宿主机运行 Ag
 | agent3 | video | 有 | 1 | atomic |
 | agent4 | combine | 有 | 1–100 | sequence |
 
-8 款实验模型各有四组配置，加上 Fable 5、Astra 两款历史基线共 40 份 YAML；名单、协议与密钥变量见 [模型配置表](configs/realtime_agents/README.md)。指定配置缺失或 `--model` 与配置不一致时直接报错，不回退其他模型。**模型网关（Packy 或自建网关）不影响实验设计，只影响 `.env` 配置。**
+10 款模型各有四组配置，共 40 份 YAML；名单、协议与密钥变量见 [模型配置表](configs/realtime_agents/README.md)。指定配置缺失或 `--model` 与配置不一致时直接报错，不回退其他模型。**模型网关（Packy 或自建网关）不影响实验设计，只影响 `.env` 配置。**
 
 单动作也是长度为 1 的序列；多动作在整段完成后才返回当前截图。历史帧每次查询 1–8 个时间点，查询次数默认不限，必须先拿到结果、再在独立响应里提交动作（Agent3 每次回复只能有一个工具调用，Agent4 可在同一回复提交多个查询）。
 

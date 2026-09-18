@@ -11,7 +11,7 @@
 | 项 | 状态 |
 |---|---|
 | 环境 | 69 个游戏 + 69 个任务配置已接入并通过验收 |
-| 配置 | 40 份 YAML（8 款实验模型 × 4 组 + Fable5/Astra 8 份历史基线） |
+| 配置 | 40 份 YAML（10 款模型 × 4 组） |
 | VM 镜像 | `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`（**不入仓库**，约 22.8 GiB / 24,493,359,104 字节） |
 | 进度与成绩 | **不在仓库里**：外部同学跑 5 个模型（qwen / deepseek / kimi / glm / MiniMax），我们跑其余 5 个（sonnet / sol / gemini / fable-5 / astra），逐任务成绩与金额都写进飞书总表。不要在文档里写死"已跑/未跑" |
 

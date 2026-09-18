@@ -29,7 +29,7 @@ python scripts/python/run_realtime_batch.py \
 
 - **环境**：69 个游戏 + 69 个任务配置已接入并通过验收（A 22 / B 12 / C 17 / D 18）；最终镜像 `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`。
 - **Agent**：agent1 vanilla（单动作、无录像）、agent2 anticipatory（动作序列、无录像）、agent3 video（单动作、有录像）、agent4 combine（动作序列 + 录像）。能力矩阵、工具与时序见 [项目与实验设计](REALTIME_PROJECT_DESIGN.md)。
-- **模型**：8 款实验模型各 4 份配置，另留 `claude-fable-5`、`gpt-6-astra` 8 份历史基线，共 40 份 YAML；坐标协议与密钥分组见 [模型配置表](configs/realtime_agents/README.md)。
+- **模型**：10 款模型各 4 份配置，共 40 份 YAML；坐标协议与密钥变量见 [模型配置表](configs/realtime_agents/README.md)。
 - **进度与成绩**：正式全量实验由外部同学执行，逐任务成绩与逐模型金额记录在飞书总表；仓库只保留代码、配置和文档。
 
 ## 约定
