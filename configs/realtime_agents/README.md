@@ -6,16 +6,16 @@
 
 | model（区分大小写） | 协议 | 上下文声明 | 输出上限 | 思考 | 密钥环境变量 |
 |---|---|---:|---:|---|---|
-| `claude-sonnet-5` | anthropic_messages | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
-| `gpt-5.6-sol` | openai_responses | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
-| `gemini-3.8-flash` | openai_chat | 1000000 | **65536** | high | `PACKY_COMMON_API_KEY` |
-| `qwen3.8-max-0902` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_COMMON_API_KEY` |
-| `kimi-k3` | anthropic_messages | 1000000 | 128000 | high | `PACKY_KIMI_API_KEY` |
-| `deepseek-flash` | anthropic_messages | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
-| `glm-5.3-flash` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_GLM_MINIMAX_API_KEY` |
-| `MiniMax-M3` | anthropic_messages | 1000000 | 128000 | **adaptive，无 effort 档位** | `PACKY_GLM_MINIMAX_API_KEY` |
-| `claude-fable-5`（历史基线） | anthropic_messages | 1000000 | 128000 | high | `PACKY_FABLE_API_KEY` |
-| `gpt-6-astra`（历史基线） | openai_responses | 1000000 | 128000 | high | `PACKY_ASTRA_API_KEY` |
+| `claude-sonnet-5` | anthropic_messages | 1000000 | 128000 | high | `PACKY_CLAUDE_SONNET_5_API_KEY` |
+| `gpt-5.6-sol` | openai_responses | 1000000 | 128000 | high | `PACKY_GPT_5_6_SOL_API_KEY` |
+| `gemini-3.8-flash` | openai_chat | 1000000 | **65536** | high | `PACKY_GEMINI_3_8_FLASH_API_KEY` |
+| `qwen3.8-max-0902` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_QWEN3_8_MAX_0902_API_KEY` |
+| `kimi-k3` | anthropic_messages | 1000000 | 128000 | high | `PACKY_KIMI_K3_API_KEY` |
+| `deepseek-flash` | anthropic_messages | 1000000 | 128000 | high | `PACKY_DEEPSEEK_FLASH_API_KEY` |
+| `glm-5.3-flash` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_GLM_5_3_FLASH_API_KEY` |
+| `MiniMax-M3` | anthropic_messages | 1000000 | 128000 | **adaptive，无 effort 档位** | `PACKY_MINIMAX_M3_API_KEY` |
+| `claude-fable-5`（历史基线） | anthropic_messages | 1000000 | 128000 | high | `PACKY_CLAUDE_FABLE_5_API_KEY` |
+| `gpt-6-astra`（历史基线） | openai_responses | 1000000 | 128000 | high | `PACKY_GPT_6_ASTRA_API_KEY` |
 
 `Claude-sonnet-5.0` 不是此处的 API ID。GLM 5.3（非 Flash）只有文本输入、Seed 2.1 Turbo 未确认可用，均未加入截图 Agent 配置。
 
@@ -59,23 +59,25 @@ Gemini 和 MiniMax 的四组 YAML 均显式选择对应协议；两者输出范�
 
 ## 密钥与启动
 
-真实密钥不写进 YAML、源码、示例或报告。`api.key_env` 只保存环境变量名；Agent 层只读这一个变量，缺失即报错。**批量入口会多兜一层**：`run_realtime_batch.py` 按 `api.key_env` → `REALTIME_API_KEY` → `PACKY_API_KEY` 取第一把非空 key，再把它注入到该模型自己的变量名里，所以共用一把 key 时也能跑。
+真实密钥不写进 YAML、源码、示例或报告。`api.key_env` 只保存环境变量名；Agent 层只读这一个变量，缺失即报错。**批量入口会多兜一层**：`run_realtime_batch.py` 按 `api.key_env` → `REALTIME_API_KEY` → `PACKY_API_KEY` 取第一把非空 key，再把它注入到该模型自己的变量名里，所以临时共用一把 key 时也能跑。
 
 **推荐做法**：在仓库根目录 `cp .env.example .env`（`.env` 已被 git 忽略），把上面表格里的变量名和 key 填进去。批量脚本和 `run_multienv.py` 会自动加载它，之后不需要再传任何 key 参数；所有模型共用一把 key 时只填 `REALTIME_API_KEY` 即可兜底。换非 Packy 网关时在同一个文件里设 `REALTIME_API_BASE_URL`（或按协议设 `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`）。
 
 也可以临时在终端里按需输入对应组密钥（输入不回显）：
 
 ```bash
-read -r -s -p 'Packy 通用组 key: ' PACKY_COMMON_API_KEY
-export PACKY_COMMON_API_KEY
-read -r -s -p 'Packy Kimi key: ' PACKY_KIMI_API_KEY
-export PACKY_KIMI_API_KEY
-read -r -s -p 'Packy GLM/MiniMax key: ' PACKY_GLM_MINIMAX_API_KEY
-export PACKY_GLM_MINIMAX_API_KEY
-read -r -s -p 'Packy Fable 5 key: ' PACKY_FABLE_API_KEY
-export PACKY_FABLE_API_KEY
-read -r -s -p 'Packy Astra key: ' PACKY_ASTRA_API_KEY
-export PACKY_ASTRA_API_KEY
+# 变量名逐个对应模型；只想跑哪几个就 export 哪几个。
+read -r -s -p 'claude-sonnet-5 key: ' PACKY_CLAUDE_SONNET_5_API_KEY; export PACKY_CLAUDE_SONNET_5_API_KEY
+read -r -s -p 'gpt-5.6-sol key: ' PACKY_GPT_5_6_SOL_API_KEY; export PACKY_GPT_5_6_SOL_API_KEY
+read -r -s -p 'gemini-3.8-flash key: ' PACKY_GEMINI_3_8_FLASH_API_KEY; export PACKY_GEMINI_3_8_FLASH_API_KEY
+read -r -s -p 'qwen3.8-max-0902 key: ' PACKY_QWEN3_8_MAX_0902_API_KEY; export PACKY_QWEN3_8_MAX_0902_API_KEY
+read -r -s -p 'kimi-k3 key: ' PACKY_KIMI_K3_API_KEY; export PACKY_KIMI_K3_API_KEY
+read -r -s -p 'deepseek-flash key: ' PACKY_DEEPSEEK_FLASH_API_KEY; export PACKY_DEEPSEEK_FLASH_API_KEY
+read -r -s -p 'glm-5.3-flash key: ' PACKY_GLM_5_3_FLASH_API_KEY; export PACKY_GLM_5_3_FLASH_API_KEY
+read -r -s -p 'MiniMax-M3 key: ' PACKY_MINIMAX_M3_API_KEY; export PACKY_MINIMAX_M3_API_KEY
+# 历史基线
+read -r -s -p 'claude-fable-5 key: ' PACKY_CLAUDE_FABLE_5_API_KEY; export PACKY_CLAUDE_FABLE_5_API_KEY
+read -r -s -p 'gpt-6-astra key: ' PACKY_GPT_6_ASTRA_API_KEY; export PACKY_GPT_6_ASTRA_API_KEY
 ```
 
 只运行其中一个模型时，只需设置它对应的变量。保留本机已配置的 HTTPS_PROXY/HTTP_PROXY 和访问 VM 所需的 NO_PROXY。
@@ -104,7 +106,7 @@ python scripts/python/run_multienv.py \
 
 替换 `--model`、`--agent_variant` 即自动选择对应 YAML。依次运行各组，一次一个 VM。不要用 CLI 的 `--max_tokens` 改正式预算：Realtime 运行值来自 YAML。
 
-40 份配置都显式写了 `api.key_env`。Fable 5、Astra 这 8 份早期是省略 `key_env`、靠兼容规则取 key 的，现在也补上了各自的变量名（`PACKY_FABLE_API_KEY` / `PACKY_ASTRA_API_KEY`），口径与其余 8 款一致：先读模型自己的变量，缺失才回退 `REALTIME_API_KEY` → `PACKY_API_KEY`。旧文档里"Fable/Astra 用 `PACKY_API_KEY`"的说法已作废。
+40 份配置都显式写了 `api.key_env`，而且是**一个模型一个变量**：变量名 = `PACKY_` + 模型名（全大写，非字母数字换成 `_`）+ `_API_KEY`。10 款模型对应 10 个变量，没有两款模型默认共用同一把 key；`api.key_env` 缺失时才回退 `REALTIME_API_KEY` → `PACKY_API_KEY`。早期 Fable/Astra 省略 `key_env`、以及后来按组命名（`PACKY_COMMON_API_KEY` 等）的写法都已作废。
 
 ## 验证范围
 

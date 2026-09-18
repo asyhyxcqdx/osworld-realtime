@@ -21,8 +21,8 @@ context:
   on_context_limit: fail_with_explicit_error
 api:
   model: qwen3.8-max-0902
-  key_env: PACKY_COMMON_API_KEY
   protocol: anthropic_messages
+  key_env: PACKY_QWEN3_8_MAX_0902_API_KEY
   tool_format: native
   context_window_tokens: 1000000
   max_output_tokens: 128000

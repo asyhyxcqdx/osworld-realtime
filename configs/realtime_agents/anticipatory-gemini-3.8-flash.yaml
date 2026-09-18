@@ -22,7 +22,7 @@ context:
 api:
   model: gemini-3.8-flash
   coordinate_system: normalized_0_1000
-  key_env: PACKY_COMMON_API_KEY
+  key_env: PACKY_GEMINI_3_8_FLASH_API_KEY
   protocol: openai_chat
   tool_format: native
   context_window_tokens: 1000000

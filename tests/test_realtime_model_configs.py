@@ -15,14 +15,14 @@ from mm_agents.realtime_config import agent_kwargs, default_config_path, load_re
 
 
 MODELS = {
-    'claude-sonnet-5': ('anthropic_messages', 'PACKY_COMMON_API_KEY', 128000),
-    'gpt-5.6-sol': ('openai_responses', 'PACKY_COMMON_API_KEY', 128000),
-    'gemini-3.8-flash': ('openai_chat', 'PACKY_COMMON_API_KEY', 65536),
-    'qwen3.8-max-0902': ('anthropic_messages', 'PACKY_COMMON_API_KEY', 128000),
-    'kimi-k3': ('anthropic_messages', 'PACKY_KIMI_API_KEY', 128000),
-    'deepseek-flash': ('anthropic_messages', 'PACKY_COMMON_API_KEY', 128000),
-    'glm-5.3-flash': ('anthropic_messages', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
-    'MiniMax-M3': ('anthropic_messages', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
+    'claude-sonnet-5': ('anthropic_messages', 'PACKY_CLAUDE_SONNET_5_API_KEY', 128000),
+    'gpt-5.6-sol': ('openai_responses', 'PACKY_GPT_5_6_SOL_API_KEY', 128000),
+    'gemini-3.8-flash': ('openai_chat', 'PACKY_GEMINI_3_8_FLASH_API_KEY', 65536),
+    'qwen3.8-max-0902': ('anthropic_messages', 'PACKY_QWEN3_8_MAX_0902_API_KEY', 128000),
+    'kimi-k3': ('anthropic_messages', 'PACKY_KIMI_K3_API_KEY', 128000),
+    'deepseek-flash': ('anthropic_messages', 'PACKY_DEEPSEEK_FLASH_API_KEY', 128000),
+    'glm-5.3-flash': ('anthropic_messages', 'PACKY_GLM_5_3_FLASH_API_KEY', 128000),
+    'MiniMax-M3': ('anthropic_messages', 'PACKY_MINIMAX_M3_API_KEY', 128000),
 }
 COORDS = {'x': 754, 'y': 549}
 NATIVE_FROM_RELATIVE = {'x': 1447, 'y': 592}
@@ -137,7 +137,7 @@ def test_packy_config_request_and_coordinate_contract(monkeypatch, screenshot, m
 
 @pytest.mark.parametrize('variant', ['agent3', 'agent4'])
 def test_gemini_history_frame_result_and_reasoning_are_preserved(monkeypatch, screenshot, variant):
-    monkeypatch.setenv('PACKY_COMMON_API_KEY', 'test-credential')
+    monkeypatch.setenv('PACKY_GEMINI_3_8_FLASH_API_KEY', 'test-credential')
     agent = RealtimeAgent(variant=variant, **agent_kwargs(load_realtime_config(default_config_path(variant, 'gemini-3.8-flash'))))
     first = reply('openai_chat', 'get_frames', {'times_s': [0.1]})
     message = first['choices'][0]['message']
@@ -188,11 +188,11 @@ def test_truncated_response_never_dispatches_valid_partial_actions(protocol):
 
 
 def test_missing_dedicated_key_does_not_fall_back(monkeypatch):
-    monkeypatch.delenv('PACKY_KIMI_API_KEY', raising=False)
+    monkeypatch.delenv('PACKY_KIMI_K3_API_KEY', raising=False)
     monkeypatch.setenv('PACKY_API_KEY', 'wrong-key')
-    wire = ModelWire('kimi-k3', 'anthropic_messages', api_key_env='PACKY_KIMI_API_KEY')
+    wire = ModelWire('kimi-k3', 'anthropic_messages', api_key_env='PACKY_KIMI_K3_API_KEY')
     wire.session.post = Mock()
-    with pytest.raises(RuntimeError, match='PACKY_KIMI_API_KEY'):
+    with pytest.raises(RuntimeError, match='PACKY_KIMI_K3_API_KEY'):
         wire.request('s', [], tools_enabled=False, native=True, max_tokens=100, temperature=1)
     wire.session.post.assert_not_called()
 
@@ -230,13 +230,13 @@ def test_gemini_config_rejects_unsupported_settings(tmp_path, patch):
 
 EXPECTED_KEY_ENVS = {model: key_env for model, (_, key_env, _) in MODELS.items()}
 EXPECTED_KEY_ENVS.update({
-    'claude-fable-5': 'PACKY_FABLE_API_KEY',
-    'gpt-6-astra': 'PACKY_ASTRA_API_KEY',
+    'claude-fable-5': 'PACKY_CLAUDE_FABLE_5_API_KEY',
+    'gpt-6-astra': 'PACKY_GPT_6_ASTRA_API_KEY',
 })
 
 
 def test_every_checked_in_config_declares_its_own_key_environment():
-    """Every YAML must name its key variable, so one shared PACKY_API_KEY is never implicit."""
+    """Every YAML must name its own key variable, so no two models share a credential by default."""
     from pathlib import Path
 
     configs = sorted((Path(__file__).resolve().parents[1] / 'configs/realtime_agents').glob('*.yaml'))
@@ -248,7 +248,7 @@ def test_every_checked_in_config_declares_its_own_key_environment():
         api = yaml.safe_load(path.read_text(encoding='utf-8'))['api']
         assert api['key_env'] == EXPECTED_KEY_ENVS[model], path.name
         declared[model] = api['key_env']
-    assert len(set(declared.values())) == 5
+    assert len(set(declared.values())) == 10
 
 
 PROMPT_OPENING = 'You are the computer-using Agent in a real-time GUI benchmark.'

@@ -30,10 +30,22 @@ cp .env.example .env && chmod 600 .env
 
 `.env`（已被 `.gitignore` 忽略）里填网关地址、key 和可选代理；批量脚本与 `run_multienv.py` 会自动加载，之后不需要再传 key 参数。变量名与 YAML 的 `api.key_env` 对应：
 
-- `PACKY_COMMON_API_KEY`：sonnet-5 / sol / gemini / qwen / deepseek
-- `PACKY_KIMI_API_KEY`：kimi-k3；`PACKY_GLM_MINIMAX_API_KEY`：glm-5.3-flash / MiniMax-M3
-- `PACKY_FABLE_API_KEY`：claude-fable-5；`PACKY_ASTRA_API_KEY`：gpt-6-astra（两份历史基线）
-- `REALTIME_API_KEY`：所有模型共用一把 key 时的兜底；再低一层还有 `PACKY_API_KEY` 兜底
+**一个模型一个变量**，变量名 = `PACKY_` + 模型名（全大写，非字母数字换成 `_`）+ `_API_KEY`：
+
+```text
+PACKY_CLAUDE_SONNET_5_API_KEY   claude-sonnet-5
+PACKY_GPT_5_6_SOL_API_KEY       gpt-5.6-sol
+PACKY_GEMINI_3_8_FLASH_API_KEY  gemini-3.8-flash
+PACKY_QWEN3_8_MAX_0902_API_KEY  qwen3.8-max-0902
+PACKY_KIMI_K3_API_KEY           kimi-k3
+PACKY_DEEPSEEK_FLASH_API_KEY    deepseek-flash
+PACKY_GLM_5_3_FLASH_API_KEY     glm-5.3-flash
+PACKY_MINIMAX_M3_API_KEY        MiniMax-M3
+PACKY_CLAUDE_FABLE_5_API_KEY    claude-fable-5
+PACKY_GPT_6_ASTRA_API_KEY       gpt-6-astra
+```
+
+- `REALTIME_API_KEY`：所有模型临时共用一把 key 时的兜底；再低一层还有 `PACKY_API_KEY` 兜底
 
 也支持直接设环境变量、`--keys-file <0600 JSON>`（`{"*": "sk-..."}` 表示全部模型）和无回显 stdin，只有仍缺 key 的模型才会走到后两种。
 

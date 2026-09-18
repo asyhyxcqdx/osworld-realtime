@@ -65,12 +65,9 @@ ls -l docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2   # 应为 244933
 
 # ⑤ 密钥与网关：复制 .env.example 为 .env（已被 git 忽略）一次配好，
 #    也可以临时用环境变量。变量名按 YAML 的 api.key_env：
-#      PACKY_COMMON_API_KEY          sonnet-5 / sol / gemini / qwen / deepseek
-#      PACKY_KIMI_API_KEY            kimi-k3
-#      PACKY_GLM_MINIMAX_API_KEY     glm-5.3-flash / MiniMax-M3
-#      PACKY_FABLE_API_KEY           claude-fable-5（历史基线）
-#      PACKY_ASTRA_API_KEY           gpt-6-astra（历史基线）
-#      REALTIME_API_KEY              所有模型共用一把时的兜底
+#      一个模型一个变量：PACKY_ + 模型名（大写，非字母数字→_）+ _API_KEY
+#      例：PACKY_CLAUDE_SONNET_5_API_KEY / PACKY_GLM_5_3_FLASH_API_KEY / PACKY_MINIMAX_M3_API_KEY
+#      REALTIME_API_KEY              临时共用一把时的兜底
 #    换非 Packy 网关时设 REALTIME_API_BASE_URL（或按协议设 ANTHROPIC_/OPENAI_BASE_URL）
 
 # ⑥ 网络：走代理时同时设 NO_PROXY 排除 VM 地址

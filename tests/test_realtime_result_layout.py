@@ -16,14 +16,23 @@ from lib_run_single import _evaluate_with_details
 
 
 @pytest.fixture(autouse=True)
-def realtime_keys(monkeypatch):
+def realtime_keys(monkeypatch, tmp_path):
     # config() only checks that the variable named by api.key_env exists; the value is never used.
+    # Redirect the .env loader so a developer's real .env cannot satisfy these placeholders.
+    from mm_agents import realtime_env
+
+    monkeypatch.setattr(realtime_env, "DEFAULT_ENV_FILE", tmp_path / "absent.env")
     for name in (
-        "PACKY_COMMON_API_KEY",
-        "PACKY_KIMI_API_KEY",
-        "PACKY_GLM_MINIMAX_API_KEY",
-        "PACKY_FABLE_API_KEY",
-        "PACKY_ASTRA_API_KEY",
+        "PACKY_CLAUDE_SONNET_5_API_KEY",
+        "PACKY_GPT_5_6_SOL_API_KEY",
+        "PACKY_GEMINI_3_8_FLASH_API_KEY",
+        "PACKY_QWEN3_8_MAX_0902_API_KEY",
+        "PACKY_KIMI_K3_API_KEY",
+        "PACKY_DEEPSEEK_FLASH_API_KEY",
+        "PACKY_GLM_5_3_FLASH_API_KEY",
+        "PACKY_MINIMAX_M3_API_KEY",
+        "PACKY_CLAUDE_FABLE_5_API_KEY",
+        "PACKY_GPT_6_ASTRA_API_KEY",
     ):
         monkeypatch.setenv(name, "test-key")
 
@@ -217,18 +226,17 @@ def test_shared_batch_keeps_distinct_agent_and_resume_start_times(tmp_path, monk
 
 
 @pytest.mark.parametrize('model,key_env,limit', [
-    ('claude-sonnet-5', 'PACKY_COMMON_API_KEY', 128000),
-    ('gpt-5.6-sol', 'PACKY_COMMON_API_KEY', 128000),
-    ('gemini-3.8-flash', 'PACKY_COMMON_API_KEY', 65536),
-    ('qwen3.8-max-0902', 'PACKY_COMMON_API_KEY', 128000),
-    ('kimi-k3', 'PACKY_KIMI_API_KEY', 128000),
-    ('deepseek-flash', 'PACKY_COMMON_API_KEY', 128000),
-    ('glm-5.3-flash', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
-    ('MiniMax-M3', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
-    # The two baselines must name their own variables, otherwise one shared
-    # PACKY_API_KEY would have to serve two different provider accounts.
-    ('claude-fable-5', 'PACKY_FABLE_API_KEY', 128000),
-    ('gpt-6-astra', 'PACKY_ASTRA_API_KEY', 128000),
+    ('claude-sonnet-5', 'PACKY_CLAUDE_SONNET_5_API_KEY', 128000),
+    ('gpt-5.6-sol', 'PACKY_GPT_5_6_SOL_API_KEY', 128000),
+    ('gemini-3.8-flash', 'PACKY_GEMINI_3_8_FLASH_API_KEY', 65536),
+    ('qwen3.8-max-0902', 'PACKY_QWEN3_8_MAX_0902_API_KEY', 128000),
+    ('kimi-k3', 'PACKY_KIMI_K3_API_KEY', 128000),
+    ('deepseek-flash', 'PACKY_DEEPSEEK_FLASH_API_KEY', 128000),
+    ('glm-5.3-flash', 'PACKY_GLM_5_3_FLASH_API_KEY', 128000),
+    ('MiniMax-M3', 'PACKY_MINIMAX_M3_API_KEY', 128000),
+    # Every model names its own variable, so no two accounts share one credential.
+    ('claude-fable-5', 'PACKY_CLAUDE_FABLE_5_API_KEY', 128000),
+    ('gpt-6-astra', 'PACKY_GPT_6_ASTRA_API_KEY', 128000),
 ])
 def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, monkeypatch, runner, model, key_env, limit):
     monkeypatch.delenv(key_env, raising=False)

@@ -22,7 +22,7 @@ context:
 api:
   model: MiniMax-M3
   coordinate_system: normalized_0_1000_unclipped
-  key_env: PACKY_GLM_MINIMAX_API_KEY
+  key_env: PACKY_MINIMAX_M3_API_KEY
   protocol: anthropic_messages
   tool_format: native
   context_window_tokens: 1000000

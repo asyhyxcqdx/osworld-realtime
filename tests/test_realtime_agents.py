@@ -779,7 +779,7 @@ def test_sequence_mode_explicitly_enables_parallel_tool_calls(monkeypatch, proto
 def test_astra_config_preserves_thinking_and_combine_tools(monkeypatch):
     from pathlib import Path
 
-    monkeypatch.setenv("PACKY_ASTRA_API_KEY", "test-key")
+    monkeypatch.setenv("PACKY_GPT_6_ASTRA_API_KEY", "test-key")
     path = Path(__file__).resolve().parents[1] / "configs/realtime_agents/combine-gpt-6-astra.yaml"
     agent = RealtimeAgent(**agent_kwargs(load_realtime_config(path, variant="agent4")))
     agent.wire.session.post = Mock(return_value=SimpleNamespace(
@@ -952,7 +952,7 @@ def test_combine_still_accepts_multiple_frame_queries_in_one_response(protocol):
 def test_atomic_configs_send_single_tool_policy_to_provider(monkeypatch, model, variant):
     from mm_agents.realtime_config import default_config_path
     monkeypatch.setenv(
-        'PACKY_FABLE_API_KEY' if model == 'claude-fable-5' else 'PACKY_ASTRA_API_KEY', 'test-key'
+        'PACKY_CLAUDE_FABLE_5_API_KEY' if model == 'claude-fable-5' else 'PACKY_GPT_6_ASTRA_API_KEY', 'test-key'
     )
     config = load_realtime_config(default_config_path(variant, model), variant=variant)
     agent = RealtimeAgent(variant=variant, **agent_kwargs(config))
