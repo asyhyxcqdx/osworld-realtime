@@ -15,6 +15,19 @@ from lib_results_logger import log_task_completion
 from lib_run_single import _evaluate_with_details
 
 
+@pytest.fixture(autouse=True)
+def realtime_keys(monkeypatch):
+    # config() only checks that the variable named by api.key_env exists; the value is never used.
+    for name in (
+        "PACKY_COMMON_API_KEY",
+        "PACKY_KIMI_API_KEY",
+        "PACKY_GLM_MINIMAX_API_KEY",
+        "PACKY_FABLE_API_KEY",
+        "PACKY_ASTRA_API_KEY",
+    ):
+        monkeypatch.setenv(name, "test-key")
+
+
 @pytest.fixture
 def runner():
     # Importing the CLI parses argv and opens log files. Load its actual path and
@@ -212,6 +225,10 @@ def test_shared_batch_keeps_distinct_agent_and_resume_start_times(tmp_path, monk
     ('deepseek-flash', 'PACKY_COMMON_API_KEY', 128000),
     ('glm-5.3-flash', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
     ('MiniMax-M3', 'PACKY_GLM_MINIMAX_API_KEY', 128000),
+    # The two baselines must name their own variables, otherwise one shared
+    # PACKY_API_KEY would have to serve two different provider accounts.
+    ('claude-fable-5', 'PACKY_FABLE_API_KEY', 128000),
+    ('gpt-6-astra', 'PACKY_ASTRA_API_KEY', 128000),
 ])
 def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, monkeypatch, runner, model, key_env, limit):
     monkeypatch.delenv(key_env, raising=False)
@@ -223,4 +240,6 @@ def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, mon
     assert args.max_tokens == limit
     assert args.realtime_config['api']['key_env'] == key_env
     assert args.thinking_effort == (None if model == 'MiniMax-M3' else 'high')
-    assert args.api_format == ('openai_chat' if model == 'gemini-3.8-flash' else 'openai_responses' if model == 'gpt-5.6-sol' else 'anthropic_messages')
+    api_format = {'gemini-3.8-flash': 'openai_chat', 'gpt-5.6-sol': 'openai_responses',
+                  'gpt-6-astra': 'openai_responses'}.get(model, 'anthropic_messages')
+    assert args.api_format == api_format

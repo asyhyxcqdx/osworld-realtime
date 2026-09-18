@@ -15,7 +15,7 @@
 qwen3.8-max-0902, deepseek-flash, kimi-k3, glm-5.3-flash, MiniMax-M3
 ```
 
-另外 3 个模型（`claude-sonnet-5`、`gpt-5.6-sol`、`gemini-3.8-flash`）**由我们这边跑**，你不用管；
+其余模型（`claude-sonnet-5`、`gpt-5.6-sol`、`gemini-3.8-flash` 等）**由我们这边跑**，你不用管；
 飞书总表是两边共用的，各填各自的行即可。
 
 判分口径只有两个：`pass@1` 和 `pass@3`，单任务得分 = `pass@3`。
@@ -30,7 +30,7 @@ qwen3.8-max-0902, deepseek-flash, kimi-k3, glm-5.3-flash, MiniMax-M3
 | 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm --repo-type dataset Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`（公开 dataset 仓库） |
 | 结果总表 | 飞书多维表格：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>（**16 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
 | 模型密钥 | 你们公司网关自己的 key，不用给别人 |
-| 你要跑的模型 | 只跑 `qwen3.8-max-0902`、`deepseek-flash`、`kimi-k3`、`glm-5.3-flash`、`MiniMax-M3` 这 5 个；其余 3 个我们来 |
+| 你要跑的模型 | 只跑 `qwen3.8-max-0902`、`deepseek-flash`、`kimi-k3`、`glm-5.3-flash`、`MiniMax-M3` 这 5 个；其余模型我们来 |
 
 镜像下载后**必须核对大小**：`24493359104` 字节（`ls -l` 看一下，差一点就是没下完）。
 

@@ -21,6 +21,7 @@ context:
   on_context_limit: fail_with_explicit_error
 api:
   model: claude-fable-5
+  key_env: PACKY_FABLE_API_KEY
   protocol: anthropic_messages
   tool_format: native
   context_window_tokens: 1000000

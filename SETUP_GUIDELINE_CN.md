@@ -32,7 +32,8 @@ cp .env.example .env && chmod 600 .env
 
 - `PACKY_COMMON_API_KEY`：sonnet-5 / sol / gemini / qwen / deepseek
 - `PACKY_KIMI_API_KEY`：kimi-k3；`PACKY_GLM_MINIMAX_API_KEY`：glm-5.3-flash / MiniMax-M3
-- `REALTIME_API_KEY`：所有模型共用一把 key 时的兜底；历史 Fable/Astra 配置用 `PACKY_API_KEY`
+- `PACKY_FABLE_API_KEY`：claude-fable-5；`PACKY_ASTRA_API_KEY`：gpt-6-astra（两份历史基线）
+- `REALTIME_API_KEY`：所有模型共用一把 key 时的兜底；再低一层还有 `PACKY_API_KEY` 兜底
 
 也支持直接设环境变量、`--keys-file <0600 JSON>`（`{"*": "sk-..."}` 表示全部模型）和无回显 stdin，只有仍缺 key 的模型才会走到后两种。
 

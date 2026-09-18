@@ -228,6 +228,29 @@ def test_gemini_config_rejects_unsupported_settings(tmp_path, patch):
         load_realtime_config(path)
 
 
+EXPECTED_KEY_ENVS = {model: key_env for model, (_, key_env, _) in MODELS.items()}
+EXPECTED_KEY_ENVS.update({
+    'claude-fable-5': 'PACKY_FABLE_API_KEY',
+    'gpt-6-astra': 'PACKY_ASTRA_API_KEY',
+})
+
+
+def test_every_checked_in_config_declares_its_own_key_environment():
+    """Every YAML must name its key variable, so one shared PACKY_API_KEY is never implicit."""
+    from pathlib import Path
+
+    configs = sorted((Path(__file__).resolve().parents[1] / 'configs/realtime_agents').glob('*.yaml'))
+    assert len(configs) == 40
+    declared = {}
+    for path in configs:
+        variant, model = path.stem.split('-', 1)
+        assert variant in {'vanilla', 'anticipatory', 'video', 'combine'}
+        api = yaml.safe_load(path.read_text(encoding='utf-8'))['api']
+        assert api['key_env'] == EXPECTED_KEY_ENVS[model], path.name
+        declared[model] = api['key_env']
+    assert len(set(declared.values())) == 5
+
+
 PROMPT_OPENING = 'You are the computer-using Agent in a real-time GUI benchmark.'
 ACTION_TIMING_NOTE = (
     'Actions take a short time to run. The screenshot returned with their results is '

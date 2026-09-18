@@ -13,7 +13,7 @@
 | 环境 | 69 个游戏 + 69 个任务配置已接入并通过验收 |
 | 配置 | 40 份 YAML（8 款实验模型 × 4 组 + Fable5/Astra 8 份历史基线） |
 | VM 镜像 | `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`（**不入仓库**，约 22.8 GiB / 24,493,359,104 字节） |
-| 进度与成绩 | **不在仓库里**：外部同学跑 5 个模型（qwen / deepseek / kimi / glm / MiniMax），我们跑另外 3 个（sonnet / sol / gemini），逐任务成绩与金额都写进飞书总表。不要在文档里写死"已跑/未跑" |
+| 进度与成绩 | **不在仓库里**：外部同学跑 5 个模型（qwen / deepseek / kimi / glm / MiniMax），我们跑其余 5 个（sonnet / sol / gemini / fable-5 / astra），逐任务成绩与金额都写进飞书总表。不要在文档里写死"已跑/未跑" |
 
 > 接手的主要任务是**维护与支撑**：修 Agent/配置/文档、帮执行方排错、按 [`HANDOFF_CN.md`](HANDOFF_CN.md) 交付批量实验。
 
@@ -68,6 +68,8 @@ ls -l docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2   # 应为 244933
 #      PACKY_COMMON_API_KEY          sonnet-5 / sol / gemini / qwen / deepseek
 #      PACKY_KIMI_API_KEY            kimi-k3
 #      PACKY_GLM_MINIMAX_API_KEY     glm-5.3-flash / MiniMax-M3
+#      PACKY_FABLE_API_KEY           claude-fable-5（历史基线）
+#      PACKY_ASTRA_API_KEY           gpt-6-astra（历史基线）
 #      REALTIME_API_KEY              所有模型共用一把时的兜底
 #    换非 Packy 网关时设 REALTIME_API_BASE_URL（或按协议设 ANTHROPIC_/OPENAI_BASE_URL）
 

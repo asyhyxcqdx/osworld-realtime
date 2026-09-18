@@ -14,8 +14,8 @@
 | `deepseek-flash` | anthropic_messages | 1000000 | 128000 | high | `PACKY_COMMON_API_KEY` |
 | `glm-5.3-flash` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_GLM_MINIMAX_API_KEY` |
 | `MiniMax-M3` | anthropic_messages | 1000000 | 128000 | **adaptive，无 effort 档位** | `PACKY_GLM_MINIMAX_API_KEY` |
-| `claude-fable-5`（历史基线） | anthropic_messages | 1000000 | 128000 | high | `PACKY_API_KEY` |
-| `gpt-6-astra`（历史基线） | openai_responses | 1000000 | 128000 | high | `PACKY_API_KEY` |
+| `claude-fable-5`（历史基线） | anthropic_messages | 1000000 | 128000 | high | `PACKY_FABLE_API_KEY` |
+| `gpt-6-astra`（历史基线） | openai_responses | 1000000 | 128000 | high | `PACKY_ASTRA_API_KEY` |
 
 `Claude-sonnet-5.0` 不是此处的 API ID。GLM 5.3（非 Flash）只有文本输入、Seed 2.1 Turbo 未确认可用，均未加入截图 Agent 配置。
 
@@ -72,6 +72,10 @@ read -r -s -p 'Packy Kimi key: ' PACKY_KIMI_API_KEY
 export PACKY_KIMI_API_KEY
 read -r -s -p 'Packy GLM/MiniMax key: ' PACKY_GLM_MINIMAX_API_KEY
 export PACKY_GLM_MINIMAX_API_KEY
+read -r -s -p 'Packy Fable 5 key: ' PACKY_FABLE_API_KEY
+export PACKY_FABLE_API_KEY
+read -r -s -p 'Packy Astra key: ' PACKY_ASTRA_API_KEY
+export PACKY_ASTRA_API_KEY
 ```
 
 只运行其中一个模型时，只需设置它对应的变量。保留本机已配置的 HTTPS_PROXY/HTTP_PROXY 和访问 VM 所需的 NO_PROXY。
@@ -100,7 +104,7 @@ python scripts/python/run_multienv.py \
 
 替换 `--model`、`--agent_variant` 即自动选择对应 YAML。依次运行各组，一次一个 VM。不要用 CLI 的 `--max_tokens` 改正式预算：Realtime 运行值来自 YAML。
 
-Fable 5、Astra 的旧配置未指定 `key_env`，仍沿用 `PACKY_API_KEY` 优先、供应商环境变量兜底的兼容规则。
+40 份配置都显式写了 `api.key_env`。Fable 5、Astra 这 8 份早期是省略 `key_env`、靠兼容规则取 key 的，现在也补上了各自的变量名（`PACKY_FABLE_API_KEY` / `PACKY_ASTRA_API_KEY`），口径与其余 8 款一致：先读模型自己的变量，缺失才回退 `REALTIME_API_KEY` → `PACKY_API_KEY`。旧文档里"Fable/Astra 用 `PACKY_API_KEY`"的说法已作废。
 
 ## 验证范围
 

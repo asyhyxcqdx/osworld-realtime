@@ -21,6 +21,7 @@ context:
   on_context_limit: fail_with_explicit_error
 api:
   model: gpt-6-astra
+  key_env: PACKY_ASTRA_API_KEY
   protocol: openai_responses
   tool_format: native
   context_window_tokens: 1000000
