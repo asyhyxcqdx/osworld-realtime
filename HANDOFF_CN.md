@@ -8,8 +8,15 @@
 
 ## 0. 一句话任务
 
-在你们的服务器上，用 **combine（agent4）** 这一组 Agent，把 **8 个模型** 各自跑完 **69 个网页游戏任务**
-（共 **552** 条记录），然后把每条记录填进飞书结果总表。
+在你们的服务器上，用 **combine（agent4）** 这一组 Agent，把下面 **5 个模型** 各自跑完 **69 个网页游戏任务**
+（共 **345** 条记录），然后把每条记录填进飞书结果总表：
+
+```
+qwen3.8-max-0902, deepseek-flash, kimi-k3, glm-5.3-flash, MiniMax-M3
+```
+
+另外 3 个模型（`claude-sonnet-5`、`gpt-5.6-sol`、`gemini-3.8-flash`）**由我们这边跑**，你不用管；
+飞书总表是两边共用的，各填各自的行即可。
 
 判分口径只有两个：`pass@1` 和 `pass@3`，单任务得分 = `pass@3`。
 
@@ -23,6 +30,7 @@
 | 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm --repo-type dataset Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`（公开 dataset 仓库） |
 | 结果总表 | 飞书多维表格：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>（**16 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
 | 模型密钥 | 你们公司网关自己的 key，不用给别人 |
+| 你要跑的模型 | 只跑 `qwen3.8-max-0902`、`deepseek-flash`、`kimi-k3`、`glm-5.3-flash`、`MiniMax-M3` 这 5 个；其余 3 个我们来 |
 
 镜像下载后**必须核对大小**：`24493359104` 字节（`ls -l` 看一下，差一点就是没下完）。
 
@@ -33,7 +41,7 @@
 | 项 | 要求 |
 |---|---|
 | 系统 | Linux，`ls -l /dev/kvm` 必须存在（没有 KVM 会慢到不可用） |
-| 磁盘 | ≥ 200 GB（镜像 23 GB + 552 条任务的截图/录像/轨迹，录像很占地方） |
+| 磁盘 | ≥ 200 GB（镜像 23 GB + 345 条任务的截图/录像/轨迹，录像很占地方） |
 | CPU / 内存 | 建议 ≥ 8 核 / 32 GB；`--num_envs N` 表示同时开 N 台虚拟机 |
 | 网络 | 能访问你们公司的模型网关 |
 
@@ -100,7 +108,7 @@ NO_PROXY=localhost,127.0.0.1,::1
 
 ```bash
 python scripts/python/run_realtime_batch.py \
-  --agent_variant agent4 --models gemini-3.8-flash \
+  --agent_variant agent4 --models deepseek-flash \
   --run_id smoke_$(date +%Y%m%d) \
   --task 5169e1b0-1a7d-538b-8e59-8785c39460ce \
   --skip-billing --exclusive-keys-confirmed
@@ -143,14 +151,14 @@ cat results_realtime_batches/_cost/batch01/cost_report.json
 
 ---
 
-## 7. 第三步：八个模型全量
+## 7. 第三步：五个模型全量
 
-同一条命令，`--models` 换成八个模型（不传 `--models` 默认就是这八个）：
+同一条命令，`--models` 指定你要跑的这 5 个（**必须显式写**，不要用默认值——默认是 8 个模型）：
 
 ```bash
 python scripts/python/run_realtime_batch.py \
   --agent_variant agent4 \
-  --models claude-sonnet-5,gpt-5.6-sol,gemini-3.8-flash,qwen3.8-max-0902,deepseek-flash,kimi-k3,glm-5.3-flash,MiniMax-M3 \
+  --models qwen3.8-max-0902,deepseek-flash,kimi-k3,glm-5.3-flash,MiniMax-M3 \
   --run_id batch01 --result_dir results_realtime_batches \
   --num_envs 4 --keep-going \
   --skip-billing --prices prices.json \
@@ -162,7 +170,7 @@ python scripts/python/run_realtime_batch.py \
 | 项 | 参考值 |
 |---|---|
 | 单模型 69 任务 | 约 2–6 小时（`--num_envs 4`，取决于任务难度和模型速度） |
-| 八模型 | 约 1–2 天（模型是**顺序**跑的，同一时刻只有一个模型在跑） |
+| 你的这 5 个模型 | 约 1 天（模型是**顺序**跑的，同一时刻只有一个模型在跑） |
 
 C1 单任务实测花费（仅作记录口径参考，不用于限制跑量）：`gpt-5.6-sol` 22.53、`claude-sonnet-5` 10.40、
 `kimi-k3` 2.65、`qwen3.8-max-0902` 0.87、`gemini-3.8-flash` 0.24、`deepseek-flash` 0.21、
@@ -279,8 +287,8 @@ CSV 就是表头的 16 列（utf-8-sig 编码，Excel 直接可开）；同名 `
 
 ## 11. 交付验收清单
 
-- [ ] 552 个任务目录（8 模型 × 69 任务），每个目录有 `result.txt` 或有明确的"无有效成绩"说明
+- [ ] 345 个任务目录（5 模型 × 69 任务），每个目录有 `result.txt` 或有明确的"无有效成绩"说明
 - [ ] `results_realtime_batches/_cost/batch01/cost_report.json` 存在，逐模型金额齐全
-- [ ] `export_batch01.csv` / `.json` 生成，行数 = 552
-- [ ] 飞书总表对应 552 行，`成本`、`输入Token数量`、`输出Token数量` 三列有值
+- [ ] `export_batch01.csv` / `.json` 生成，行数 = 345
+- [ ] 飞书总表里你负责的这 5 个模型共 345 行，`成本`、`输入Token数量`、`输出Token数量` 三列有值
 - [ ] 结果目录打包成 zip（体积大，用 `zip -r` 或 `tar`），连同 `cost_report.json` 一起交回

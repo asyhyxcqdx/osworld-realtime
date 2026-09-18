@@ -13,7 +13,7 @@
 | 环境 | 69 个游戏 + 69 个任务配置已接入并通过验收 |
 | 配置 | 40 份 YAML（8 款实验模型 × 4 组 + Fable5/Astra 8 份历史基线） |
 | VM 镜像 | `docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2`（**不入仓库**，约 22.8 GiB / 24,493,359,104 字节） |
-| 进度与成绩 | **不在仓库里**：批量实验由外部同学执行，逐任务成绩与逐模型金额写进飞书总表（表标识见 [`HANDOFF_CN.md`](HANDOFF_CN.md)）。不要在文档里写死"已跑/未跑" |
+| 进度与成绩 | **不在仓库里**：外部同学跑 5 个模型（qwen / deepseek / kimi / glm / MiniMax），我们跑另外 3 个（sonnet / sol / gemini），逐任务成绩与金额都写进飞书总表。不要在文档里写死"已跑/未跑" |
 
 > 接手的主要任务是**维护与支撑**：修 Agent/配置/文档、帮执行方排错、按 [`HANDOFF_CN.md`](HANDOFF_CN.md) 交付批量实验。
 
@@ -213,7 +213,7 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 
 | 文档 | 内容 |
 |---|---|
-| [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 八模型并填飞书总表 |
+| [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 5 个模型并填飞书总表 |
 | [`README_CN.md`](README_CN.md) | 项目入口（给人看） |
 | [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) | 部署与运行：环境、镜像、命令、镜像构建、排错 |
 | [`REALTIME_PROJECT_DESIGN.md`](REALTIME_PROJECT_DESIGN.md) | 项目与实验设计：环境与任务、接入与验收边界、四组 Agent、工具与时序、录像、预算、评分口径 |

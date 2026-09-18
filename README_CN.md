@@ -2,7 +2,7 @@
 
 基于 OSWorld 的实时 GUI Agent 基准：**69 个网页游戏 × 4 组 Agent × 多模型**，游戏接口协议 `realtime-gui-bench/1.1`，最终环境 RealtimeGame v1.1(3)。
 
-- 要**跑批量实验**（69 任务 × 八模型、写飞书总表）→ [执行同学作业单](HANDOFF_CN.md)
+- 要**跑批量实验**（69 任务 × 多模型、写飞书总表）→ [执行同学作业单](HANDOFF_CN.md)（外部同学跑 5 个模型，`claude-sonnet-5` / `gpt-5.6-sol` / `gemini-3.8-flash` 由我们跑）
 - 是 **AI 助手**，或要改代码 → [AGENTS.md](AGENTS.md)（操作规程：仓库地图、硬性约定、已知坑）
 - 要**部署、调参数、重建镜像、排错** → [部署与运行](SETUP_GUIDELINE_CN.md)
 
@@ -43,7 +43,7 @@ python scripts/python/run_realtime_batch.py \
 
 | 文档 | 内容 |
 | --- | --- |
-| [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 八模型并填飞书总表 |
+| [`HANDOFF_CN.md`](HANDOFF_CN.md) | **执行同学作业单**：跑 69 任务 × 5 个模型并填飞书总表 |
 | [`AGENTS.md`](AGENTS.md) | **AI 助手操作规程**（仓库地图、命令、硬性约定、已知坑） |
 | [`SETUP_GUIDELINE_CN.md`](SETUP_GUIDELINE_CN.md) | 部署与运行：环境、镜像、命令、镜像构建、排错 |
 | [`REALTIME_PROJECT_DESIGN.md`](REALTIME_PROJECT_DESIGN.md) | 项目与实验设计：环境与任务、接入与验收边界、四组 Agent、工具与时序、录像、预算、评分口径 |
