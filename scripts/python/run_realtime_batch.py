@@ -518,8 +518,9 @@ def main():
             save(cost_dir / f'{model}_billing_before.json', before, secrets)
 
         environment = os.environ.copy()
-        for name in ('PACKY_COMMON_API_KEY', 'PACKY_KIMI_API_KEY',
-                     'PACKY_GLM_MINIMAX_API_KEY') + GENERIC_KEY_ENVS:
+        # The child must see this model's key and nothing else: drop every key
+        # variable this batch declares, plus the generic catch-alls.
+        for name in set(key_envs.values()) | set(GENERIC_KEY_ENVS):
             environment.pop(name, None)
         environment[key_env] = key
         environment['PYTHONPATH'] = str(REPO)
