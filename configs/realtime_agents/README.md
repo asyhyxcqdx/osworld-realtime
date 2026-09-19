@@ -26,7 +26,7 @@
 
 ## 公共任务策略
 
-所有 40 份 YAML 的 `system_prompt` **只放反作弊与评测诚信规则**（`# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)`，四个小节：Allowed Behavior / Forbidden Behavior / Evidence and Completion / Violations；禁止开发者工具/CDP/页内脚本、读写源码与存档、直连网络、终端与外部程序、刷新与导航、伪造结果等）。`video` / `combine` 两组的规则里额外有一句允许用 `get_frames` 查历史帧（`vanilla` / `anticipatory` 没有这个工具，写进去会是空头支票），因此两套文本只差这一行。
+所有 40 份 YAML 的 `system_prompt` **只放反作弊与评测诚信规则**（`# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)`，四个小节：Allowed Behavior / Forbidden Behavior / Evidence and Completion / Violations；禁止开发者工具/CDP/页内脚本、读写源码与存档、直连网络、终端与外部程序、刷新与导航、伪造结果等）。两套文本有两处不同，都源于能力差异：`video` / `combine` 多一句允许用 `get_frames` 查历史帧；`vanilla` / `anticipatory` 没有查帧工具，所以那条"只通过可见 GUI 元素交互"写的是"**每次工具结果带回的当前截图**、鼠标移动、点击、拖拽、键盘输入、滚动、等待"，不提 frames 与观察工具（对它们是空头支票）。
 
 原来的操作说明（自称句、动作时序、"截图未等待重绘"、探索与谨慎策略、一次 1 个还是 1–100 个动作、`get_frames` 的使用协议、`computer_done` 的调用要求、不要用纯文本回复）**已从 system prompt 移除**，改由 user prompt 承载（新版 user prompt 待接入；在它到位之前不要开跑，否则动作条数与 `get_frames` 协议无人告知，`DONE` 位置和纯文本回复也只能靠代码报错兜底）。
 

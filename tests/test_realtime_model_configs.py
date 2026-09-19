@@ -253,6 +253,9 @@ def test_every_checked_in_config_declares_its_own_key_environment():
 
 ANTI_CHEAT_HEADING = '# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)'
 ANTI_CHEAT_FRAME_LINE = '- Use get_frames to inspect historical frames when allowed.'
+# Only video/combine own a frame tool, so only they may name frames here.
+ANTI_CHEAT_NO_FRAME_LINE = ('- Interact with the game only through visible GUI elements: '
+                            'the current screenshot')
 ANTI_CHEAT_SECTIONS = ('## Allowed Behavior', '## Forbidden Behavior',
                        '## Evidence and Completion', '## Violations')
 # The operating notes moved to the user prompt, so the system prompt must not
@@ -291,6 +294,8 @@ def test_every_agent_prompt_is_only_the_anti_cheating_rules():
         # Only the two variants that own get_frames advertise it in the rules,
         # and the frame line is the only difference between the two rule texts.
         assert (ANTI_CHEAT_FRAME_LINE in prompt) == (agent_id in {'video', 'combine'})
+        assert (ANTI_CHEAT_NO_FRAME_LINE in prompt) == (agent_id in {'vanilla', 'anticipatory'})
+        assert ('screenshots/frames' in prompt) == (agent_id in {'video', 'combine'})
         assert len(lines) == (53 if agent_id in {'video', 'combine'} else 52)
         for retired in RETIRED_PROMPT_LINES:
             assert retired not in prompt

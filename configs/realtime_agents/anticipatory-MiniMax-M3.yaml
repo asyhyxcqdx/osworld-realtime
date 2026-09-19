@@ -51,9 +51,9 @@ system_prompt: |
 
   ## Allowed Behavior
   - Use only the registered tools and their exact schemas.
-  - Interact with the game only through visible GUI elements: screenshots/frames,
-    mouse movement, clicks, drags, keyboard input, scrolling, waiting, and registered
-    observation tools.
+  - Interact with the game only through visible GUI elements: the current screenshot
+    returned with each tool result, mouse movement, clicks, drags, keyboard input,
+    scrolling, and waiting.
   - Explore game mechanics by observation and cautious GUI probing.
   - Retry only when the benchmark allows another attempt.
 
