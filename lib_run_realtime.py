@@ -15,24 +15,6 @@ from mm_agents.realtime_protocol import (
 )
 
 
-def _record_protocol_error(out: Path, exc):
-    """Annotate the written result.json with the reason for the 0 score."""
-    detail = {"type": type(exc).__name__, "message": str(exc)}
-    path = out / "result.json"
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            return
-        payload["error"] = detail
-        temporary_path = f"{path}.tmp.{os.getpid()}"
-        with open(temporary_path, "w", encoding="utf-8") as handle:
-            json.dump(payload, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-        os.replace(temporary_path, path)
-    except (OSError, ValueError):
-        pass
-
-
 def _write_agent_failure_result(out: Path, example, exc, decision_count):
     """Persist a 0 score for an episode the model itself aborted.
 
@@ -50,13 +32,9 @@ def _write_agent_failure_result(out: Path, example, exc, decision_count):
         "result": 0.0,
         "pass_at_1": 0.0,
         "pass_at_3": 0.0,
+        "max_attempts": 3,
         "status": "failed",
         "termination_reason": "run_error",
-        "decisions": decision_count,
-        "error": {
-            "type": type(exc).__name__,
-            "message": str(exc),
-        },
         "raw_bench": None,
     }
     result_path = out / "result.json"
@@ -309,7 +287,6 @@ def run_realtime_example(
                 },
                 decision_id=decision_count,
             )
-            _record_protocol_error(out, exc)
             (out / "result.txt").write_text(f"{result}\n")
         except Exception:
             result = _write_agent_failure_result(out, example, exc, decision_count)

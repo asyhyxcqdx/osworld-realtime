@@ -153,7 +153,7 @@ ls -d results_realtime_batches/deepseek-flash/batch01/agent4/computer_13/screens
 cat results_realtime_batches/_cost/batch01/cost_report.json
 ```
 
-**69 条里每条都应该有 `result.txt`。** 现在只有**基础设施故障**（网络/VM/评分异常）才会没有 `result.txt`，属于"无有效成绩"；**模型违反动作协议**（例如连续 3 轮不回工具调用、越权刷新）会写成 `result.txt=0.0`（有效 0 分）并在 `result.json` 里注明原因，按失败计入。
+**69 条里每条都应该有 `result.txt`。** 现在只有**基础设施故障**（网络/VM/评分异常）才会没有 `result.txt`，属于"无有效成绩"；**模型违反动作协议**（例如连续 3 轮不回工具调用、越权刷新）会写成 `result.txt=0.0`（有效 0 分，`termination_reason: run_error`），按失败计入。
 不算 0 分，记下来重跑即可。
 
 ---
