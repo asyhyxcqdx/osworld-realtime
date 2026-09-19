@@ -89,29 +89,44 @@ def loggable_messages(messages):
     """Copy request messages while replacing inline image bytes with hashes."""
     logged = copy.deepcopy(messages)
     for message in logged:
-        content = message.get("content") if isinstance(message, dict) else None
-        if not isinstance(content, list):
-            continue
-        for block in content:
-            if not isinstance(block, dict):
-                continue
-            source = block.get("source")
-            if isinstance(source, dict) and isinstance(source.get("data"), str):
-                data = source.pop("data")
-                source["data_sha256"] = hashlib.sha256(data.encode("ascii")).hexdigest()
-                source["data_length"] = len(data)
-            image_url = block.get("image_url")
-            if isinstance(image_url, dict) and isinstance(image_url.get("url"), str):
-                url = image_url["url"]
-                if url.startswith("data:"):
-                    image_url["url"] = "data:image/png;base64,[omitted]"
-                    image_url["url_sha256"] = hashlib.sha256(url.encode("ascii")).hexdigest()
-                    image_url["url_length"] = len(url)
-            elif isinstance(image_url, str) and image_url.startswith("data:"):
-                block["image_url"] = "data:image/png;base64,[omitted]"
-                block["image_url_sha256"] = hashlib.sha256(image_url.encode("ascii")).hexdigest()
-                block["image_url_length"] = len(image_url)
+        _scrub_inline_images(message)
     return logged
+
+
+def _scrub_inline_images(node):
+    """Replace inline image bytes wherever the protocol put them.
+
+    A message's own ``content`` blocks used to be the only place inspected, which
+    misses the frames that come back as tool results: anthropic nests them at
+    ``content[i]["content"][j]["source"]["data"]`` and the responses protocol
+    puts them at ``output[i]["image_url"]``. Walk the whole copy instead; the
+    three shapes below are the only rewritten cases, and nothing but image bytes
+    is touched.
+    """
+    if isinstance(node, list):
+        for item in node:
+            _scrub_inline_images(item)
+        return
+    if not isinstance(node, dict):
+        return
+    source = node.get("source")
+    if isinstance(source, dict) and isinstance(source.get("data"), str):
+        data = source.pop("data")
+        source["data_sha256"] = hashlib.sha256(data.encode("ascii")).hexdigest()
+        source["data_length"] = len(data)
+    image_url = node.get("image_url")
+    if isinstance(image_url, dict) and isinstance(image_url.get("url"), str):
+        url = image_url["url"]
+        if url.startswith("data:"):
+            image_url["url"] = "data:image/png;base64,[omitted]"
+            image_url["url_sha256"] = hashlib.sha256(url.encode("ascii")).hexdigest()
+            image_url["url_length"] = len(url)
+    elif isinstance(image_url, str) and image_url.startswith("data:"):
+        node["image_url"] = "data:image/png;base64,[omitted]"
+        node["image_url_sha256"] = hashlib.sha256(image_url.encode("ascii")).hexdigest()
+        node["image_url_length"] = len(image_url)
+    for value in node.values():
+        _scrub_inline_images(value)
 
 
 def completed_responses_stream(response):

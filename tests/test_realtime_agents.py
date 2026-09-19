@@ -1,5 +1,6 @@
 import base64
 import copy
+import hashlib
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -835,6 +836,51 @@ def test_responses_image_logging_omits_bytes_without_changing_request():
     assert len(block["image_url_sha256"]) == 64
     assert block["image_url_length"] == len(original[0]["content"][0]["image_url"])
     assert messages == original
+
+
+def test_anthropic_frame_inside_a_tool_result_is_omitted():
+    from mm_agents.realtime_agent import loggable_messages
+
+    wire = ModelWire("claude-sonnet-5", "anthropic_messages")
+    messages = wire.tool_results(
+        [({"id": "t0"}, {"frames": [{"status": "ok", "image": IMAGE}]})]
+    )
+    original = copy.deepcopy(messages)
+    logged = loggable_messages(messages)
+    image = logged[0]["content"][0]["content"][1]
+    assert image["type"] == "image"
+    assert "data" not in image["source"]
+    assert image["source"]["data_sha256"] == hashlib.sha256(
+        IMAGE["data"].encode("ascii")).hexdigest()
+    assert image["source"]["data_length"] == len(IMAGE["data"])
+    assert messages == original
+
+
+def test_responses_frame_inside_a_tool_result_is_omitted():
+    from mm_agents.realtime_agent import loggable_messages
+
+    wire = ModelWire("gpt-6-astra", "openai_responses")
+    messages = wire.tool_results(
+        [({"id": "t0"}, {"frames": [{"status": "ok", "image": IMAGE}]})]
+    )
+    url = "data:image/png;base64," + IMAGE["data"]
+    original = copy.deepcopy(messages)
+    logged = loggable_messages(messages)
+    image = [b for b in logged[0]["output"] if b["type"] == "input_image"][0]
+    assert image["image_url"] == "data:image/png;base64,[omitted]"
+    assert image["image_url_sha256"] == hashlib.sha256(url.encode("ascii")).hexdigest()
+    assert image["image_url_length"] == len(url)
+    assert messages == original
+
+
+def test_image_logging_leaves_reasoning_and_signatures_alone():
+    from mm_agents.realtime_agent import loggable_messages
+
+    messages = [{"role": "assistant", "content": [
+        {"type": "thinking", "thinking": "t" * 9000, "signature": "s" * 9000},
+        {"type": "text", "text": "pressed space"},
+    ]}]
+    assert loggable_messages(messages) == messages
 
 
 @pytest.mark.parametrize("complete", [False, True])
