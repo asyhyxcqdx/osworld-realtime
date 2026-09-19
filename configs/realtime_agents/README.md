@@ -26,7 +26,11 @@
 
 ## 公共任务策略
 
-所有 40 份 YAML 的 `system_prompt` 现在都以**反作弊与评测诚信规则**开头（`# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)`，禁止开发者工具/CDP/页内脚本、读写源码与存档、直连网络、终端与外部程序、刷新与导航、伪造结果等；`video` / `combine` 两组额外列一句允许用 `get_frames` 查历史帧），之后才是统一的自称句 `You are the computer-using Agent in a real-time GUI benchmark.`，不再按 vanilla / anticipatory / video / combine 区分自称。在「收到当前截图与完整任务上下文」之后，统一加入动作时序说明：动作执行需要一点时间，随动作结果返回的截图紧跟执行结束取得、未等待界面重绘，可能尚未反映动作执行后的状态，不能仅凭该截图断定动作无效，应以更晚的截图为准。紧跟其后还有一句同主题的说明：**模型思考与生成回复期间时间同样在真实流逝**，游戏在推理和生成过程中一直在跑，所以它看到的状态可能已经变了。YAML 的 `system_prompt` 是唯一 prompt 来源：`RealtimeAgent` 必须收到它，缺失或为空时直接报错，代码不再内置默认 prompt；**坐标说明不在 YAML 里**，由 `api.coordinate_system` 在运行时追加在整段 prompt 之后（`realtime_agent.py` 的 `self.system = system_prompt_text + "\n" + coordinates.guidance`）。
+所有 40 份 YAML 的 `system_prompt` **只放反作弊与评测诚信规则**（`# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)`，四个小节：Allowed Behavior / Forbidden Behavior / Evidence and Completion / Violations；禁止开发者工具/CDP/页内脚本、读写源码与存档、直连网络、终端与外部程序、刷新与导航、伪造结果等）。`video` / `combine` 两组的规则里额外有一句允许用 `get_frames` 查历史帧（`vanilla` / `anticipatory` 没有这个工具，写进去会是空头支票），因此两套文本只差这一行。
+
+原来的操作说明（自称句、动作时序、"截图未等待重绘"、探索与谨慎策略、一次 1 个还是 1–100 个动作、`get_frames` 的使用协议、`computer_done` 的调用要求、不要用纯文本回复）**已从 system prompt 移除**，改由 user prompt 承载（新版 user prompt 待接入；在它到位之前不要开跑，否则动作条数与 `get_frames` 协议无人告知，`DONE` 位置和纯文本回复也只能靠代码报错兜底）。
+
+YAML 的 `system_prompt` 仍是唯一 prompt 来源：`RealtimeAgent` 必须收到它，缺失或为空时直接报错，代码不再内置默认 prompt；**坐标说明不在 YAML 里**，由 `api.coordinate_system` 在运行时追加在整段 prompt 之后（`realtime_agent.py` 的 `self.system = system_prompt_text + "\n" + coordinates.guidance`）。四处操作说明的原文可在旧提交里取回：`git show HEAD~1:configs/realtime_agents/vanilla-deepseek-flash.yaml`。
 
 在时序说明之后，统一要求先探索环境和游戏机制，通过观察与谨慎试探发现界面未说明的细节；不可逆、无法返回当前状态或会消耗 attempt 的操作须先获取足够信息，关键操作有把握后再执行，尤其珍惜最后一次尝试。
 

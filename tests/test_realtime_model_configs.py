@@ -251,30 +251,23 @@ def test_every_checked_in_config_declares_its_own_key_environment():
     assert len(set(declared.values())) == 10
 
 
-PROMPT_OPENING = 'You are the computer-using Agent in a real-time GUI benchmark.'
 ANTI_CHEAT_HEADING = '# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)'
 ANTI_CHEAT_FRAME_LINE = '- Use get_frames to inspect historical frames when allowed.'
-ACTION_TIMING_NOTE = (
-    'Actions take a short time to run. The screenshot returned with their results is '
-    'captured immediately after the computer finishes them, without waiting for the '
-    'screen to update, so it may not yet show the state those actions produced. Check a '
-    'later screenshot before concluding that an action had no effect.'
+ANTI_CHEAT_SECTIONS = ('## Allowed Behavior', '## Forbidden Behavior',
+                       '## Evidence and Completion', '## Violations')
+# The operating notes moved to the user prompt, so the system prompt must not
+# carry them any more.
+RETIRED_PROMPT_LINES = (
+    'You are the computer-using Agent in a real-time GUI benchmark.',
+    'Actions take a short time to run.',
+    'Real time passes while you think and reply.',
+    'Use only the available computer action tools.',
+    'Do not finish with a text-only response.',
+    'Never refresh, reload, reopen, or navigate away from the game page.',
 )
-# Thinking and generating also take real time; the game keeps running meanwhile.
-REPLY_TIME_NOTE = (
-    'Real time passes while you think and reply: the game keeps running during your '
-    'reasoning and while the response is being generated, so the state you saw may already '
-    'have changed.'
-)
-# Lines removed per variant; the YAML prompts must not reintroduce them.
-REMOVED_PROMPT_LINES = {
-    'vanilla': 'Do not request or infer historical video frames',
-    'video': 'Do not submit an action sequence',
-    'anticipatory': 'There is no historical-video tool',
-}
 
 
-def test_all_agent_configs_share_prompt_opening_and_action_timing_note():
+def test_every_agent_prompt_is_only_the_anti_cheating_rules():
     from pathlib import Path
 
     from mm_agents.realtime_config import VARIANT_TO_AGENT_ID
@@ -289,23 +282,16 @@ def test_all_agent_configs_share_prompt_opening_and_action_timing_note():
         config = load_realtime_config(path, variant=variants[agent_id])
         seen.add(config['agent_id'])
         prompt = config['system_prompt']
-        # The anti-cheating rules open every prompt, ahead of the shared framing.
-        assert prompt.splitlines()[0] == ANTI_CHEAT_HEADING
+        lines = prompt.splitlines()
+        assert lines[0] == ANTI_CHEAT_HEADING
         assert prompt.count(ANTI_CHEAT_HEADING) == 1
-        # Only the two variants that own get_frames advertise it in the rules.
+        positions = [prompt.index(section) for section in ANTI_CHEAT_SECTIONS]
+        assert positions == sorted(positions)
+        assert prompt.rstrip().endswith('choose the conservative GUI-only action.')
+        # Only the two variants that own get_frames advertise it in the rules,
+        # and the frame line is the only difference between the two rule texts.
         assert (ANTI_CHEAT_FRAME_LINE in prompt) == (agent_id in {'video', 'combine'})
-        # The four variants share one opening instead of naming themselves.
-        assert prompt.count(PROMPT_OPENING) == 1
-        assert prompt.count(ACTION_TIMING_NOTE) == 1
-        assert prompt.count(REPLY_TIME_NOTE) == 1
-        # Both halves of the timing note sit together, before any strategy line.
-        assert prompt.index(ACTION_TIMING_NOTE) + len(ACTION_TIMING_NOTE) < prompt.index(REPLY_TIME_NOTE)
-        # The note qualifies the screenshot the model receives, before any strategy line.
-        assert (
-            prompt.index('You receive the current screenshot and the complete task context.')
-            < prompt.index(ACTION_TIMING_NOTE)
-            < prompt.index('Before starting task execution')
-        )
-        if agent_id in REMOVED_PROMPT_LINES:
-            assert REMOVED_PROMPT_LINES[agent_id] not in prompt
+        assert len(lines) == (53 if agent_id in {'video', 'combine'} else 52)
+        for retired in RETIRED_PROMPT_LINES:
+            assert retired not in prompt
     assert seen == set(VARIANT_TO_AGENT_ID.values())

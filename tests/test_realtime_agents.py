@@ -1013,5 +1013,6 @@ def test_atomic_configs_send_single_tool_policy_to_provider(monkeypatch, model, 
             assert payload['tool_choice'] == {'type': 'auto', 'disable_parallel_tool_use': True}
     else:
         assert payload['parallel_tool_calls'] is (variant == 'agent4')
-    if variant == 'agent3':
-        assert 'Submit only one get_frames call per response.' in payload.get('system', payload.get('instructions', ''))
+    # The single-get_frames-call rule moved to the user prompt; the code still
+    # rejects a batch and test_atomic_frame_batch_rejected_before_queries_and_
+    # budget_consumption covers that rejection.
