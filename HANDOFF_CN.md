@@ -160,7 +160,7 @@ cat results_realtime_batches/_cost/batch01/cost_report.json
 
 ## 7. 第三步：五个模型全量
 
-同一条命令，`--models` 指定你要跑的这 5 个（**必须显式写**，不要用默认值——默认是 8 个模型）：
+同一条命令，`--models` 指定你要跑的这 5 个（**必须显式写**，不要用默认值——默认是 10 个模型）：
 
 ```bash
 python scripts/python/run_realtime_batch.py \
