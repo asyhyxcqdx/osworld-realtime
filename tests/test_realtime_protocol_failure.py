@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from lib_run_realtime import _write_agent_failure_result
+from lib_run_realtime import _record_protocol_error, _write_agent_failure_result
 from mm_agents.realtime_agent import ModelWire, RealtimeAgent
 from mm_agents.realtime_protocol import (
     AgentProtocolError,
@@ -96,4 +96,24 @@ def test_agent_failure_is_recorded_as_a_zero_score(tmp_path):
     assert details["termination_reason"] == "run_error"
     assert (details["pass_at_1"], details["pass_at_3"], details["result"]) == (0.0, 0.0, 0.0)
     assert details["decisions"] == 7
-    assert details["agent_protocol_error"]["type"] == "AgentProtocolError"
+    assert details["error"]["type"] == "AgentProtocolError"
+
+
+def test_protocol_error_annotates_a_normally_scored_result(tmp_path):
+    """A "running" state is a valid 0, so the normal evaluator writes it; we only add the reason."""
+    (tmp_path / "result.json").write_text(json.dumps({
+        "benchmark_id": "A1", "protocol_version": "realtime-gui-bench/1.1", "task": "hp_status_recall",
+        "max_attempts": 3, "attempts_completed": 1, "passed": False, "result": 0.0,
+        "pass_at_1": 0.0, "pass_at_3": 0.0, "status": "running", "raw_bench": {"status": "running"},
+    }, ensure_ascii=False))
+    _record_protocol_error(tmp_path, AgentProtocolError("Native tool use is required."))
+    details = json.loads((tmp_path / "result.json").read_text())
+    assert details["status"] == "running"            # 页面说啥就是啥
+    assert details["attempts_completed"] == 1
+    assert details["pass_at_3"] == 0.0
+    assert details["error"] == {"type": "AgentProtocolError", "message": "Native tool use is required."}
+
+
+def test_annotation_is_skipped_when_no_result_was_written(tmp_path):
+    _record_protocol_error(tmp_path, AgentProtocolError("boom"))   # 不应抛错
+    assert not (tmp_path / "result.json").exists()

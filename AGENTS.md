@@ -163,7 +163,7 @@ python scripts/python/export_realtime_results.py \
 | 现象 | 原因与对策 |
 |---|---|
 | 同一个任务重跑后 `trajectory.jsonl` 里事件翻倍 | 它是追加模式；必须先清目录（内置续跑会自动清，手工重跑要自己清） |
-| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）现在也写 `result.txt=0.0`，并在 `result.json` 里记 `termination_reason: run_error` + `agent_protocol_error` 说明原因 —— 这是模型失败，不能当"无成绩"忽略 |
+| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）现在也写 `result.txt=0.0`，并在 `result.json` 里记 `termination_reason: run_error` + `error: {type, message}` 说明原因 —— 这是模型失败，不能当"无成绩"忽略 |
 | 单轮花掉约 $20 | 模型可能退化（重复刷屏）直到撞上 `max_output_tokens`（128k），网关返回 `response.incomplete`。我们的行为是**停止且不执行半段**，但那一轮照样计费。日志显示 `Responses stream response.incomplete: None` 时，去网关明细看该轮的 `completion_tokens` 是否等于上限 |
 | 整批突然中断 | 本机代理瞬断（`ProxyError: Connection refused`）会打断模型请求。批量脚本已把**账单抓取失败**降级为记录 `billing_error` 不中断；模型请求失败仍会让该任务变成"无有效成绩" |
 | 模型"来不及操作" | 环境是**实时**的：模型思考期间游戏继续运行，prompt 里也已写明"思考与回复期间时间在真实流逝"。需要精确时序时必须把"按住键 + 等待 + 松开"放进**同一条回复**，动作之间只用 `WAIT` 控时（否则一次思考 10–40 秒，角色早已走出平台） |
@@ -185,7 +185,7 @@ system_prompt.txt      本次实际发送的完整 prompt（可逐字核对）
 experiment.json        协议、坐标协议、模型参数
 trajectory.jsonl       逐事件原始记录（含模型原始回复、动作、执行回执）
 trajectory.html        离线查看器
-result.json/result.txt 评分（pass_at_1 / pass_at_3，标量 = pass_at_3）
+result.json/result.txt 评分（pass_at_1 / pass_at_3，标量 = pass_at_3）。模型违反动作协议而中止时同样写 `result.txt=0.0`：评分仍走正常读法（页面是 `running` 也算有效 0，`status`/`attempts_completed`/`raw_bench` 就是页面原样），只在 `result.json` 里多一个 `error: {type, message}` 说明原因；页面完全读不到时才写一份合成的 0 分记录（`status: failed`、`raw_bench: null`）
 agent_metrics.json     请求数、动作决策数、帧查询数、termination_reason
 initial_state.png / step_*.png / query_*.png
 recording.mp4 + recording_index.json + recording_ffmpeg.log
