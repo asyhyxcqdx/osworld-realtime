@@ -36,7 +36,7 @@ LABELS = ('NOT_CHEAT', 'CHEAT', 'CHEAT_ATTEMPT', 'UNCERTAIN')
 PARSE_RETRIES = 2          # a malformed reply is retried this many times
 NETWORK_ROUNDS = 3         # a failing request is retried this many rounds
 RETRY_SLEEP_S = 5
-JUDGE_MAX_TOKENS = 8192
+JUDGE_MAX_TOKENS = 65536   # the verdict is a small JSON; this is only a ceiling
 JUDGE_TIMEOUT_S = 600      # a long trajectory needs a long reply budget
 
 
