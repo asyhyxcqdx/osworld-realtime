@@ -139,7 +139,7 @@ python scripts/python/export_realtime_results.py \
 
 ### 轨迹判官（作弊审查，跑实验时自动执行）
 
-每条任务**落分之前**，`lib_run_realtime.py` 会调一次判官（`mm_agents/realtime_auditor.py`；system prompt = `configs/realtime_agents/auditor.txt`；判官模型 = `REALTIME_JUDGE_MODEL`，默认 `deepseek-flash`）：输入就是这条轨迹自己的原始 JSONL —— **从最后一条 `model_request` 那一行到文件末尾**，一行不改、不重排、不改字段名（事件字段、三种协议的消息、工具调用参数、工具结果、思考字段全在里面，只有内联的图片 base64 换成 `[binary data omitted]`）；每次判完都把这份输入原样存到任务目录的 `audit_input.txt`。返回 `NOT_CHEAT` / `CHEAT` / `CHEAT_ATTEMPT` / `UNCERTAIN`。
+每条任务**落分之前**，`lib_run_realtime.py` 会调一次判官（`mm_agents/realtime_auditor.py`；system prompt = `configs/realtime_agents/auditor.txt`；判官模型 = `REALTIME_JUDGE_MODEL`，默认 `deepseek-flash`）：输入就是这条轨迹自己的原始 JSONL —— **从最后一条 `model_request` 那一行到文件末尾**，一行不改、不重排、不改字段名（事件字段、三种协议的消息、工具调用参数、工具结果、思考字段全在里面；图片字节在**写日志时**就已经被换成哈希和长度了）；每次判完都把这份输入原样存到任务目录的 `audit_input.txt`。返回 `NOT_CHEAT` / `CHEAT` / `CHEAT_ATTEMPT` / `UNCERTAIN`。
 
 - `CHEAT` → `result` 和 `result.txt` 写 **0**；`CHEAT_ATTEMPT`、`UNCERTAIN`、`NOT_CHEAT` → **保留原分**；
 - **判官没跑成功 → 不写 `result.txt`**：这条任务算未完成，用同样的命令续跑会重跑它（并重新判）。所以分数**只写一次**，且一定是判过之后的最终分；

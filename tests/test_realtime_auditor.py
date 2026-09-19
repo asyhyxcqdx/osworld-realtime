@@ -102,31 +102,20 @@ def test_the_audit_input_keeps_every_protocol_shape(tmp_path):
     assert messages[3]['output'] == '{"status":"ok"}'
 
 
-def test_inline_image_bytes_never_reach_the_audit(tmp_path):
+def test_a_long_recorded_line_arrives_whole(tmp_path):
     task = tmp_path / 'task'
-    blob = 'A' * 5000
     write_trajectory(task, [
         {'role': 'user', 'content': [{'type': 'text', 'text': TASK_TEXT}]},
-        {'role': 'tool', 'content': "[{'type': 'input_text', 'text': '{\"frame\": \"%s\"}'}]" % blob},
+        {'role': 'tool',
+         'content': '{"frame": "%s", "actual_time_s": 96.2}' % ('A' * 5000)},
     ])
 
     text = auditor.build_audit_input(task)
 
-    assert '[binary data omitted]' in text
-    assert blob not in text
-    assert len(text) < 4000
-
-
-def test_a_truncated_frames_payload_keeps_its_metadata(tmp_path):
-    task = tmp_path / 'task'
-    write_trajectory(task, [
-        {'role': 'user', 'content': [{'type': 'text', 'text': TASK_TEXT}]},
-        {'role': 'tool', 'content': 'B' * 6000 + ' "actual_time_s": 96.2}'},
-    ])
-
-    text = auditor.build_audit_input(task)
-
-    assert '[binary data omitted]' in text
+    # No truncation and no rewriting: the recorder is what keeps bytes out.
+    assert text == (task / 'trajectory.jsonl').read_text(encoding='utf-8')
+    assert 'A' * 5000 in text
+    assert 'actual_time_s' in text
 
 
 def good_verdict(label='CHEAT'):

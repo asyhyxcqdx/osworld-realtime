@@ -18,7 +18,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import sys
 import time
 from pathlib import Path
@@ -83,32 +82,15 @@ def messages_url(base_url):
 # Building the audit input from the trajectory
 # --------------------------------------------------------------------------- #
 
-# A recorded line can legitimately be huge -- the final request carries the whole
-# conversation, ~100 KB in one line -- so the cap only exists to stop a runaway
-# payload from making the judge call impossible, which would block a score forever.
-LINE_CHARS = 500_000
-# Frames and screenshots arrive as inline base64 inside tool results: 1.9 MB in a
-# single message for one recorded run. The judge is told not to use images, and
-# that much text cannot fit any context window, so the bytes are dropped.
-BINARY_RUN = re.compile(r'[A-Za-z0-9+/=]{200,}')
-
-
-def _scrub(text):
-    """Drop inline image bytes; keep every readable character."""
-    text = BINARY_RUN.sub('[binary data omitted]', text)
-    return '\n'.join(line if len(line) <= LINE_CHARS
-                      else line[:LINE_CHARS] + ' …[line truncated]'
-                      for line in text.splitlines())
-
-
 def build_audit_input(task_dir):
     """The judge's user message: the trajectory's own lines, verbatim.
 
     The final request carries the whole conversation (history is never trimmed),
     so the events from that request to the end of the log are exactly the
-    material the judge needs. They are passed as the recorded JSONL lines --
-    nothing is renamed, dropped or re-serialised -- and only inline image bytes
-    are replaced, so no translation layer can lose what the agent saw or did.
+    material the judge needs. The recorded JSONL lines are passed through byte
+    for byte -- nothing is renamed, dropped, re-serialised or rewritten -- and
+    the recorder already keeps inline image bytes out of the log, so the judge
+    reads exactly what the trajectory says.
     """
     path = Path(task_dir) / 'trajectory.jsonl'
     if not path.exists():
@@ -126,7 +108,7 @@ def build_audit_input(task_dir):
             start = number
     if start is None:
         raise AuditError(f'no model_request event in {path}')
-    return _scrub('\n'.join(lines[start:])) + '\n'
+    return '\n'.join(lines[start:]) + '\n'
 
 
 def parse_verdict(text):
