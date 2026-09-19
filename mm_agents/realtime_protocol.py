@@ -81,7 +81,16 @@ def _build_action_tools():
 ACTION_TOOLS, ACTION_TOOL_TYPES = _build_action_tools()
 
 
-class ForbiddenShortcutError(ValueError):
+class AgentProtocolError(ValueError):
+    """The model's own reply broke the action protocol, so the episode scores 0.
+
+    Distinct from infrastructure failures (HTTP, streaming, VM): those leave the
+    task without a score and are retried, while a protocol violation is a real
+    failure of the model that must be recorded.
+    """
+
+
+class ForbiddenShortcutError(AgentProtocolError):
     """Raised when an action would leave or inspect the game page."""
 
 

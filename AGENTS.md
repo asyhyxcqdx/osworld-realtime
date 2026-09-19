@@ -163,7 +163,7 @@ python scripts/python/export_realtime_results.py \
 | 现象 | 原因与对策 |
 |---|---|
 | 同一个任务重跑后 `trajectory.jsonl` 里事件翻倍 | 它是追加模式；必须先清目录（内置续跑会自动清，手工重跑要自己清） |
-| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（API/执行/评分异常），**不记 0 分**；只有 `result.txt=0.0` 才是"有效 0 分（正常失败）"。判分时两者必须区分 |
+| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）现在也写 `result.txt=0.0`，并在 `result.json` 里记 `termination_reason: run_error` + `agent_protocol_error` 说明原因 —— 这是模型失败，不能当"无成绩"忽略 |
 | 单轮花掉约 $20 | 模型可能退化（重复刷屏）直到撞上 `max_output_tokens`（128k），网关返回 `response.incomplete`。我们的行为是**停止且不执行半段**，但那一轮照样计费。日志显示 `Responses stream response.incomplete: None` 时，去网关明细看该轮的 `completion_tokens` 是否等于上限 |
 | 整批突然中断 | 本机代理瞬断（`ProxyError: Connection refused`）会打断模型请求。批量脚本已把**账单抓取失败**降级为记录 `billing_error` 不中断；模型请求失败仍会让该任务变成"无有效成绩" |
 | 模型"来不及操作" | 环境是**实时**的：模型思考期间游戏继续运行，prompt 里也已写明"思考与回复期间时间在真实流逝"。需要精确时序时必须把"按住键 + 等待 + 松开"放进**同一条回复**，动作之间只用 `WAIT` 控时（否则一次思考 10–40 秒，角色早已走出平台） |

@@ -4,11 +4,84 @@ from datetime import datetime, timezone
 import json
 import logging
 import os
+import requests
 import time
 from pathlib import Path
 
 from lib_results_logger import log_task_completion
-from mm_agents.realtime_protocol import FRAME_TOOL, ForbiddenShortcutError
+from mm_agents.realtime_protocol import (
+    AgentProtocolError,
+    FRAME_TOOL,
+    ForbiddenShortcutError,
+)
+
+
+def _read_bench_state(env, example):
+    """Best-effort raw BENCH snapshot for a failure record; never raises."""
+    config = (example.get("evaluator") or {}).get("result") or {}
+    try:
+        from desktop_env.evaluators.getters import realtime_gui as getters
+
+        fragment = config.get("target_url_contains", "127.0.0.1:8765/")
+        response = requests.get(
+            f"http://{env.vm_ip}:{env.chromium_port}/json/list", timeout=10
+        )
+        response.raise_for_status()
+        pages = [
+            page
+            for page in response.json()
+            if page.get("type") == "page"
+            and fragment in page.get("url", "")
+            and page.get("webSocketDebuggerUrl")
+        ]
+        if not pages:
+            return None
+        websocket_url = getters._rewrite_websocket_url(
+            env, pages[-1]["webSocketDebuggerUrl"]
+        )
+        state = getters._evaluate_cdp_expression(
+            websocket_url, getters._REALTIME_GUI_BENCH_EXPRESSION, 10.0
+        )
+        return state if isinstance(state, dict) else None
+    except Exception:
+        return None
+
+
+def _write_agent_failure_result(out: Path, example, exc, decision_count, raw_bench=None):
+    """Persist a 0 score for an episode the model itself aborted.
+
+    An infrastructure failure leaves no ``result.txt`` (no valid score, retry
+    later). A protocol violation is a real model failure, so it must be written
+    as 0 - otherwise it looks like "no score" and a resume clears the directory.
+    """
+    raw = raw_bench if isinstance(raw_bench, dict) else None
+    source = str(example.get("source") or "")
+    details = {
+        "benchmark_id": str(example.get("benchmark_id") or "").upper(),
+        "protocol_version": "realtime-gui-bench/1.1",
+        "task": (raw or {}).get("task") or (Path(source).parent.name if source else None),
+        "attempts_completed": (raw or {}).get("attempts_completed"),
+        "passed": False,
+        "result": 0.0,
+        "pass_at_1": 0.0,
+        "pass_at_3": 0.0,
+        "status": "failed",
+        "termination_reason": "run_error",
+        "decisions": decision_count,
+        "agent_protocol_error": {
+            "type": type(exc).__name__,
+            "message": str(exc),
+        },
+        "raw_bench": raw,
+    }
+    result_path = out / "result.json"
+    temporary_path = f"{result_path}.tmp.{os.getpid()}"
+    with open(temporary_path, "w", encoding="utf-8") as handle:
+        json.dump(details, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+    os.replace(temporary_path, result_path)
+    (out / "result.txt").write_text("0.0\n")
+    return 0.0
 
 
 def run_realtime_example(
@@ -229,6 +302,17 @@ def run_realtime_example(
         (out / "result.txt").write_text(f"{result}\n")
         log_task_completion(example, result, str(out), args)
         termination_reason = completion_reason
+    except AgentProtocolError as exc:
+        # The model broke the action protocol: record a real 0 instead of
+        # leaving the task without a score.
+        termination_reason = "run_error"
+        run_error = {"type": type(exc).__name__, "message": str(exc)}
+        write_event({"event": "run_error", **run_error}, decision_id=decision_count)
+        result = _write_agent_failure_result(
+            out, example, exc, decision_count, raw_bench=_read_bench_state(env, example)
+        )
+        scores.append(result)
+        log_task_completion(example, result, str(out), args)
     except Exception as exc:
         termination_reason = "execution_error" if execution_error is not None else "run_error"
         run_error = {"type": type(exc).__name__, "message": str(exc)}

@@ -21,6 +21,7 @@ from mm_agents.realtime_protocol import (
     ACTION_TOOL_TYPES,
     FRAME_TOOL,
     GetFramesArgs,
+    AgentProtocolError,
     ForbiddenShortcutError,
     validate_action,
 )
@@ -615,22 +616,25 @@ class RealtimeAgent:
         if not self.sequence:
             max_allowed = 1
         if len(calls) > max_allowed:
-            raise ValueError("Invalid action count for this agent group.")
+            raise AgentProtocolError("Invalid action count for this agent group.")
         actions = []
         for call in calls:
             action_type = ACTION_TOOL_TYPES.get(call["name"])
             if action_type is None:
-                raise ValueError("Unknown action tool.")
+                raise AgentProtocolError("Unknown action tool.")
             arguments = call.get("arguments", {})
             if isinstance(arguments, str):
                 try:
                     arguments = json.loads(arguments)
                 except (TypeError, ValueError) as exc:
-                    raise ValueError("Action tool arguments are not valid JSON.") from exc
+                    raise AgentProtocolError("Action tool arguments are not valid JSON.") from exc
             if arguments is None:
                 arguments = {}
             action = {"action_type": action_type, "parameters": arguments}
-            action = self.coordinates.to_native_action(action)
+            try:
+                action = self.coordinates.to_native_action(action)
+            except ValueError as exc:
+                raise AgentProtocolError(str(exc)) from exc
             try:
                 validate_action(action)
             except ForbiddenShortcutError:
@@ -642,7 +646,7 @@ class RealtimeAgent:
                 raise
             actions.append(action)
         if any(action["action_type"] == "DONE" for action in actions[:-1]):
-            raise ValueError("DONE must be the last action.")
+            raise AgentProtocolError("DONE must be the last action.")
         return actions
 
     def predict(self, instruction, obs):
@@ -777,7 +781,7 @@ class RealtimeAgent:
                         "will_retry": errors <= 2,
                     })
                     if errors > 2:
-                        raise ValueError(message)
+                        raise AgentProtocolError(message)
                     # Close every native call before asking for a corrected response.
                     # In particular, never execute a prefix of the action calls.
                     rejected = [
@@ -830,21 +834,21 @@ class RealtimeAgent:
                     self._retain_history()
                     return text, actions
                 if not frame_calls:
-                    raise ValueError("Unknown native tool call.")
+                    raise AgentProtocolError("Unknown native tool call.")
                 if not self.frames:
-                    raise ValueError("This agent group has no frame query tool.")
+                    raise AgentProtocolError("This agent group has no frame query tool.")
                 results = []
                 for call in frame_calls:
                     self.counters["tool_calls"] += 1
                     started = time.monotonic()
                     try:
                         if self.max_queries and queries >= self.max_queries:
-                            raise ValueError(
+                            raise AgentProtocolError(
                                 "Frame query budget exhausted. Return actions now."
                             )
                         queries += 1
                         if call["name"] != "get_frames":
-                            raise ValueError(
+                            raise AgentProtocolError(
                                 "Unknown tool; only get_frames is available."
                             )
                         args = (
@@ -891,5 +895,5 @@ class RealtimeAgent:
                 }
             )
             if errors > 2:
-                raise ValueError(message)
+                raise AgentProtocolError(message)
             round_messages.append(self.wire.user([text_block(message)]))
