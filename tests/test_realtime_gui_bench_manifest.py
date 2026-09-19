@@ -2,6 +2,8 @@ import json
 import uuid
 from pathlib import Path
 
+import yaml
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WEBSITE_ROOT = (
@@ -44,15 +46,20 @@ def test_manifest_has_exactly_69_unique_tasks_and_html_files():
         assert str(uuid.UUID(task["id"])) == task["id"]
 
 
-def test_task_configs_share_one_instruction_and_evaluator():
+def test_task_configs_share_the_combine_user_prompt_and_evaluator():
     tasks = load_tasks()
     instructions = {task["instruction"] for task in tasks}
 
     # The environment core reads task_config["instruction"] in _set_task_info, so
-    # the field has to stay. The realtime Agent no longer builds its task message
-    # from it -- that text comes from the YAML user_prompt -- and all 69 configs
-    # carry the same sentence.
+    # the field has to stay. All 69 configs carry the combine variant's user
+    # prompt there, and run_realtime_example overwrites it with the running
+    # variant's own prompt before env.reset.
     assert len(instructions) == 1
+    combine = yaml.safe_load(
+        (PROJECT_ROOT / "configs/realtime_agents/combine-deepseek-flash.yaml")
+        .read_text(encoding="utf-8")
+    )["user_prompt"].strip()
+    assert instructions.pop() == combine
     for task in tasks:
         benchmark_id = task["benchmark_id"].lower()
         assert task["snapshot"] == "chrome"

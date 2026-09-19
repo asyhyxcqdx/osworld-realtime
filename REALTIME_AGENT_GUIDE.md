@@ -10,7 +10,7 @@
 
 文件命名 `<agent_id>-<model>.yaml`，agent1/2/3/4 分别映射 vanilla/anticipatory/video/combine。`--agent_config` 可显式指定文件；`--model` 若同时给出必须与文件 `api.model` 一致，缺失文件直接报错，不回退其他模型配置。不带 `--model` 时 `run_multienv.py` 默认 `claude-fable-5`，而批量脚本 `run_realtime_batch.py` 不传 `--models` 时默认八款实验模型。
 
-**顶层字段**：config_version、agent_id、display_name、description、observation、action、context、api、constraints、system_prompt、user_prompt；未知顶层字段会被拒绝。两段 prompt 都必须为非空字符串，**YAML 是它们的唯一来源**（代码里没有默认 prompt）：`system_prompt` 是反作弊与评测诚信规则，实际 system = YAML 原文 + `api.coordinate_system` 对应的坐标约定，完整文字保存在每次运行的 `system_prompt.txt`；`user_prompt` 是每个变体的任务说明（角色、实时约束、执行策略、工具与感知、规则与收尾），作为对话开头的唯一一条任务 user 消息；任务配置里的 `instruction` 字段**保留**（环境核心 `desktop_env.py` 的 `_set_task_info` 要求它存在），但实时 Agent 不再用它拼消息。
+**顶层字段**：config_version、agent_id、display_name、description、observation、action、context、api、constraints、system_prompt、user_prompt；未知顶层字段会被拒绝。两段 prompt 都必须为非空字符串，**YAML 是它们的唯一来源**（代码里没有默认 prompt）：`system_prompt` 是反作弊与评测诚信规则，实际 system = YAML 原文 + `api.coordinate_system` 对应的坐标约定，完整文字保存在每次运行的 `system_prompt.txt`；`user_prompt` 是每个变体的任务说明（角色、实时约束、执行策略、工具与感知、规则与收尾），作为对话开头的唯一一条任务 user 消息；任务配置里的 `instruction` 字段**保留**（环境核心 `desktop_env.py` 的 `_set_task_info` 要求它存在），值填的是 combine 那套 user prompt，运行时会被覆盖成当前变体的 user prompt。
 
 **能力开关必须与 ID 一致**，防止 Agent3 意外获得 sequence 能力：
 
