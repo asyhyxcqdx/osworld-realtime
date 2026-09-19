@@ -28,7 +28,7 @@
 | `evaluation_examples/websites/realtime_gui_bench/games/<id>/index.html` | 69 个游戏本体（环境） |
 | `evaluation_examples/examples/realtime_gui_bench/<uuid>.json` | 69 个任务配置 |
 | `evaluation_examples/test_realtime_gui_bench.json` | 任务清单（69 个 UUID） |
-| `configs/realtime_agents/*.yaml` | 40 份 Agent 配置，**system prompt 的唯一来源** |
+| `configs/realtime_agents/*.yaml` | 40 份 Agent 配置，**system prompt 与 user prompt 的唯一来源** |
 | `mm_agents/realtime_*.py` | 宿主侧 Agent（协议 / 坐标 / 流式 / 配置 / `.env` 加载） |
 | `lib_run_realtime.py`、`lib_realtime_trajectory.py` | 单任务运行器与轨迹渲染 |
 | `desktop_env/server/realtime.py`、`fmp4.py` | VM 内部服务 |
@@ -172,7 +172,7 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 
 1. **密钥绝不写进文件**：只从环境变量（或已被 git 忽略的 `.env`）读；不写进 YAML、源码、文档、示例或结果。`.env` 与 `.env.example` 是两个不同的文件，只有后者能提交。提交流前自查 `git diff`。
 2. **结果不入库**：`results_*`、`*.mp4`、`trajectory.jsonl`、`*_billing_*.json`、`docker_vm_data/` 都不提交。成绩与金额记在仓库外的结果表。
-3. **YAML 是 system prompt 的唯一来源**：不存在代码内置的默认 prompt；`RealtimeAgent` 缺 `system_prompt_text` 会直接报错。改 prompt 必须**新建 run_id**，不能与旧批次混。
+3. **YAML 是 system prompt 与 user prompt 的唯一来源**：不存在代码内置的默认 prompt；`RealtimeAgent` 缺 `system_prompt_text` 会直接报错，配置里缺 `user_prompt` 会被拒绝。改 prompt 必须**新建 run_id**，不能与旧批次混。
 4. **不要改游戏 HTML 和 VM 服务**：会导致旧成绩不可比；确实要改就得重打镜像并重新验收。
 5. **改了 `desktop_env/` / `lib_run_*.py` 的评分或环境行为**：同步更新文档与测试，并在报告里说明"新旧成绩不可比"。
 6. **分数只在判官跑完之后写一次**：不要手工改 `result.json` / `result.txt`。换判官模型或改了 `configs/realtime_agents/auditor.txt` 之后，用 `python -m mm_agents.realtime_auditor --result_dir <dir> --force` 重判，而不是手改文件。
@@ -202,7 +202,7 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 **单任务目录**（`<result_dir>/<model>/<run_id>/<agent>/computer_13/screenshot/realtime_gui_bench/<uuid>/`）：
 
 ```
-system_prompt.txt      本次实际发送的完整 prompt（可逐字核对）
+system_prompt.txt      本次实际发送的 system prompt（YAML 的 system_prompt + 坐标约定，可逐字核对；任务 user 消息来自 YAML 的 user_prompt，见轨迹首条 user 消息）
 experiment.json        协议、坐标协议、模型参数
 trajectory.jsonl       逐事件原始记录（含模型原始回复、动作、执行回执）
 trajectory.html        离线查看器

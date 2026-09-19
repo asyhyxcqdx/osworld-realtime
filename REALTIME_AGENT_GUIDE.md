@@ -10,7 +10,7 @@
 
 文件命名 `<agent_id>-<model>.yaml`，agent1/2/3/4 分别映射 vanilla/anticipatory/video/combine。`--agent_config` 可显式指定文件；`--model` 若同时给出必须与文件 `api.model` 一致，缺失文件直接报错，不回退其他模型配置。不带 `--model` 时 `run_multienv.py` 默认 `claude-fable-5`，而批量脚本 `run_realtime_batch.py` 不传 `--models` 时默认八款实验模型。
 
-**顶层字段**：config_version、agent_id、display_name、description、observation、action、context、api、constraints、system_prompt；未知顶层字段会被拒绝。`system_prompt` 必须为非空字符串，**它是 prompt 的唯一来源**（代码里没有默认 prompt），实际 system = YAML 原文 + `api.coordinate_system` 对应的坐标约定，完整文字保存在每次运行的 `system_prompt.txt`。
+**顶层字段**：config_version、agent_id、display_name、description、observation、action、context、api、constraints、system_prompt、user_prompt；未知顶层字段会被拒绝。两段 prompt 都必须为非空字符串，**YAML 是它们的唯一来源**（代码里没有默认 prompt）：`system_prompt` 是反作弊与评测诚信规则，实际 system = YAML 原文 + `api.coordinate_system` 对应的坐标约定，完整文字保存在每次运行的 `system_prompt.txt`；`user_prompt` 是每个变体的任务说明（角色、实时约束、执行策略、工具与感知、规则与收尾），**替换掉任务配置里那句通用 instruction**，作为对话开头的唯一一条任务 user 消息。
 
 **能力开关必须与 ID 一致**，防止 Agent3 意外获得 sequence 能力：
 
@@ -38,7 +38,7 @@
 
 1. `run_multienv.py` 按模型和变体加载 YAML，校验 ID、感知与动作能力，再用统一 `agent_kwargs()` 创建 Agent；`system_prompt` 缺失或为空直接报错。
 2. `run_realtime_example()` 执行任务 reset；必要时安装服务；核对 VM 两份 realtime 源码哈希，开始 30 FPS 目标录像。
-3. 对话开头固定一条任务说明 user 消息（保留阅读游戏规则、继续尝试、禁止导航三句），结束工具的要求只放在 system prompt，避免重复。每个决策轮只追加截图时间和当前原始 1920×1080 截图；每次请求包含任务说明、完整历史回复及工具结果和本轮观测，单次请求内任务说明只有一份。
+3. 对话开头固定一条任务 user 消息，文字来自 YAML 的 `user_prompt`（每个变体一套：角色、实时约束、执行策略、工具与感知、规则与收尾；`video`/`combine` 才有 `get_frames` 相关段落）。配置里没有 `user_prompt` 时才回退成任务配置那句 `Task: <instruction>`。每个决策轮只追加截图时间和当前原始 1920×1080 截图；每次请求包含任务说明、完整历史回复及工具结果和本轮观测，单次请求内任务说明只有一份。
 4. 如模型调用 `get_frames`，VM 按所给秒数读取已完成片段并返回图片与实际时间，宿主保存查询图片并回填 API；可重复，不增加决策数。
 5. 如模型提交动作，先确认回复未因输出上限截断，再由 Agent1/3 校验恰好一个、Agent2/4 校验 1–100 个；注册键名、参数范围和 DONE 位置都要合法。
 6. VM 按顺序执行整段动作，之后只返回一个当前截图；KEY_DOWN 持续到 KEY_UP，WAIT 的 `duration_s` 在 VM 内睡眠，普通动作没有隐含 pause。

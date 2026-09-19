@@ -55,6 +55,7 @@ def load_realtime_config(path, *, variant=None):
     required = {
         "config_version", "agent_id", "display_name", "description",
         "observation", "action", "context", "api", "constraints", "system_prompt",
+        "user_prompt",
     }
     missing = sorted(required - set(config))
     if missing:
@@ -137,6 +138,8 @@ def load_realtime_config(path, *, variant=None):
         raise ValueError("Realtime safety and completion constraints cannot be disabled.")
     if not isinstance(config["system_prompt"], str) or not config["system_prompt"].strip():
         raise ValueError("system_prompt must be a non-empty string.")
+    if not isinstance(config["user_prompt"], str) or not config["user_prompt"].strip():
+        raise ValueError("user_prompt must be a non-empty string.")
     return config
 
 
@@ -163,4 +166,5 @@ def agent_kwargs(config):
         "thinking_effort": thinking.get("effort"),
         "thinking_summary": thinking["summary"],
         "system_prompt_text": config["system_prompt"],
+        "user_prompt_text": config["user_prompt"],
     }

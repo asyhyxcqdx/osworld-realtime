@@ -406,6 +406,21 @@ def test_model_tool_results_round_only_time_fields_without_mutating_measurements
     assert (result, execution) == original
 
 
+def test_the_configured_user_prompt_replaces_the_task_instruction():
+    wire = ModelWire('mock', 'anthropic_messages')
+    wire.request = Mock(return_value=native_reply(wire.protocol, text=json.dumps(ACTION)))
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT,
+                          user_prompt_text='You are the Agent.\nComplete the task.',
+                          sequence=False, frames=False, wire=wire)
+
+    agent.predict('game rules task', {'screenshot': b'png', 'task_time_s': 1})
+
+    messages = wire.request.call_args.args[1]
+    assert messages[0]['role'] == 'user'
+    assert messages[0]['content'][0]['text'] == 'You are the Agent.\nComplete the task.'
+    assert 'Task: game rules task' not in json.dumps(messages)
+
+
 def test_screenshot_time_precision_does_not_change_action_execution_precision():
     wire = ModelWire('mock', 'anthropic_messages')
     action = {'action_type': 'WAIT', 'parameters': {'duration_s': 0.123456}}

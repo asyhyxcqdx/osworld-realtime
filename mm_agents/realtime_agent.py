@@ -512,6 +512,7 @@ class RealtimeAgent:
         thinking_effort=None,
         thinking_summary=False,
         system_prompt_text,
+        user_prompt_text=None,
         coordinate_system="native_pixels",
         wire=None,
     ):
@@ -521,6 +522,10 @@ class RealtimeAgent:
             raise ValueError("Realtime Agents require native tool use")
         if not isinstance(system_prompt_text, str) or not system_prompt_text.strip():
             raise ValueError("system_prompt_text must be the non-empty Agent system prompt")
+        if user_prompt_text is not None and not str(user_prompt_text).strip():
+            raise ValueError("user_prompt_text must be a non-empty string when given")
+        self.task_message = (str(user_prompt_text).strip() if user_prompt_text is not None
+                             else None)
         self.variant = variant
         self.sequence = bool(sequence)
         self.frames = bool(frames)
@@ -690,7 +695,10 @@ class RealtimeAgent:
         round_messages = [self.wire.user(blocks)]
         # Keep one task message at the start of the conversation, separate from
         # observation rounds so even an explicitly bounded history retains it.
-        history = [self.wire.user([text_block(f"Task: {instruction}")])]
+        # The configured user prompt replaces the per-task instruction; the
+        # instruction remains the fallback for agents built without one.
+        first_message = self.task_message or f"Task: {instruction}"
+        history = [self.wire.user([text_block(first_message)])]
         history.extend(
             m
             for r in self._history_rounds()

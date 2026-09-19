@@ -270,6 +270,33 @@ RETIRED_PROMPT_LINES = (
 )
 
 
+def test_every_agent_config_carries_its_variant_user_prompt():
+    from pathlib import Path
+
+    from mm_agents.realtime_config import VARIANT_TO_AGENT_ID
+
+    single_action = 'Submit one action per response.'
+    sequence = ('You may submit multiple actions in one response using the registered '
+                'action tools when appropriate.')
+    frames = 'You may call `get_frames` multiple times to inspect historical video frames'
+    no_mix = 'Never mix `get_frames` with action tools in one response.'
+    lines = {'vanilla': 64, 'anticipatory': 65, 'video': 68, 'combine': 69}
+    root = Path(__file__).resolve().parents[1] / 'configs' / 'realtime_agents'
+    variants = {agent_id: variant for variant, agent_id in VARIANT_TO_AGENT_ID.items()}
+    for path in sorted(root.glob('*.yaml')):
+        agent_id = path.name.split('-', 1)[0]
+        config = load_realtime_config(path, variant=variants[agent_id])
+        prompt = config['user_prompt']
+        assert prompt.startswith('You are the computer-using Agent in a real-time GUI benchmark.')
+        assert prompt != config['system_prompt']
+        owns_frames = agent_id in {'video', 'combine'}
+        assert (frames in prompt) == owns_frames
+        assert (no_mix in prompt) == owns_frames
+        assert (single_action in prompt) == (agent_id in {'vanilla', 'video'})
+        assert (sequence in prompt) == (agent_id in {'anticipatory', 'combine'})
+        assert len(prompt.splitlines()) == lines[agent_id], path.name
+
+
 def test_every_agent_prompt_is_only_the_anti_cheating_rules():
     from pathlib import Path
 
