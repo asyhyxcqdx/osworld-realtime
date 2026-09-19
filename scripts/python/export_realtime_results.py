@@ -328,7 +328,7 @@ def main():
     json_path = Path(base + '.json')
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open('w', newline='', encoding='utf-8-sig') as stream:
-        writer = csv.DictWriter(stream, fieldnames=COLUMNS + ['task_id', 'run_id'])
+        writer = csv.DictWriter(stream, fieldnames=COLUMNS, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(rows)
     json_path.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
