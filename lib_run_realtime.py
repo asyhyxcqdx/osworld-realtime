@@ -141,7 +141,6 @@ def run_realtime_example(
         "thinking_enabled": getattr(agent.wire, "thinking_enabled", False),
         "thinking_effort": getattr(agent.wire, "thinking_effort", None),
         "thinking_summary_requested": getattr(agent.wire, "thinking_summary", False),
-        "instruction": instruction,
         "trajectory_file": "trajectory.jsonl",
         "trajectory_html_file": "trajectory.html",
         "system_prompt_file": "system_prompt.txt",

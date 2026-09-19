@@ -2,7 +2,6 @@
   "id": "8784639b-6507-50d5-a6c5-fabb4b9180eb",
   "benchmark_id": "A42",
   "snapshot": "chrome",
-  "instruction": "Read the game rules shown on the current page and follow them exactly. If an attempt fails and another attempt is available, continue with the next attempt. Never refresh, reload, reopen, or navigate away from this page.",
   "source": "evaluation_examples/websites/realtime_gui_bench/games/a42/index.html",
   "config": [
     {

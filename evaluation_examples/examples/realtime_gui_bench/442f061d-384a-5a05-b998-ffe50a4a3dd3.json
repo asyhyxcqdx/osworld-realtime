@@ -2,7 +2,6 @@
   "id": "442f061d-384a-5a05-b998-ffe50a4a3dd3",
   "benchmark_id": "D28",
   "snapshot": "chrome",
-  "instruction": "Read the game rules shown on the current page and follow them exactly. If an attempt fails and another attempt is available, continue with the next attempt. Never refresh, reload, reopen, or navigate away from this page.",
   "source": "evaluation_examples/websites/realtime_gui_bench/games/d28/index.html",
   "config": [
     {

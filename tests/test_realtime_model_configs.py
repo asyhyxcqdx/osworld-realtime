@@ -33,6 +33,7 @@ COORDINATE_SYSTEMS = {
 
 
 TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
+TEST_USER_PROMPT = "Test-only realtime agent user prompt."
 
 
 def reply(protocol, name='computer_click', args=None):
@@ -177,7 +178,7 @@ def test_truncated_response_never_dispatches_valid_partial_actions(protocol):
         body['choices'][0]['finish_reason'] = 'length'
     wire = ModelWire('test-model', protocol)
     wire.request = Mock(return_value=body)
-    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=True, frames=True, wire=wire)
     query = Mock()
     agent.bind_frame_query(query)
     with pytest.raises(RuntimeError, match='no actions dispatched'):

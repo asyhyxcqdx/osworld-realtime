@@ -16,6 +16,7 @@ RELATIVE_SYSTEMS = ['normalized_0_1000', 'normalized_0_1000_unclipped']
 
 
 TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
+TEST_USER_PROMPT = "Test-only realtime agent user prompt."
 
 
 @pytest.mark.parametrize('system,maximum,edge', [
@@ -39,7 +40,7 @@ def test_mapping_uses_1000_denominator_and_selected_upstream_endpoint(system, ma
 
 @pytest.mark.parametrize('system', RELATIVE_SYSTEMS)
 def test_all_coordinate_actions_convert_without_touching_other_parameters(system):
-    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, coordinate_system=system)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=True, frames=True, coordinate_system=system)
     calls = []
     for index, kind in enumerate(['MOVE_TO', 'CLICK', 'RIGHT_CLICK', 'DOUBLE_CLICK', 'DRAG_TO']):
         params = {'x': 500, 'y': 500}
@@ -68,7 +69,7 @@ def test_all_coordinate_actions_convert_without_touching_other_parameters(system
 @pytest.mark.parametrize('system', RELATIVE_SYSTEMS)
 @pytest.mark.parametrize('value', [-1, 1001, 1920, True, '518', 518.2, float('nan'), float('inf')])
 def test_invalid_relative_coordinates_reject_entire_sequence(system, value):
-    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=False, coordinate_system=system)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=True, frames=False, coordinate_system=system)
     with pytest.raises(ValueError, match='normalized integer'):
         agent._decode_action_calls([
             {'name': 'computer_press', 'arguments': {'key': 'd'}},
@@ -115,7 +116,7 @@ def test_correction_history_retains_raw_coordinates_and_maps_only_once(system, p
         sent.append(copy.deepcopy(messages))
         return invalid if len(sent) == 1 else valid
     wire.request = Mock(side_effect=request)
-    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, wire=wire, coordinate_system=system)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=True, frames=True, wire=wire, coordinate_system=system)
     obs = {'screenshot': b'png', 'task_time_s': 1}
     actions = agent.predict('task', obs)[1]
     assert actions == [{'action_type': 'CLICK', 'parameters': {'x': 994, 'y': 723}}]

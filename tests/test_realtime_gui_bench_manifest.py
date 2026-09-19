@@ -44,12 +44,13 @@ def test_manifest_has_exactly_69_unique_tasks_and_html_files():
         assert str(uuid.UUID(task["id"])) == task["id"]
 
 
-def test_task_configs_use_the_shared_instruction_and_evaluator():
+def test_task_configs_carry_no_instruction_and_share_an_evaluator():
     tasks = load_tasks()
-    instructions = {task["instruction"] for task in tasks}
 
-    assert len(instructions) == 1
     for task in tasks:
+        # The task message comes from the Agent YAML's user_prompt, so the
+        # per-task instruction that all 69 configs used to repeat is gone.
+        assert "instruction" not in task
         benchmark_id = task["benchmark_id"].lower()
         assert task["snapshot"] == "chrome"
         assert task["source"].endswith(f"/games/{benchmark_id}/index.html")

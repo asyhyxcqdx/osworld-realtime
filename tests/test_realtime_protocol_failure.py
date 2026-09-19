@@ -17,6 +17,7 @@ from mm_agents.realtime_protocol import (
 )
 
 TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
+TEST_USER_PROMPT = "Test-only realtime agent user prompt."
 OBSERVATION = {"screenshot": b"png", "task_time_s": 1.0}
 
 
@@ -37,7 +38,7 @@ def test_three_text_only_replies_raise_a_protocol_error():
     wire = ModelWire("mock", "anthropic_messages")
     wire.request = Mock(return_value=text_only_reply())
     agent = RealtimeAgent(
-        system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=True, wire=wire
+        system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=True, frames=True, wire=wire
     )
     with pytest.raises(AgentProtocolError) as error:
         agent.predict("task", dict(OBSERVATION))
@@ -56,7 +57,7 @@ def test_a_forbidden_shortcut_also_raises_the_protocol_error():
         return_value=tool_use_reply("computer_press", {"key": "f5"})
     )
     agent = RealtimeAgent(
-        system_prompt_text=TEST_SYSTEM_PROMPT, sequence=False, frames=False, wire=wire
+        system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=False, frames=False, wire=wire
     )
     with pytest.raises(ForbiddenShortcutError):
         agent.predict("task", dict(OBSERVATION))
@@ -68,7 +69,7 @@ def test_out_of_range_normalized_coordinates_raise_a_protocol_error():
         return_value=tool_use_reply("computer_click", {"x": 1500, "y": 400})
     )
     agent = RealtimeAgent(
-        system_prompt_text=TEST_SYSTEM_PROMPT,
+        system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT,
         sequence=False,
         frames=False,
         coordinate_system="normalized_0_1000",
@@ -86,7 +87,7 @@ def test_a_forbidden_shortcut_correction_embeds_one_sentence_period():
         return_value=tool_use_reply("computer_press", {"key": "f5"})
     )
     agent = RealtimeAgent(
-        system_prompt_text=TEST_SYSTEM_PROMPT, sequence=False, frames=False, wire=wire
+        system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=False, frames=False, wire=wire
     )
     with pytest.raises(ForbiddenShortcutError):
         agent.predict("task", dict(OBSERVATION))

@@ -16,6 +16,7 @@ CAPABILITIES = {
 
 
 TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
+TEST_USER_PROMPT = "Test-only realtime agent user prompt."
 
 
 @pytest.mark.parametrize("variant", list(CAPABILITIES))
@@ -131,7 +132,7 @@ def test_model_events_are_saved_before_next_request_and_survive_api_failure(tmp_
         raise RuntimeError("Model API HTTP 503: test failure")
 
     wire.request = request
-    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, variant="agent3", sequence=False, frames=True, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, variant="agent3", sequence=False, frames=True, wire=wire)
     args = SimpleNamespace(
         result_dir=str(tmp_path), environment_ready_wait_s=60, recording_fragment_ms=100,
         sleep_after_execution=0, model="mock", max_sequence_actions=16,
@@ -246,7 +247,7 @@ def test_page_reload_saves_execution_evidence_but_never_scores(tmp_path, monkeyp
     monkeypatch.setattr(realtime_gui, 'verify_realtime_page_identity', Mock(side_effect=RuntimeError('reloaded')))
     wire = ModelWire('mock', 'anthropic_messages')
     wire.request = Mock(return_value={'content': [{'type': 'tool_use', 'id': 'd', 'name': 'computer_done', 'input': {}}]})
-    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, sequence=True, frames=False, wire=wire)
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=True, frames=False, wire=wire)
     obs = {'screenshot': b'png'}
     controller = SimpleNamespace(start_realtime_recording=Mock(return_value={}),
         last_observation_time=1, last_capture_interval=(.9, 1.1), end_realtime_recording=Mock())
