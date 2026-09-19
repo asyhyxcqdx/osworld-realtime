@@ -176,7 +176,7 @@ def test_a_malformed_reply_is_retried():
                                 'output_tokens': 80}
 
 
-def test_the_cap_is_priced_into_the_failed_audit(monkeypatch):
+def test_a_reply_that_hits_the_output_ceiling_fails_the_audit():
     settings = ('deepseek-flash', 'key', 'https://gateway.example', 'RULES')
     session = Mock()
     session.post = Mock(return_value=FakeResponse(judge_reply(good_verdict(), 'max_tokens')))
@@ -184,11 +184,25 @@ def test_the_cap_is_priced_into_the_failed_audit(monkeypatch):
     with pytest.raises(auditor.AuditError) as error:
         auditor.call_judge('trajectory', settings, session=session)
 
-    # Every billed round counts, so a capped judge is visible in the task's cost.
-    rounds = auditor.NETWORK_ROUNDS
-    assert error.value.calls == rounds
-    assert error.value.usage['output_tokens'] == 40 * rounds
-    assert auditor.judge_error(error.value)['usage']['input_tokens'] == 1000 * rounds
+    assert 'max_tokens' in str(error.value)
+    # A failed audit records no cost: that task has no score and will be re-run.
+    assert auditor.judge_error(error.value) == {'error': str(error.value)}
+
+
+def test_a_capped_reply_counts_when_the_retry_succeeds(monkeypatch):
+    monkeypatch.setattr(auditor, 'RETRY_SLEEP_S', 0)
+    settings = ('deepseek-flash', 'key', 'https://gateway.example', 'RULES')
+    session = Mock()
+    session.post = Mock(side_effect=[
+        FakeResponse(judge_reply(good_verdict(), 'max_tokens')),
+        FakeResponse(judge_reply(good_verdict())),
+    ])
+
+    verdict = auditor.call_judge('trajectory', settings, session=session)
+
+    # The audit that produced the score pays for the capped reply too.
+    assert verdict['label'] == 'CHEAT'
+    assert verdict['calls'] == 2 and verdict['usage']['output_tokens'] == 80
 
 
 def test_a_request_failure_is_retried_on_the_next_round(monkeypatch):

@@ -230,10 +230,7 @@ def call_judge(text, settings, session=None):
             return verdict
         if round_number < NETWORK_ROUNDS:
             time.sleep(RETRY_SLEEP_S)
-    error = AuditError(last_error or 'judge failed')
-    error.usage = spent
-    error.calls = calls
-    raise error
+    raise AuditError(last_error or 'judge failed')
 
 
 # --------------------------------------------------------------------------- #
@@ -255,15 +252,13 @@ def judge_record(verdict, settings):
 
 
 def judge_error(exc):
-    """The ``judge`` block for a failed audit, keeping what it already cost."""
-    record = {'error': str(exc)}
-    usage = getattr(exc, 'usage', None)
-    if usage and any(usage.values()):
-        record['usage'] = usage
-    calls = getattr(exc, 'calls', None)
-    if calls:
-        record['calls'] = calls
-    return record
+    """The ``judge`` block for a failed audit.
+
+    Nothing the failed attempt spent is recorded here: that task has no valid
+    score, so it is re-run and its audit runs again -- the cost that counts is
+    the audit that actually produced the score.
+    """
+    return {'error': str(exc)}
 
 
 def audit_task(task_dir, result, *, settings=None, session=None):
