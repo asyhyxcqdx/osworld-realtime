@@ -2,6 +2,7 @@
   "id": "ad7b335b-3ce0-582d-864d-a15862af59b5",
   "benchmark_id": "C34",
   "snapshot": "chrome",
+  "instruction": "Read the game rules shown on the current page and follow them exactly. If an attempt fails and another attempt is available, continue with the next attempt. Never refresh, reload, reopen, or navigate away from this page.",
   "source": "evaluation_examples/websites/realtime_gui_bench/games/c34/index.html",
   "config": [
     {

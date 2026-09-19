@@ -266,3 +266,37 @@ def test_page_reload_saves_execution_evidence_but_never_scores(tmp_path, monkeyp
     assert any(e['event'] == 'action_executed' for e in events)
     assert events[-1]['event'] == 'run_error'
     assert not (tmp_path / 'result.txt').exists()
+
+
+def test_the_environment_receives_the_user_prompt_as_its_instruction(tmp_path, monkeypatch):
+    from mm_agents.realtime_agent import ModelWire, RealtimeAgent
+
+    monkeypatch.setattr('lib_run_single.setup_logger', lambda *args: None)
+    controller = SimpleNamespace(
+        start_realtime_recording=Mock(return_value={'task_time_s': 0}),
+        last_observation_time=0.1,
+        end_realtime_recording=Mock(),
+    )
+    env = SimpleNamespace(controller=controller, reset=Mock(),
+                          _get_obs=lambda: {'screenshot': b'png'})
+    wire = ModelWire('mock', 'anthropic_messages')
+    wire.request = Mock(side_effect=RuntimeError('stop after reset'))
+    agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT,
+                          user_prompt_text=TEST_USER_PROMPT,
+                          variant='agent1', sequence=False, frames=False, wire=wire)
+    args = SimpleNamespace(
+        result_dir=str(tmp_path), environment_ready_wait_s=0, recording_fragment_ms=100,
+        sleep_after_execution=0, model='mock', max_sequence_actions=1,
+        max_frame_queries=0, evaluation_settle_s=0,
+    )
+
+    with pytest.raises(RuntimeError, match='stop after reset'):
+        run_realtime_example(agent, env, {'instruction': 'placeholder from the task config'},
+                             1, 'placeholder from the task config', args, str(tmp_path), [])
+
+    # The environment core requires task_config["instruction"]; it gets the user
+    # prompt, and the model's own task message is that same text -- sent once.
+    assert env.reset.call_args.kwargs['task_config']['instruction'] == TEST_USER_PROMPT
+    sent = wire.request.call_args.args[1]
+    assert json.dumps(sent).count(TEST_USER_PROMPT) == 1
+    assert 'placeholder from the task config' not in json.dumps(sent)

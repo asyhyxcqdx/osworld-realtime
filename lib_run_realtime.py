@@ -96,6 +96,14 @@ def run_realtime_example(
     runtime_logger = setup_logger(example, example_result_dir)
     out = Path(example_result_dir)
     task_started_at = datetime.now(timezone.utc).isoformat()
+    # The environment core requires task_config["instruction"] (desktop_env.py
+    # _set_task_info). Use the Agent's configured user prompt as that instruction
+    # so the harness, the environment and the model all see the same task text;
+    # the value stored in the task config is only a placeholder.
+    user_prompt = getattr(agent, "user_prompt", None)
+    if user_prompt:
+        instruction = user_prompt
+        example = {**example, "instruction": instruction}
     env.reset(task_config=example)
     agent.reset(runtime_logger)
     page_config = example.get("evaluator", {}).get("result", {})

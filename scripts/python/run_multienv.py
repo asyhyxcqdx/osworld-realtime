@@ -402,7 +402,15 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     example = json.load(f)
                 logger.info(f"[{current_process().name}][Domain]: {domain}")
                 logger.info(f"[{current_process().name}][Example ID]: {example_id}")
-                logger.info(f"[{current_process().name}][Instruction]: {example.get('instruction')}")
+                task_text = getattr(agent, "user_prompt", None)
+                if task_text:
+                    # The task message for this run is the Agent's configured user
+                    # prompt; log its first line instead of all 60+ lines.
+                    logger.info("[%s][Instruction]: %s …(user_prompt, %d lines)",
+                                current_process().name, task_text.splitlines()[0][:100],
+                                len(task_text.splitlines()))
+                else:
+                    logger.info(f"[{current_process().name}][Instruction]: {example.get('instruction')}")
                 example_result_dir = os.path.join(
                     get_result_dir(
                         args.result_dir, args.action_space,
