@@ -428,6 +428,38 @@ def summarize(task_dir):
     return result
 
 
+CHARGE_FIELDS = ('actual_charge_usd', 'gateway_log_charge_usd', 'gateway_charge_count',
+                 'gateway_prompt_tokens', 'gateway_completion_tokens')
+
+
+def load_charge_ledger(cost_dir, model):
+    """Every invocation's charge for this run_id, oldest first."""
+    path = Path(cost_dir) / f'{model}_charges.json'
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    records = payload.get('charges') if isinstance(payload, dict) else payload
+    return [row for row in records or [] if isinstance(row, dict)]
+
+
+def append_charge_record(cost_dir, model, record, secrets=()):
+    """Append one invocation and return the whole ledger plus its totals.
+
+    The gateway only exposes a cumulative meter, so each invocation can only
+    measure its own window. Keeping the per-invocation records means the
+    run-level charge is the sum instead of whatever ran last.
+    """
+    ledger = load_charge_ledger(cost_dir, model) + [record]
+    save(Path(cost_dir) / f'{model}_charges.json', {'charges': ledger}, secrets)
+    totals = {field: round(sum(row.get(field) or 0 for row in ledger), 6)
+              for field in CHARGE_FIELDS}
+    for field in CHARGE_FIELDS:
+        if all(row.get(field) is None for row in ledger):
+            totals[field] = None
+    return ledger, totals
+
+
 def charged_usd(row):
     """Gateway ledger first, then the instant delta, then our own token math."""
     for field in ('gateway_log_charge_usd', 'actual_charge_usd', 'computed_charge_usd'):
@@ -635,6 +667,25 @@ def main():
                 result['gateway_completion_tokens'] = sum(row.get('completion_tokens', 0) or 0 for row in rows)
             except Exception as exc:
                 result['ledger_detail_error'] = clean(str(exc), secrets)
+        # Charges accumulate across invocations of the same run_id: the gateway
+        # meter only ever reports this window, so summing the records keeps the
+        # run-level amount from being overwritten by a later subset re-run.
+        ledger, totals = append_charge_record(
+            cost_dir, model,
+            {
+                'finished_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                'tasks_run': len(current),
+                'return_code': return_code,
+                'elapsed_s': round(elapsed, 1),
+                **{field: result.get(field) for field in CHARGE_FIELDS},
+                'billing_error': result.get('billing_error'),
+                'ledger_detail_error': result.get('ledger_detail_error'),
+            },
+            secrets,
+        )
+        result['charges'] = ledger
+        result.update(totals)
+        result['billing_errors'] = [row['billing_error'] for row in ledger if row.get('billing_error')]
         save(cost_dir / f'{model}_summary.json', result, secrets)
 
         manifest['runs'] = [row for row in manifest['runs'] if row.get('model') != model] + [result]

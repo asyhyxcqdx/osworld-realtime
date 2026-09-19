@@ -195,3 +195,33 @@ def test_subset_rerun_merges_with_previous_task_rows():
     merged = merge_task_rows(previous, current)
     assert [row['task_dir'] for row in merged] == ['a', 'b', 'c']
     assert {row['task_dir']: row['requests'] for row in merged} == {'a': 1, 'b': 99, 'c': 3}
+
+
+def test_charges_accumulate_across_invocations(tmp_path):
+    """A subset re-run must add to the run's charge, not replace it."""
+    from scripts.python.run_realtime_batch import append_charge_record
+
+    ledger, totals = append_charge_record(
+        tmp_path, 'm', {'tasks_run': 69, 'actual_charge_usd': 34.6097,
+                        'gateway_log_charge_usd': 34.6097, 'gateway_charge_count': 704})
+    assert len(ledger) == 1 and totals['actual_charge_usd'] == 34.6097
+
+    ledger, totals = append_charge_record(
+        tmp_path, 'm', {'tasks_run': 11, 'actual_charge_usd': 8.807698,
+                        'gateway_log_charge_usd': 8.807698, 'gateway_charge_count': 118,
+                        'billing_error': None})
+    assert len(ledger) == 2
+    assert totals['actual_charge_usd'] == round(34.6097 + 8.807698, 6)
+    assert totals['gateway_log_charge_usd'] == round(34.6097 + 8.807698, 6)
+    assert totals['gateway_charge_count'] == 822
+
+    # A failed window keeps its record; totals only add what was measured.
+    ledger, totals = append_charge_record(
+        tmp_path, 'm', {'tasks_run': 1, 'actual_charge_usd': None,
+                        'gateway_log_charge_usd': None, 'gateway_charge_count': None,
+                        'billing_error': 'gateway request failed'})
+    assert len(ledger) == 3
+    assert totals['actual_charge_usd'] == round(34.6097 + 8.807698, 6)
+    assert totals['gateway_charge_count'] == 822
+    again = json.loads((tmp_path / 'm_charges.json').read_text())
+    assert [row['tasks_run'] for row in again['charges']] == [69, 11, 1]

@@ -193,7 +193,8 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 
 **运行级文件**（`<result_dir>/<model>/<run_id>/`）：`experiment_manifest.json`、`.experiment.lock`、`<agent>/launches.jsonl`（启动记录）、`<agent>/summary/results.json`。最后这个是运行器顺带写的扁平汇总（逐任务追加 `task_id`/`score`/`status`），**没有任何下游依赖，判分不要读它**——里面的 `status: "success"` 只表示评估正常跑完，分数仍可能是 0。
 
-**逐模型金额**（`cost_dir`）：`cost_report.json`（总表，每模型一行）、`<model>_summary.json`、`<model>_billing_before/after/checks.json`、`<model>_gateway_logs.json`、`<model>.log`。
+**逐模型金额**（`cost_dir`）：`cost_report.json`（总表，每模型一行）、`<model>_summary.json`、`<model>_charges.json`（每次调用的账单记录，见下）、`<model>_billing_before/after/checks.json`、`<model>_gateway_logs.json`、`<model>.log`。
+网关只有"累计计价器"，所以**每次调用只能测出自己那一段的花费**；脚本会把每次调用的金额追加进 `<model>_charges.json`，summary 里的 `actual_charge_usd` / `gateway_log_charge_usd` / `gateway_charge_count` 等就是这些记录的**累加值**，所以同一 `run_id` 下的子集续跑不会把整段金额冲掉。某次调用的账单查询失败（如断网）会记进 `billing_errors` 并且那一段金额缺失，需要用只读的网关明细补算（本轮 Gemini 的第 1 段就是这样补的）。
 金额口径：**以网关消费明细为准**（`gateway_log_charge_usd`），即时账单差额只作交叉核对；两者不一致都记录，不把"即时查询为 0"当免费。
 
 模型行的口径：计数（`requests/responses/decisions/frame_queries`）与 token 是**全部任务求和**；`pass_at_1`/`pass_at_3`/`pass_at_3_mean` 是**对全部任务取均值**（`tasks_total` 为分母，无成绩的任务按 0 计入），同时给出 `tasks_scored`。`status` 在模型行恒为 `null`（它只对单个任务有意义）。只补跑一部分任务（`--task`/`--meta`）时，新行会与 `<model>_summary.json` 里已有的逐任务行**按 `task_dir` 合并**（重跑的那条以新值为准），模型行再按合并后的全集重新聚合 —— 所以子集续跑**不会**把整段记账缩小。`<model>_summary.json` 里的 `tasks` 数组始终保留每个任务一行。
