@@ -54,7 +54,7 @@ def _finish_scored_task(out, result, example, args, scores):
     not complete keeps no scalar score: the normal resume path re-runs it and
     audits it again. A judge verdict of CHEAT forces the score to 0.
     """
-    from mm_agents.realtime_auditor import AuditError, audit_task
+    from mm_agents.realtime_auditor import AuditError, audit_task, judge_error
 
     out = Path(out)
     scalar_path = out / "result.txt"
@@ -67,7 +67,7 @@ def _finish_scored_task(out, result, example, args, scores):
         except (OSError, ValueError):
             payload = None
         if isinstance(payload, dict):
-            payload["judge"] = {"error": str(exc)}
+            payload["judge"] = judge_error(exc)
             (out / "result.json").write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         logging.getLogger(__name__).warning(

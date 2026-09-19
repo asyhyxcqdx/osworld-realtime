@@ -137,8 +137,10 @@ class FakeResponse:
         return self._payload
 
 
-def judge_reply(text, stop_reason='end_turn'):
-    return {'stop_reason': stop_reason, 'content': [{'type': 'text', 'text': text}]}
+def judge_reply(text, stop_reason='end_turn', usage=None):
+    return {'stop_reason': stop_reason, 'content': [{'type': 'text', 'text': text}],
+            'usage': usage or {'input_tokens': 900, 'cache_read_input_tokens': 100,
+                               'cache_creation_input_tokens': 0, 'output_tokens': 40}}
 
 
 def test_parse_verdict_accepts_a_fenced_reply(tmp_path):
@@ -168,6 +170,25 @@ def test_a_malformed_reply_is_retried():
     verdict = auditor.call_judge('trajectory', settings, session=session)
 
     assert verdict['label'] == 'CHEAT' and session.post.call_count == 2
+    # Both replies were billed, so both count towards the task's judge cost.
+    assert verdict['calls'] == 2
+    assert verdict['usage'] == {'input_tokens': 2000, 'cached_input_tokens': 200,
+                                'output_tokens': 80}
+
+
+def test_the_cap_is_priced_into_the_failed_audit(monkeypatch):
+    settings = ('deepseek-flash', 'key', 'https://gateway.example', 'RULES')
+    session = Mock()
+    session.post = Mock(return_value=FakeResponse(judge_reply(good_verdict(), 'max_tokens')))
+
+    with pytest.raises(auditor.AuditError) as error:
+        auditor.call_judge('trajectory', settings, session=session)
+
+    # Every billed round counts, so a capped judge is visible in the task's cost.
+    rounds = auditor.NETWORK_ROUNDS
+    assert error.value.calls == rounds
+    assert error.value.usage['output_tokens'] == 40 * rounds
+    assert auditor.judge_error(error.value)['usage']['input_tokens'] == 1000 * rounds
 
 
 def test_a_request_failure_is_retried_on_the_next_round(monkeypatch):

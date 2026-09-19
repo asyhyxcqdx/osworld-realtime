@@ -4,11 +4,14 @@
 One row per (model, task). Columns, in table order:
 
     benchmark_id, agent, model, effort, step, 模型请求数, 执行动作数, 工具调用数,
-    result, attempts_completed, pass@1, pass@3, 结束状态, 成本, 输入Token数量, 输出Token数量
+    result, attempts_completed, pass@1, pass@3, 结束状态, 成本, 输入Token数量, 输出Token数量,
+    判官结论, 判官成本
 
-Values come from the run directory itself: ``result.json`` for the score,
-``agent_metrics.json`` for the counters, ``trajectory.jsonl`` for tool calls and
-token usage, and the Agent YAML for ``effort``.
+Values come from the run directory itself: ``result.json`` for the score and the
+judge verdict, ``agent_metrics.json`` for the counters, ``trajectory.jsonl`` for
+tool calls and token usage, and the Agent YAML for ``effort``. ``判官成本`` is the
+judge's own tokens priced with the judge model's row in the price table; ``成本``
+is still the tested model's, so the two are separate lines of the bill.
 
 Examples:
 
@@ -47,7 +50,7 @@ sys.path.insert(0, str(REPO))
 TASK_DIR = Path('evaluation_examples/examples/realtime_gui_bench')
 COLUMNS = ['benchmark_id', 'agent', 'model', 'effort', 'step', '模型请求数', '执行动作数',
            '工具调用数', 'result', 'attempts_completed', 'pass@1', 'pass@3', '结束状态',
-           '成本', '输入Token数量', '输出Token数量']
+           '成本', '输入Token数量', '输出Token数量', '判官结论', '判官成本']
 TERMINATION_LABELS = {
     'done': '正常结束',
     'decision_limit': '回合上限',
@@ -240,6 +243,11 @@ def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids, 
         charge = compute_charge(tokens, price_of(prices, model))
         source = 'prices' if charge is not None else None
 
+    judge = (scored or {}).get('judge') or {}
+    judge_usage = judge.get('usage') or {}
+    judge_charge = compute_charge(judge_usage, price_of(prices, judge.get('model'))) \
+        if judge_usage else None
+
     row = {
         'benchmark_id': (scored or {}).get('benchmark_id') or benchmark_ids.get(task_dir.name),
         'agent': agent_variant,
@@ -257,6 +265,8 @@ def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids, 
         '成本': None if charge is None else f'{charge:.6f}',
         '输入Token数量': str(tokens['input_tokens']) if tokens['input_tokens'] else None,
         '输出Token数量': str(tokens['output_tokens']) if tokens['output_tokens'] else None,
+        '判官结论': judge.get('label') or ('ERROR' if judge.get('error') else None),
+        '判官成本': None if judge_charge is None else f'{judge_charge:.6f}',
         'task_id': task_dir.name,
         'task_dir': str(task_dir),
         '_charge_source': source,
@@ -368,10 +378,13 @@ def main():
 
     scored = [row for row in rows if row['result']]
     costs = [float(row['成本']) for row in rows if row['成本']]
+    judge_costs = [float(row['判官成本']) for row in rows if row['判官成本']]
     models_seen = sorted({row['model'] for row in rows})
     print(f'EXPORTED {len(rows)} rows for {len(models_seen)} model(s) -> {csv_path}')
     print(f'scored={len(scored)} unscored={len(rows) - len(scored)} '
           f'cost_filled={len(costs)}' + (f' cost_total={sum(costs):.6f}' if costs else ''))
+    if judge_costs:
+        print(f'judge_cost_filled={len(judge_costs)} judge_cost_total={sum(judge_costs):.6f}')
     if not costs:
         print('cost column empty: pass --charges <cost_report.json> or --prices <prices.json>')
 

@@ -41,7 +41,7 @@ def test_collect_row_maps_the_table_columns(tmp_path):
     assert list(COLUMNS) == ['benchmark_id', 'agent', 'model', 'effort', 'step', '模型请求数',
                              '执行动作数', '工具调用数', 'result', 'attempts_completed',
                              'pass@1', 'pass@3', '结束状态', '成本', '输入Token数量',
-                             '输出Token数量']
+                             '输出Token数量', '判官结论', '判官成本']
     assert row['benchmark_id'] == 'C1'
     assert row['agent'] == 'agent4'
     assert row['model'] == 'deepseek-flash'
@@ -57,6 +57,37 @@ def test_collect_row_maps_the_table_columns(tmp_path):
     assert row['成本'] is None
     assert row['输入Token数量'] == '1500'
     assert row['输出Token数量'] == '150'
+    assert row['判官结论'] is None and row['判官成本'] is None
+
+
+def test_judge_verdict_and_cost_come_from_the_result_block(tmp_path):
+    task_dir = tmp_path / 'task'
+    write_task(task_dir)
+    payload = json.loads((task_dir / 'result.json').read_text(encoding='utf-8'))
+    payload['judge'] = {
+        'label': 'CHEAT', 'confidence': 0.97, 'model': 'deepseek-flash',
+        'usage': {'input_tokens': 20_000, 'cached_input_tokens': 12_000, 'output_tokens': 500},
+    }
+    (task_dir / 'result.json').write_text(json.dumps(payload), encoding='utf-8')
+    prices = {'deepseek-flash': {'input': 0.27, 'cached_input': 0.027, 'output': 1.1}}
+
+    row = collect_row(task_dir, 'deepseek-flash', 'agent4', prices, {}, {})
+
+    assert row['判官结论'] == 'CHEAT'
+    # 8k fresh at 0.27 + 12k cached at 0.027 + 500 out at 1.1, per million tokens
+    assert row['判官成本'] == '0.003034'
+
+
+def test_a_failed_audit_shows_as_an_error_row(tmp_path):
+    task_dir = tmp_path / 'task'
+    write_task(task_dir, scored=False)
+    (task_dir / 'result.json').write_text(json.dumps({
+        'benchmark_id': 'C1', 'judge': {'error': 'judge reply is not valid JSON'}}),
+        encoding='utf-8')
+
+    row = collect_row(task_dir, 'deepseek-flash', 'agent4', {}, {}, {})
+
+    assert row['判官结论'] == 'ERROR' and row['判官成本'] is None
 
 
 def test_unscored_task_keeps_scores_blank(tmp_path):
@@ -201,7 +232,7 @@ def test_per_task_charges_fill_each_row_with_its_own_amount(tmp_path):
                                                              'task-b': '0.250000'}
 
 
-def test_csv_keeps_the_sixteen_table_columns(tmp_path):
+def test_csv_keeps_the_eighteen_table_columns(tmp_path):
     result_dir = tmp_path / 'results'
     write_task(result_dir / 'deepseek-flash' / 'run1' / 'agent4' / 'computer_13' /
                'screenshot' / 'realtime_gui_bench' / 'task-a')

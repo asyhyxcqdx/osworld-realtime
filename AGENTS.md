@@ -34,7 +34,7 @@
 | `desktop_env/server/realtime.py`、`fmp4.py` | VM 内部服务 |
 | `desktop_env/evaluators/{getters,metrics}/realtime_gui.py` | 评测与评分 |
 | `scripts/python/run_realtime_batch.py` | **批量运行 + 逐模型记账**（首选入口） |
-| `scripts/python/export_realtime_results.py` | 结果目录 → 飞书总表 16 列（CSV/JSON + `lark-cli` 写入） |
+| `scripts/python/export_realtime_results.py` | 结果目录 → 飞书总表 18 列（CSV/JSON + `lark-cli` 写入） |
 | `mm_agents/realtime_env.py`、`.env.example` | `.env` 配置层（网关、key、代理、运行默认值） |
 | `scripts/python/run_multienv.py` | 底层启动器（`--num_envs` 并行、自动续跑） |
 | `tests/test_realtime_*.py` | 回归测试 |
@@ -133,7 +133,7 @@ python scripts/python/export_realtime_results.py \
   --lark-table-id tblhBdTpZMEqX5Qh [--lark-dry-run]
 ```
 
-- 输出 `<result_dir>/export_<run_id>.csv`（utf-8-sig，Excel 可直接开）与 `.json`；加 `--lark-*` 后用 `lark-cli base +record-batch-create` 每 200 行一批写入。表格链接与 16 列口径见 [`HANDOFF_CN.md`](HANDOFF_CN.md) 第 9 节。
+- 输出 `<result_dir>/export_<run_id>.csv`（utf-8-sig，Excel 可直接开）与 `.json`；加 `--lark-*` 后用 `lark-cli base +record-batch-create` 每 200 行一批写入。表格链接与 18 列口径见 [`HANDOFF_CN.md`](HANDOFF_CN.md) 第 9 节。
 - 写入前需要 `npm install -g @larksuite/cli` + `lark-cli auth login`（需要 `base:record:create`、`base:record:read`、`wiki:node:retrieve` 权限）；不想用 CLI 就只产 CSV，用飞书表自带的「导入」。
 - `--charges <cost_dir>/<model>_per_task_charge.json` 用**逐任务**账单原值填成本（每行填自己的金额）；只给 `cost_report.json`（每模型一个总额）时无法拆到任务，成本列留空并打印 `CHARGES_TOTAL_ONLY`。不给 `--prices/--charges` 则成本列留空。**同一次 run 只导一次**，写入是新增不是覆盖。
 

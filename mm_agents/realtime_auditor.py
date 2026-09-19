@@ -148,7 +148,31 @@ def parse_verdict(text):
     }
 
 
+def judge_usage(usage):
+    """Tokens the gateway billed for one reply, in the result files' naming.
+
+    ``input_tokens`` counts everything the model read, cached reads included, so
+    that a price table can split it into fresh and cached the same way it does
+    for the tested models.
+    """
+    usage = usage or {}
+    fresh = int(usage.get('input_tokens') or 0) + int(usage.get('cache_creation_input_tokens') or 0)
+    cached = int(usage.get('cache_read_input_tokens') or 0)
+    return {
+        'input_tokens': fresh + cached,
+        'cached_input_tokens': cached,
+        'output_tokens': int(usage.get('output_tokens') or 0),
+    }
+
+
+def _add_usage(total, usage):
+    for name, value in usage.items():
+        total[name] = total.get(name, 0) + value
+    return total
+
+
 def _ask_judge(settings, text, session):
+    """One judge call; returns ``(reply text, billed usage)``."""
     model, key, base_url, prompt = settings
     response = session.post(
         messages_url(base_url),
@@ -161,36 +185,55 @@ def _ask_judge(settings, text, session):
     response.raise_for_status()
     payload = response.json()
     if payload.get('stop_reason') == 'max_tokens':
-        raise AuditError('judge reply hit max_tokens; raise JUDGE_MAX_TOKENS')
+        error = AuditError('judge reply hit max_tokens; raise JUDGE_MAX_TOKENS')
+        error.usage = judge_usage(payload.get('usage'))   # a capped reply is still billed
+        error.calls = 1
+        raise error
     blocks = payload.get('content') or []
-    return ''.join(block.get('text') or '' for block in blocks
-                   if isinstance(block, dict) and block.get('type') == 'text')
+    reply = ''.join(block.get('text') or '' for block in blocks
+                    if isinstance(block, dict) and block.get('type') == 'text')
+    return reply, judge_usage(payload.get('usage'))
 
 
 def call_judge(text, settings, session=None):
-    """Ask the judge once, retrying a malformed reply and a failing request."""
+    """Ask the judge once, retrying a malformed reply and a failing request.
+
+    Every reply the gateway billed is added to ``usage``/``calls``, including a
+    malformed one that gets retried, so the task's judge cost is the real total.
+    """
     session = session or requests.Session()
     last_error = None
+    spent = {'input_tokens': 0, 'cached_input_tokens': 0, 'output_tokens': 0}
+    calls = 0
     for round_number in range(1, NETWORK_ROUNDS + 1):
         for _ in range(PARSE_RETRIES + 1):
             try:
-                reply = _ask_judge(settings, text, session)
+                reply, usage = _ask_judge(settings, text, session)
             except requests.RequestException as exc:
                 last_error = f'request failed: {exc}'
                 break                      # retry the whole round after a pause
             except (ValueError, AuditError) as exc:
                 last_error = str(exc)
+                calls += int(getattr(exc, 'calls', 0) or 0)   # count what was billed
+                _add_usage(spent, getattr(exc, 'usage', None) or {})
                 break
+            calls += 1
+            _add_usage(spent, usage)
             try:
                 verdict = parse_verdict(reply)
             except AuditError as exc:
                 last_error = f'{exc}; reply head: {reply[:200]!r}'
                 continue               # a malformed reply is worth retrying
             verdict['rounds'] = round_number
+            verdict['usage'] = spent
+            verdict['calls'] = calls
             return verdict
         if round_number < NETWORK_ROUNDS:
             time.sleep(RETRY_SLEEP_S)
-    raise AuditError(last_error or 'judge failed')
+    error = AuditError(last_error or 'judge failed')
+    error.usage = spent
+    error.calls = calls
+    raise error
 
 
 # --------------------------------------------------------------------------- #
@@ -206,7 +249,21 @@ def judge_record(verdict, settings):
         'reasoning': verdict['reasoning'],
         'model': model,
         'judged_at': time.strftime('%Y-%m-%dT%H:%M:%S%z'),
+        'usage': verdict.get('usage') or {},
+        'calls': verdict.get('calls') or 0,
     }
+
+
+def judge_error(exc):
+    """The ``judge`` block for a failed audit, keeping what it already cost."""
+    record = {'error': str(exc)}
+    usage = getattr(exc, 'usage', None)
+    if usage and any(usage.values()):
+        record['usage'] = usage
+    calls = getattr(exc, 'calls', None)
+    if calls:
+        record['calls'] = calls
+    return record
 
 
 def audit_task(task_dir, result, *, settings=None, session=None):
@@ -267,7 +324,7 @@ def audit_one(task_dir, *, force=False, settings=None, session=None, dry_run=Fal
         result, record = audit_task(path, payload.get('result') or 0.0,
                                     settings=settings, session=session)
     except AuditError as exc:
-        payload['judge'] = {'error': str(exc)}
+        payload['judge'] = judge_error(exc)
         result_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n',
                                encoding='utf-8')
         return f'audit failed: {exc}'

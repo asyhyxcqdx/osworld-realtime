@@ -28,7 +28,7 @@ qwen3.8-max-0902, deepseek-flash, kimi-k3, glm-5.3-flash, MiniMax-M3
 |---|---|
 | 代码 | GitHub 公开仓库 `https://github.com/asyhyxcqdx/osworld-realtime`（`git clone` 即可，无需权限） |
 | 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm --repo-type dataset Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`（公开 dataset 仓库） |
-| 结果总表 | 飞书多维表格：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>（**16 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
+| 结果总表 | 飞书多维表格：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>（**18 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
 | 模型密钥 | 你们公司网关自己的 key，不用给别人 |
 | 你要跑的模型 | 只跑 `qwen3.8-max-0902`、`deepseek-flash`、`kimi-k3`、`glm-5.3-flash`、`MiniMax-M3` 这 5 个；其余模型我们来 |
 
@@ -263,12 +263,12 @@ python scripts/python/export_realtime_results.py \
 ```
 
 不想用 CLI 也可以：去掉 `--lark-*` 只生成 CSV，在飞书表里用「导入」把 CSV 贴进去——
-CSV 就是表头的 16 列（utf-8-sig 编码，Excel 直接可开）；同名 `.json` 里还多带 `task_id`/`run_id` 便于追溯。
+CSV 就是表头的 18 列（utf-8-sig 编码，Excel 直接可开）；同名 `.json` 里还多带 `task_id`/`run_id` 便于追溯。
 
 **⚠️ 不要重复导入同一个 run**：写入是"新增记录"，不是覆盖，重复执行会多出一倍行。
 要重导就先在飞书里删掉旧行。
 
-**16 列的口径**
+**18 列的口径**
 
 | 列 | 来源与口径 |
 |---|---|
@@ -285,6 +285,8 @@ CSV 就是表头的 16 列（utf-8-sig 编码，Excel 直接可开）；同名 `
 | 结束状态 | `done`→正常结束、`decision_limit`→回合上限、`execution_error`→执行异常、`run_error`→其他运行异常、`interrupted`→中断 |
 | 成本 | token × `prices.json` 单价（美元）。导出时给 `--charges <cost_dir>/<model>_per_task_charge.json` 则改用逐任务账单原值（每行填它自己的金额，合计 = 各任务之和） |
 | 输入/输出Token数量 | 逐条模型回复的用量求和。**注意**：流中断的请求可能没有记录，会比网关统计略低 |
+| 判官结论 | 判官的原始标签：`NOT_CHEAT` / `CHEAT` / `CHEAT_ATTEMPT` / `UNCERTAIN`；判官本身没跑成写 `ERROR`（那条任务无有效成绩、会重跑）。与 `result` 合起来看：`result=no` + `判官结论=CHEAT` = 作弊被判 0 分 |
+| 判官成本 | 判官自己那把 key 的 token（逐次调用求和，含重试和撞上输出上限的那次）× 判官模型在单价表里的价格。这是**估算**，用于知道判官花了多少；`成本` 列仍是被测模型的金额（两者分开记） |
 
 ---
 
