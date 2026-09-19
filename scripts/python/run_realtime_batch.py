@@ -627,6 +627,16 @@ def main():
     args = parse_args()
     print(describe_sources(applied), flush=True)
 
+    # The audit runs before every score is written, so a missing judge key must
+    # stop the batch here instead of after it has spent money on tasks that then
+    # keep no result.txt. A dry run spends nothing, so it may skip the check.
+    if not args.dry_run:
+        from mm_agents.realtime_auditor import AuditError, require_judge_key
+        try:
+            require_judge_key()
+        except AuditError as exc:
+            raise SystemExit(f'realtime judge is not configured: {exc}')
+
     models = [model.strip() for model in args.models.split(',') if model.strip()]
     result_dir = Path(args.result_dir)
     if not result_dir.is_absolute():

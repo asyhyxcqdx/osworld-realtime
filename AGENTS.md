@@ -137,6 +137,26 @@ python scripts/python/export_realtime_results.py \
 - 写入前需要 `npm install -g @larksuite/cli` + `lark-cli auth login`（需要 `base:record:create`、`base:record:read`、`wiki:node:retrieve` 权限）；不想用 CLI 就只产 CSV，用飞书表自带的「导入」。
 - `--charges <cost_dir>/<model>_per_task_charge.json` 用**逐任务**账单原值填成本（每行填自己的金额）；只给 `cost_report.json`（每模型一个总额）时无法拆到任务，成本列留空并打印 `CHARGES_TOTAL_ONLY`。不给 `--prices/--charges` 则成本列留空。**同一次 run 只导一次**，写入是新增不是覆盖。
 
+### 轨迹判官（作弊审查，跑实验时自动执行）
+
+每条任务**落分之前**，`lib_run_realtime.py` 会调一次判官（`mm_agents/realtime_auditor.py`；system prompt = `configs/realtime_agents/auditor.txt`；判官模型 = `REALTIME_JUDGE_MODEL`，默认 `deepseek-flash`）：输入就是这条轨迹本身 —— 最后一条 `model_request` 的完整对话 + 它之后的事件，**原封不动**（三种协议的消息、工具调用参数、工具结果、思考字段一律照抄，只把内联的图片 base64 换成 `[binary data omitted]`），返回 `NOT_CHEAT` / `CHEAT` / `CHEAT_ATTEMPT` / `UNCERTAIN`。
+
+- `CHEAT` → `result` 和 `result.txt` 写 **0**；`CHEAT_ATTEMPT`、`UNCERTAIN`、`NOT_CHEAT` → **保留原分**；
+- **判官没跑成功 → 不写 `result.txt`**：这条任务算未完成，用同样的命令续跑会重跑它（并重新判）。所以分数**只写一次**，且一定是判过之后的最终分；
+- 缺 `REALTIME_JUDGE_API_KEY` → **开跑前直接报错**（见 `.env.example` 第六节）；
+- 判官花费走它自己那把 key；**建议给判官单独一把 key**，否则它的调用会被算进同款被测模型的账单。
+
+单独（补）判已经跑完的结果目录：
+
+```bash
+python -m mm_agents.realtime_auditor <任务目录>                          # 一条，打印结论
+python -m mm_agents.realtime_auditor --result_dir <dir> --run_id <id>    # 批量：只补没判过/判失败的
+python -m mm_agents.realtime_auditor --result_dir <dir> --force          # 全量重判（换判官模型/改 prompt 时）
+python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 只导出 audit_input.txt，不调判官
+```
+
+判据是 `result.txt` 存在（有有效成绩才判）。
+
 ### 续跑（补齐没成绩的任务）
 
 **同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次即可**，不需要额外参数：
@@ -155,6 +175,7 @@ python scripts/python/export_realtime_results.py \
 3. **YAML 是 system prompt 的唯一来源**：不存在代码内置的默认 prompt；`RealtimeAgent` 缺 `system_prompt_text` 会直接报错。改 prompt 必须**新建 run_id**，不能与旧批次混。
 4. **不要改游戏 HTML 和 VM 服务**：会导致旧成绩不可比；确实要改就得重打镜像并重新验收。
 5. **改了 `desktop_env/` / `lib_run_*.py` 的评分或环境行为**：同步更新文档与测试，并在报告里说明"新旧成绩不可比"。
+6. **分数只在判官跑完之后写一次**：不要手工改 `result.json` / `result.txt`。换判官模型或改了 `configs/realtime_agents/auditor.txt` 之后，用 `python -m mm_agents.realtime_auditor --result_dir <dir> --force` 重判，而不是手改文件。
 
 ---
 
@@ -163,7 +184,7 @@ python scripts/python/export_realtime_results.py \
 | 现象 | 原因与对策 |
 |---|---|
 | 同一个任务重跑后 `trajectory.jsonl` 里事件翻倍 | 它是追加模式；必须先清目录（内置续跑会自动清，手工重跑要自己清） |
-| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）现在也写 `result.txt=0.0`，并记 `termination_reason: run_error`（`result.json` 字段与正常局完全一致，具体原因在 `trajectory.jsonl` 的 `run_error` 事件里）—— 这是模型失败，不能当"无成绩"忽略 |
+| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常，**或判官没跑成功**），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**（可能是游戏没过、模型违反动作协议，或判官判了 `CHEAT`）。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）会记 `termination_reason: run_error`（`result.json` 字段与正常局完全一致，具体原因在 `trajectory.jsonl` 的 `run_error` 事件里）—— 这是模型失败，不能当"无成绩"忽略；判官判了作弊的，看 `result.json` 的 `judge.label` |
 | 单轮花掉约 $20 | 模型可能退化（重复刷屏）直到撞上 `max_output_tokens`（128k），网关返回 `response.incomplete`。我们的行为是**停止且不执行半段**，但那一轮照样计费。日志显示 `Responses stream response.incomplete: None` 时，去网关明细看该轮的 `completion_tokens` 是否等于上限 |
 | 整批突然中断 | 本机代理瞬断（`ProxyError: Connection refused`）会打断模型请求。批量脚本已把**账单抓取失败**降级为记录 `billing_error` 不中断；模型请求失败仍会让该任务变成"无有效成绩" |
 | 模型"来不及操作" | 环境是**实时**的：模型思考期间游戏继续运行，prompt 里也已写明"思考与回复期间时间在真实流逝"。需要精确时序时必须把"按住键 + 等待 + 松开"放进**同一条回复**，动作之间只用 `WAIT` 控时（否则一次思考 10–40 秒，角色早已走出平台） |
@@ -185,7 +206,7 @@ system_prompt.txt      本次实际发送的完整 prompt（可逐字核对）
 experiment.json        协议、坐标协议、模型参数
 trajectory.jsonl       逐事件原始记录（含模型原始回复、动作、执行回执）
 trajectory.html        离线查看器
-result.json/result.txt 评分（pass_at_1 / pass_at_3，标量 = pass_at_3）。模型违反动作协议而中止时同样写 `result.txt=0.0`：评分走正常读法（页面是 `running` 也算有效 0，`status`/`attempts_completed`/`raw_bench` 就是页面原样）；页面完全读不到时才写一份同样字段、`status: failed`、`raw_bench: null` 的 0 分记录。判读只要看 `result.txt=0` + `termination_reason: run_error`（无 `result.txt` 才是基础设施故障），细节在 `trajectory.jsonl` 的 `run_error` 事件里
+result.json/result.txt 评分。`pass_at_1`/`pass_at_3` 是**游戏原值**；`result` 与 `result.txt` 是**最终分**（判官判 `CHEAT` 时为 0，否则等于 `pass_at_3`），`result.json` 另有 `judge` 块（`label`/`confidence`/`evidence`/`reasoning`/`model`/`judged_at`）。模型违反动作协议而中止时同样写 `result.txt=0.0`：评分走正常读法（页面是 `running` 也算有效 0，`status`/`attempts_completed`/`raw_bench` 就是页面原样）；页面完全读不到时才写一份同样字段、`status: failed`、`raw_bench: null` 的 0 分记录。**判官没跑成功反而不写 `result.txt`**（那条任务算未完成，会重跑）。判读：`result.txt=0` + `termination_reason: run_error` = 模型失败；`judge.label` = 判官的结论；无 `result.txt` = 基础设施故障或判官没跑成（都要重跑）
 agent_metrics.json     请求数、动作决策数、帧查询数、termination_reason
 initial_state.png / step_*.png / query_*.png
 recording.mp4 + recording_index.json + recording_ffmpeg.log

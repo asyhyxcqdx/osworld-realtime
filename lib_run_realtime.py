@@ -47,6 +47,47 @@ def _write_agent_failure_result(out: Path, example, exc, decision_count):
     return 0.0
 
 
+def _finish_scored_task(out, result, example, args, scores):
+    """Audit the finished task, then persist the score the audit agreed with.
+
+    The audit runs before ``result.txt`` is written, so a task whose audit could
+    not complete keeps no scalar score: the normal resume path re-runs it and
+    audits it again. A judge verdict of CHEAT forces the score to 0.
+    """
+    from mm_agents.realtime_auditor import AuditError, audit_task
+
+    out = Path(out)
+    scalar_path = out / "result.txt"
+    try:
+        final, record = audit_task(out, result)
+    except AuditError as exc:
+        scalar_path.unlink(missing_ok=True)
+        try:
+            payload = json.loads((out / "result.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            payload = None
+        if isinstance(payload, dict):
+            payload["judge"] = {"error": str(exc)}
+            (out / "result.json").write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        logging.getLogger(__name__).warning(
+            "Trajectory audit did not complete for %s (%s); leaving no result.txt so the "
+            "task is re-run and audited again", out, exc)
+        return None
+    path = out / "result.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        payload = {}
+    payload["judge"] = record
+    payload["result"] = final
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    scalar_path.write_text(f"{final}\n", encoding="utf-8")
+    scores.append(final)
+    log_task_completion(example, final, str(out), args)
+    return final
+
+
 def run_realtime_example(
     agent, env, example, max_steps, instruction, args, example_result_dir, scores
 ):
@@ -261,9 +302,7 @@ def run_realtime_example(
             },
             decision_id=decision_count,
         )
-        scores.append(result)
-        (out / "result.txt").write_text(f"{result}\n")
-        log_task_completion(example, result, str(out), args)
+        _finish_scored_task(out, result, example, args, scores)
         termination_reason = completion_reason
     except AgentProtocolError as exc:
         # The model broke the action protocol: record a real 0 instead of
@@ -287,11 +326,9 @@ def run_realtime_example(
                 },
                 decision_id=decision_count,
             )
-            (out / "result.txt").write_text(f"{result}\n")
         except Exception:
             result = _write_agent_failure_result(out, example, exc, decision_count)
-        scores.append(result)
-        log_task_completion(example, result, str(out), args)
+        _finish_scored_task(out, result, example, args, scores)
     except Exception as exc:
         termination_reason = "execution_error" if execution_error is not None else "run_error"
         run_error = {"type": type(exc).__name__, "message": str(exc)}

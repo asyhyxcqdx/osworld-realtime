@@ -29,6 +29,9 @@ def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
     evaluate = Mock(return_value=0 if limit_reached else 1)
     monkeypatch.setattr("lib_run_single._evaluate_with_details", evaluate)
     monkeypatch.setattr("lib_run_realtime.log_task_completion", lambda *args: None)
+    # The audit runs before every score is written; keep this runner test offline.
+    monkeypatch.setattr("mm_agents.realtime_auditor.audit_task",
+                        lambda task_dir, result, **kwargs: (result, {"label": "NOT_CHEAT"}))
     if export_fails:
         monkeypatch.setattr("lib_realtime_trajectory.render_trajectory", Mock(side_effect=RuntimeError('HTML export failed')))
     mode = CAPABILITIES[variant]

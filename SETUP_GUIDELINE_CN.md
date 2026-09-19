@@ -46,6 +46,7 @@ PACKY_GPT_6_ASTRA_API_KEY       gpt-6-astra
 ```
 
 - `REALTIME_API_KEY`：所有模型临时共用一把 key 时的兜底；再低一层还有 `PACKY_API_KEY` 兜底
+- `REALTIME_JUDGE_API_KEY`：**必填**。每条任务落分前用它调判官模型（默认 `deepseek-flash`，可用 `REALTIME_JUDGE_MODEL` 改）读轨迹判有没有作弊；判为 `CHEAT` 的任务最终分写 0。**缺它会开跑前直接报错**。建议单独一把 key，否则判官花费会算进同款被测模型的账单（见 [`AGENTS.md`](AGENTS.md) 第 4 节「轨迹判官」）
 
 也支持直接设环境变量、`--keys-file <0600 JSON>`（`{"*": "sk-..."}` 表示全部模型）和无回显 stdin，只有仍缺 key 的模型才会走到后两种。
 

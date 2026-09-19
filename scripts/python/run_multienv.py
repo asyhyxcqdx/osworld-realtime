@@ -656,6 +656,14 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)  # Handle Ctrl+C
     signal.signal(signal.SIGTERM, signal_handler)  # Handle termination signal
     
+    # Every score is written only after its trajectory has been audited, so a
+    # missing judge key must stop the run before it spends anything.
+    from mm_agents.realtime_auditor import AuditError, require_judge_key
+    try:
+        require_judge_key()
+    except AuditError as exc:
+        raise SystemExit(f'realtime judge is not configured: {exc}')
+
     try:
         write_run_configuration(args)
 
