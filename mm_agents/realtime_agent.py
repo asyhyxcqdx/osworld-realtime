@@ -801,6 +801,11 @@ class RealtimeAgent:
                         actions = self._decode_action_calls(action_calls, obs)
                     except ValueError as exc:
                         errors += 1
+                        # The exception text is already a sentence; drop its final
+                        # period so embedding it does not produce "forbidden..".
+                        detail = str(exc).strip()
+                        if detail.endswith('.'):
+                            detail = detail[:-1]
                         self.emit(
                             {
                                 "event": "format_error",
@@ -817,13 +822,13 @@ class RealtimeAgent:
                         round_messages.extend(self.wire.tool_results([
                             (call, {
                                 "status": "error", "executed": False,
-                                "message": f"Invalid tool call: {exc}. No action in this sequence was executed.",
+                                "message": f"Invalid tool call: {detail}. No action in this sequence was executed.",
                             })
                             for call in action_calls
                         ]))
                         round_messages.append(
                             self.wire.user(
-                                [text_block(f"Invalid tool call: {exc}. Correct it; no action was executed.")]
+                                [text_block(f"Invalid tool call: {detail}. Correct it; no action was executed.")]
                             )
                         )
                         continue

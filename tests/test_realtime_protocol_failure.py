@@ -79,6 +79,25 @@ def test_out_of_range_normalized_coordinates_raise_a_protocol_error():
     assert "native screen pixels are not accepted" in str(error.value)
 
 
+def test_a_forbidden_shortcut_correction_embeds_one_sentence_period():
+    """The rejection text is a sentence already, so embedding it must not double the period."""
+    wire = ModelWire("mock", "anthropic_messages")
+    wire.request = Mock(
+        return_value=tool_use_reply("computer_press", {"key": "f5"})
+    )
+    agent = RealtimeAgent(
+        system_prompt_text=TEST_SYSTEM_PROMPT, sequence=False, frames=False, wire=wire
+    )
+    with pytest.raises(ForbiddenShortcutError):
+        agent.predict("task", dict(OBSERVATION))
+
+    # Messages sent on the second request carry the correction for the first one.
+    sent = json.dumps(wire.request.call_args_list[1].args[1])
+    assert "is forbidden. Correct it; no action was executed." in sent
+    assert "is forbidden.. No action in this sequence was executed." not in sent
+    assert ".." not in sent
+
+
 def test_agent_failure_is_recorded_as_a_zero_score(tmp_path):
     example = {
         "benchmark_id": "b4",
