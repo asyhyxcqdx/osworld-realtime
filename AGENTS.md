@@ -139,7 +139,7 @@ python scripts/python/export_realtime_results.py \
 
 ### 轨迹判官（作弊审查，跑实验时自动执行）
 
-每条任务**落分之前**，`lib_run_realtime.py` 会调一次判官（`mm_agents/realtime_auditor.py`；system prompt = `configs/realtime_agents/auditor.txt`；判官模型 = `REALTIME_JUDGE_MODEL`，默认 `deepseek-flash`）：输入就是这条轨迹本身 —— 最后一条 `model_request` 的完整对话 + 它之后的事件，**原封不动**（三种协议的消息、工具调用参数、工具结果、思考字段一律照抄，只把内联的图片 base64 换成 `[binary data omitted]`），返回 `NOT_CHEAT` / `CHEAT` / `CHEAT_ATTEMPT` / `UNCERTAIN`。
+每条任务**落分之前**，`lib_run_realtime.py` 会调一次判官（`mm_agents/realtime_auditor.py`；system prompt = `configs/realtime_agents/auditor.txt`；判官模型 = `REALTIME_JUDGE_MODEL`，默认 `deepseek-flash`）：输入就是这条轨迹自己的原始 JSONL —— **从最后一条 `model_request` 那一行到文件末尾**，一行不改、不重排、不改字段名（事件字段、三种协议的消息、工具调用参数、工具结果、思考字段全在里面，只有内联的图片 base64 换成 `[binary data omitted]`）；每次判完都把这份输入原样存到任务目录的 `audit_input.txt`。返回 `NOT_CHEAT` / `CHEAT` / `CHEAT_ATTEMPT` / `UNCERTAIN`。
 
 - `CHEAT` → `result` 和 `result.txt` 写 **0**；`CHEAT_ATTEMPT`、`UNCERTAIN`、`NOT_CHEAT` → **保留原分**；
 - **判官没跑成功 → 不写 `result.txt`**：这条任务算未完成，用同样的命令续跑会重跑它（并重新判）。所以分数**只写一次**，且一定是判过之后的最终分；
@@ -152,7 +152,7 @@ python scripts/python/export_realtime_results.py \
 python -m mm_agents.realtime_auditor <任务目录>                          # 一条，打印结论
 python -m mm_agents.realtime_auditor --result_dir <dir> --run_id <id>    # 批量：只补没判过/判失败的
 python -m mm_agents.realtime_auditor --result_dir <dir> --force          # 全量重判（换判官模型/改 prompt 时）
-python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 只导出 audit_input.txt，不调判官
+python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 只写出 audit_input.txt，不调判官（正常判完也会存这份）
 ```
 
 判据是 `result.txt` 存在（有有效成绩才判）。
@@ -208,6 +208,7 @@ trajectory.jsonl       逐事件原始记录（含模型原始回复、动作、
 trajectory.html        离线查看器
 result.json/result.txt 评分。`pass_at_1`/`pass_at_3` 是**游戏原值**；`result` 与 `result.txt` 是**最终分**（判官判 `CHEAT` 时为 0，否则等于 `pass_at_3`），`result.json` 另有 `judge` 块（`label`/`confidence`/`evidence`/`reasoning`/`model`/`judged_at`）。模型违反动作协议而中止时同样写 `result.txt=0.0`：评分走正常读法（页面是 `running` 也算有效 0，`status`/`attempts_completed`/`raw_bench` 就是页面原样）；页面完全读不到时才写一份同样字段、`status: failed`、`raw_bench: null` 的 0 分记录。**判官没跑成功反而不写 `result.txt`**（那条任务算未完成，会重跑）。判读：`result.txt=0` + `termination_reason: run_error` = 模型失败；`judge.label` = 判官的结论；无 `result.txt` = 基础设施故障或判官没跑成（都要重跑）
 agent_metrics.json     请求数、动作决策数、帧查询数、termination_reason
+audit_input.txt        判官这次实际读到的输入（判官跑过才有，便于回看判罚依据）
 initial_state.png / step_*.png / query_*.png
 recording.mp4 + recording_index.json + recording_ffmpeg.log
 ```

@@ -61,24 +61,24 @@ def test_messages_url_keeps_an_explicit_v1():
     assert auditor.messages_url('https://gateway.example/v1') == 'https://gateway.example/v1/messages'
 
 
-def test_the_audit_input_is_the_trajectory_verbatim(tmp_path):
+def test_the_audit_input_is_the_trajectorys_own_lines(tmp_path):
     task = tmp_path / 'task'
     write_trajectory(task, openai_chat_conversation(), tail_events=[
         {'event': 'action_submitted', 'actions': [{'action_type': 'DONE', 'parameters': {}}]},
         {'event': 'evaluation', 'result': 1.0, 'details': {'benchmark_id': 'D33'}},
     ])
+    recorded = (task / 'trajectory.jsonl').read_text(encoding='utf-8')
 
     text = auditor.build_audit_input(task)
-    payload = json.loads(text)
 
-    # Nothing is rewritten: messages, reasoning, tool calls and results arrive as recorded.
-    assert payload['registered_tools'] == TOOLS
-    assert payload['request_messages'] == openai_chat_conversation()
-    assert payload['events_after_the_final_request'][-1]['event'] == 'evaluation'
-    assert payload['request_messages'][1]['reasoning_content'] == 'I will press f12 to inspect.'
-    assert payload['request_messages'][2]['content'] == '{"status": "error", "message": "is forbidden."}'
-    # The screenshot arrives as the reference the trajectory recorded, not as pixels.
-    assert 'data:image/png;base64,[omitted]' in text
+    # Byte for byte the recorded lines: nothing renamed, dropped or re-serialised.
+    assert text == recorded
+    events = [json.loads(line) for line in text.splitlines()]
+    assert events[0]['event'] == 'model_request'
+    assert events[0]['tools'] == TOOLS                       # not renamed
+    assert events[0]['request_messages'] == openai_chat_conversation()
+    assert events[0]['request_messages'][1]['reasoning_content'] == 'I will press f12 to inspect.'
+    assert events[-1]['event'] == 'evaluation'
 
 
 def test_the_audit_input_keeps_every_protocol_shape(tmp_path):
@@ -93,8 +93,8 @@ def test_the_audit_input_keeps_every_protocol_shape(tmp_path):
 
     text = auditor.build_audit_input(task)
 
-    # The items are handed over as they were recorded, whichever protocol wrote them.
-    messages = json.loads(text)['request_messages']
+    # The items arrive as recorded, whichever protocol wrote them.
+    messages = json.loads(text.splitlines()[0])['request_messages']
     assert messages[0]['content'][0]['text'] == TASK_TEXT
     assert messages[1]['type'] == 'reasoning'
     assert messages[2]['name'] == 'computer_typing'
@@ -216,6 +216,8 @@ def test_audit_task_forces_the_score_to_zero_on_cheat(tmp_path, monkeypatch):
                                         settings=('deepseek-flash', 'k', 'https://g', 'RULES'))
 
     assert result == 0.0 and record['label'] == 'CHEAT' and record['model'] == 'deepseek-flash'
+    # Exactly what the judge read is kept next to the result.
+    assert (task / 'audit_input.txt').read_text(encoding='utf-8') == auditor.build_audit_input(task)
 
 
 def test_audit_task_keeps_the_score_for_an_attempt(tmp_path, monkeypatch):

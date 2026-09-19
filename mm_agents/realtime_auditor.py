@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import sys
@@ -82,9 +83,10 @@ def messages_url(base_url):
 # Building the audit input from the trajectory
 # --------------------------------------------------------------------------- #
 
-# A line is only cut when it is pathological; tool calls, scripts and reasoning
-# stay verbatim (the longest line across 120 recorded trajectories is 2682 chars).
-LINE_CHARS = 20000
+# A recorded line can legitimately be huge -- the final request carries the whole
+# conversation, ~100 KB in one line -- so the cap only exists to stop a runaway
+# payload from making the judge call impossible, which would block a score forever.
+LINE_CHARS = 500_000
 # Frames and screenshots arrive as inline base64 inside tool results: 1.9 MB in a
 # single message for one recorded run. The judge is told not to use images, and
 # that much text cannot fit any context window, so the bytes are dropped.
@@ -100,44 +102,32 @@ def _scrub(text):
 
 
 def build_audit_input(task_dir):
-    """The judge's user message: this task's trajectory, as recorded.
+    """The judge's user message: the trajectory's own lines, verbatim.
 
     The final request carries the whole conversation (history is never trimmed),
-    so the trajectory is passed verbatim -- every message, tool call, tool result
-    and reasoning field, whichever of the three protocols wrote it -- followed by
-    the events recorded after that request. Only inline binary data is replaced,
-    so nothing the agent saw or did can be lost in a translation layer.
+    so the events from that request to the end of the log are exactly the
+    material the judge needs. They are passed as the recorded JSONL lines --
+    nothing is renamed, dropped or re-serialised -- and only inline image bytes
+    are replaced, so no translation layer can lose what the agent saw or did.
     """
     path = Path(task_dir) / 'trajectory.jsonl'
     if not path.exists():
         raise AuditError(f'no trajectory at {path}')
-    events = []
-    for line in path.read_text(encoding='utf-8', errors='replace').splitlines():
+    lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+    start = None
+    for number, line in enumerate(lines):
+        if '"model_request"' not in line:
+            continue
         try:
             event = json.loads(line)
         except ValueError:
             continue
-        if isinstance(event, dict):
-            events.append(event)
-    requests_ = [index for index, event in enumerate(events)
-                 if event.get('event') == 'model_request']
-    if not requests_:
+        if isinstance(event, dict) and event.get('event') == 'model_request':
+            start = number
+    if start is None:
         raise AuditError(f'no model_request event in {path}')
-    last_index = requests_[-1]
-    last = events[last_index]
-    payload = {
-        'registered_tools': last.get('tools') or [],
-        'request_messages': last.get('request_messages') or [],
-        'events_after_the_final_request': events[last_index + 1:],
-    }
-    return _scrub(json.dumps(payload, ensure_ascii=False, indent=1)) + '\n'
+    return _scrub('\n'.join(lines[start:])) + '\n'
 
-
-
-
-# --------------------------------------------------------------------------- #
-# Calling the judge
-# --------------------------------------------------------------------------- #
 
 def parse_verdict(text):
     """Validate one judge reply, accepting a fenced JSON block."""
@@ -246,6 +236,11 @@ def audit_task(task_dir, result, *, settings=None, session=None):
     """
     settings = settings or judge_settings()
     text = build_audit_input(task_dir)
+    # Keep exactly what the judge read, so any verdict can be re-read later.
+    try:
+        (Path(task_dir) / 'audit_input.txt').write_text(text, encoding='utf-8')
+    except OSError:
+        logging.getLogger(__name__).warning('cannot persist the audit input under %s', task_dir)
     verdict = call_judge(text, settings, session=session)
     record = judge_record(verdict, settings)
     if verdict['label'] == 'CHEAT':
