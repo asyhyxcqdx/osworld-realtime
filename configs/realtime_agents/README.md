@@ -26,7 +26,7 @@
 
 ## 公共任务策略
 
-所有 40 份 YAML 的 `system_prompt` 首句统一为 `You are the computer-using Agent in a real-time GUI benchmark.`，不再按 vanilla / anticipatory / video / combine 区分自称。在「收到当前截图与完整任务上下文」之后，统一加入动作时序说明：动作执行需要一点时间，随动作结果返回的截图紧跟执行结束取得、未等待界面重绘，可能尚未反映动作执行后的状态，不能仅凭该截图断定动作无效，应以更晚的截图为准。紧跟其后还有一句同主题的说明：**模型思考与生成回复期间时间同样在真实流逝**，游戏在推理和生成过程中一直在跑，所以它看到的状态可能已经变了。YAML 的 `system_prompt` 是唯一 prompt 来源：`RealtimeAgent` 必须收到它，缺失或为空时直接报错，代码不再内置默认 prompt。
+所有 40 份 YAML 的 `system_prompt` 现在都以**反作弊与评测诚信规则**开头（`# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)`，禁止开发者工具/CDP/页内脚本、读写源码与存档、直连网络、终端与外部程序、刷新与导航、伪造结果等；`video` / `combine` 两组额外列一句允许用 `get_frames` 查历史帧），之后才是统一的自称句 `You are the computer-using Agent in a real-time GUI benchmark.`，不再按 vanilla / anticipatory / video / combine 区分自称。在「收到当前截图与完整任务上下文」之后，统一加入动作时序说明：动作执行需要一点时间，随动作结果返回的截图紧跟执行结束取得、未等待界面重绘，可能尚未反映动作执行后的状态，不能仅凭该截图断定动作无效，应以更晚的截图为准。紧跟其后还有一句同主题的说明：**模型思考与生成回复期间时间同样在真实流逝**，游戏在推理和生成过程中一直在跑，所以它看到的状态可能已经变了。YAML 的 `system_prompt` 是唯一 prompt 来源：`RealtimeAgent` 必须收到它，缺失或为空时直接报错，代码不再内置默认 prompt；**坐标说明不在 YAML 里**，由 `api.coordinate_system` 在运行时追加在整段 prompt 之后（`realtime_agent.py` 的 `self.system = system_prompt_text + "\n" + coordinates.guidance`）。
 
 在时序说明之后，统一要求先探索环境和游戏机制，通过观察与谨慎试探发现界面未说明的细节；不可逆、无法返回当前状态或会消耗 attempt 的操作须先获取足够信息，关键操作有把握后再执行，尤其珍惜最后一次尝试。
 

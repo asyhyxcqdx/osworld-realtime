@@ -252,6 +252,8 @@ def test_every_checked_in_config_declares_its_own_key_environment():
 
 
 PROMPT_OPENING = 'You are the computer-using Agent in a real-time GUI benchmark.'
+ANTI_CHEAT_HEADING = '# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)'
+ANTI_CHEAT_FRAME_LINE = '- Use get_frames to inspect historical frames when allowed.'
 ACTION_TIMING_NOTE = (
     'Actions take a short time to run. The screenshot returned with their results is '
     'captured immediately after the computer finishes them, without waiting for the '
@@ -287,8 +289,12 @@ def test_all_agent_configs_share_prompt_opening_and_action_timing_note():
         config = load_realtime_config(path, variant=variants[agent_id])
         seen.add(config['agent_id'])
         prompt = config['system_prompt']
+        # The anti-cheating rules open every prompt, ahead of the shared framing.
+        assert prompt.splitlines()[0] == ANTI_CHEAT_HEADING
+        assert prompt.count(ANTI_CHEAT_HEADING) == 1
+        # Only the two variants that own get_frames advertise it in the rules.
+        assert (ANTI_CHEAT_FRAME_LINE in prompt) == (agent_id in {'video', 'combine'})
         # The four variants share one opening instead of naming themselves.
-        assert prompt.splitlines()[0] == PROMPT_OPENING
         assert prompt.count(PROMPT_OPENING) == 1
         assert prompt.count(ACTION_TIMING_NOTE) == 1
         assert prompt.count(REPLY_TIME_NOTE) == 1
