@@ -2,6 +2,8 @@
 
 10 款模型（`configs/realtime_agents/` 下的 10 个模型名），每款都有 vanilla / anticipatory / video / combine 四份 YAML，目录合计 40 份，**system prompt 四组各一套**（同一组内 10 份完全相同）。
 
+> 目录里的 `auditor.txt` 不是 Agent 配置，而是**轨迹判官的 system prompt**（每次任务落分前的作弊审查，模型由 `REALTIME_JUDGE_MODEL` 指定，key 用 `REALTIME_JUDGE_API_KEY`；详见 [`AGENTS.md`](../../AGENTS.md) 第 4 节）。
+
 | model（区分大小写） | 协议 | 上下文声明 | 输出上限 | 思考 | 密钥环境变量 |
 |---|---|---:|---:|---|---|
 | `claude-sonnet-5` | anthropic_messages | 1000000 | 128000 | high | `PACKY_CLAUDE_SONNET_5_API_KEY` |

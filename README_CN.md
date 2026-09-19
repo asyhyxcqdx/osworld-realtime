@@ -37,6 +37,7 @@ python scripts/python/run_realtime_batch.py \
 - 游戏 HTML、任务配置、VM 服务（`desktop_env/server/realtime*.py`、`fmp4.py`）会影响新旧成绩可比性，改动需重新验收/重打镜像。
 - `system_prompt`（反作弊与评测诚信规则）和 `user_prompt`（每个变体的任务说明，即对话第一条 user 消息）只存在于 `configs/realtime_agents/*.yaml`，代码里没有默认 prompt；任务配置里的 `instruction` 字段只是环境核心要求的占位（运行时会被覆盖成当前变体的 `user_prompt`）；改任一段 prompt 都必须换新的 `run_id`。
 - 评分只取游戏写入的 `pass_at_1` / `pass_at_3`，`result.txt` = `pass_at_3`；未取得有效成绩（接口/执行/评分异常）时留空，**不记 0 分**。
+- **落分前还有一道 LLM 判官**（`mm_agents/realtime_auditor.py`，prompt = `configs/realtime_agents/auditor.txt`）：判 `CHEAT` 就把最终分写成 0，`CHEAT_ATTEMPT`/`UNCERTAIN`/`NOT_CHEAT` 保留原分；判官自己没跑成则不写 `result.txt`（那条任务续跑重跑）。`REALTIME_JUDGE_API_KEY` 必填，缺了开跑前就报错。
 - 密钥、截图、录像、轨迹、VM 镜像和结果目录都不入库（见 `.gitignore`）。
 
 ## 文档索引

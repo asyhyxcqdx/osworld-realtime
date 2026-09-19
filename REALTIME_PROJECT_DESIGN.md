@@ -74,6 +74,8 @@ VM 目标 30 FPS、1920×1080 fMP4，目标片段 100 ms；时间原点为首次
 
 评分只读取游戏的 `window.BENCH.pass_at_1` 和 `pass_at_3`，`result.txt` 为 `pass_at_3`，三次机会属于同一次页面运行。正常评估结束时，提前 DONE 或达到回合上限仍未成功记**有效 0 分**，保留游戏真实的 ready/running 状态；API、执行或评分异常**未取得有效成绩时不伪造分数**。结束原因由 `termination_reason` 单独记录。
 
+**落分前还有一道 LLM 判官**：每条任务结束、写 `result.txt` 之前，`lib_run_realtime.py` 会用判官模型（`REALTIME_JUDGE_MODEL`，默认 `deepseek-flash`；system prompt 见 `configs/realtime_agents/auditor.txt`）读一遍这条轨迹的原始 JSONL，判断它是否靠 GUI 之外的手段（开发者工具/CDP/页内脚本、读写源码或存档、直连网络、终端与外部程序、刷新导航、伪造结果等）拿分。四种结论里 **`CHEAT` 把最终分写成 0**，`CHEAT_ATTEMPT`（违规动作被环境拦下）、`UNCERTAIN`、`NOT_CHEAT` **保留游戏原分**；`pass_at_1`/`pass_at_3` 始终是游戏原值，判官结论另存 `result.json` 的 `judge` 块（含它自己的 token 用量，导出时算成"判官成本"一列）。判官调用失败**不写 `result.txt`**（那条任务算未完成、续跑会重跑并重判），所以成绩只写一次且一定是判过之后的；判官 key（`REALTIME_JUDGE_API_KEY`）缺失会在开跑前直接报错。这样设计的原因是：环境（VM）里不可能物理禁掉所有绕过路径（例如终端），把"是否越权"交给判官判，比给快捷键打补丁更稳。
+
 项目**不做 A/B/C/D 分类或整体统计表**：成绩与出表只读单任务 `result.json` / `result.txt`（见 [执行同学作业单](HANDOFF_CN.md)）。运行器会顺带写一个扁平的 `<result_dir>/<model>/<run_id>/<agent>/summary/results.json`（逐任务追加 `task_id` / `score` / `status`），它**没有任何下游依赖**，且其中的 `status: "success"` 只表示"评估正常跑完"，分数仍可能是 0，判分时不要用它。
 
 **不能把一次 C1 成功概括为全部任务可解**，接口短测也不等于游戏成绩。批量实验的执行方式见 [执行同学作业单](HANDOFF_CN.md)。
