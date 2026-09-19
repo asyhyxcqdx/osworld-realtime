@@ -160,3 +160,38 @@ def test_report_totals_survive_a_resume(tmp_path):
     assert [row['model'] for row in report['models']] == ['a', 'b']
     assert report['total_charge_usd'] == 2.0
     assert report['run_id'] == 'r' and 'runs' not in report
+
+
+def test_model_row_aggregates_every_task():
+    """The model row must sum counters and average pass rates, not copy one task."""
+    from scripts.python.run_realtime_batch import SUMMARY_FIELDS, aggregate_model_row
+
+    summaries = [
+        {'task_dir': 'a', 'requests': 10, 'responses': 9, 'decisions': 4, 'frame_queries': 1,
+         'pass_at_1': 1.0, 'pass_at_3': 1.0, 'status': 'passed', 'input_tokens': 100, 'output_tokens': 5},
+        {'task_dir': 'b', 'requests': 20, 'responses': 20, 'decisions': 6, 'frame_queries': 0,
+         'pass_at_1': 0.0, 'pass_at_3': 1.0, 'status': 'passed', 'input_tokens': 300, 'output_tokens': 7},
+        {'task_dir': 'c', 'requests': 5, 'responses': 5, 'decisions': 2, 'frame_queries': 3,
+         'pass_at_1': None, 'pass_at_3': None, 'status': None, 'input_tokens': 50, 'output_tokens': 1},
+    ]
+    row = aggregate_model_row(summaries, model='m', key_env='K', run_id='r',
+                              return_code=0, elapsed_s=12.5)
+    assert (row['requests'], row['responses'], row['decisions'], row['frame_queries']) == (35, 34, 12, 4)
+    assert row['tasks_total'] == 3 and row['tasks_scored'] == 2
+    assert row['pass_at_1'] == round(1 / 3, 4)
+    assert row['pass_at_3'] == row['pass_at_3_mean'] == round(2 / 3, 4)
+    assert (row['input_tokens'], row['output_tokens']) == (450, 13)
+    assert row['status'] is None
+    for field in ('tasks_total', 'tasks_scored', 'pass_at_3_mean'):
+        assert field in SUMMARY_FIELDS
+
+
+def test_subset_rerun_merges_with_previous_task_rows():
+    """A --task/--meta re-run keeps the tasks it did not touch."""
+    from scripts.python.run_realtime_batch import merge_task_rows
+
+    previous = [{'task_dir': 'a', 'requests': 1}, {'task_dir': 'b', 'requests': 2}]
+    current = [{'task_dir': 'b', 'requests': 99}, {'task_dir': 'c', 'requests': 3}]
+    merged = merge_task_rows(previous, current)
+    assert [row['task_dir'] for row in merged] == ['a', 'b', 'c']
+    assert {row['task_dir']: row['requests'] for row in merged} == {'a': 1, 'b': 99, 'c': 3}

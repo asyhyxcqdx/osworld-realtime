@@ -196,6 +196,8 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 **逐模型金额**（`cost_dir`）：`cost_report.json`（总表，每模型一行）、`<model>_summary.json`、`<model>_billing_before/after/checks.json`、`<model>_gateway_logs.json`、`<model>.log`。
 金额口径：**以网关消费明细为准**（`gateway_log_charge_usd`），即时账单差额只作交叉核对；两者不一致都记录，不把"即时查询为 0"当免费。
 
+模型行的口径：计数（`requests/responses/decisions/frame_queries`）与 token 是**全部任务求和**；`pass_at_1`/`pass_at_3`/`pass_at_3_mean` 是**对全部任务取均值**（`tasks_total` 为分母，无成绩的任务按 0 计入），同时给出 `tasks_scored`。`status` 在模型行恒为 `null`（它只对单个任务有意义）。只补跑一部分任务（`--task`/`--meta`）时，新行会与 `<model>_summary.json` 里已有的逐任务行**按 `task_dir` 合并**（重跑的那条以新值为准），模型行再按合并后的全集重新聚合 —— 所以子集续跑**不会**把整段记账缩小。`<model>_summary.json` 里的 `tasks` 数组始终保留每个任务一行。
+
 ---
 
 ## 8. 已发布的制品（HuggingFace）

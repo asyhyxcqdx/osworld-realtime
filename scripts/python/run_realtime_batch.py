@@ -70,7 +70,8 @@ DEFAULT_MODELS = ['claude-sonnet-5', 'gpt-5.6-sol', 'gemini-3.8-flash',
                   'glm-5.3-flash', 'MiniMax-M3']
 SUMMARY_FIELDS = ('model', 'key_env', 'run_id', 'return_code', 'elapsed_s', 'requests',
                   'responses', 'decisions', 'frame_queries', 'pass_at_1', 'pass_at_3',
-                  'status', 'actual_charge_usd', 'computed_charge_usd',
+                  'status', 'tasks_total', 'tasks_scored', 'pass_at_3_mean',
+                  'actual_charge_usd', 'computed_charge_usd',
                   'gateway_log_charge_usd', 'gateway_charge_count',
                   'gateway_prompt_tokens', 'gateway_completion_tokens',
                   'input_tokens', 'output_tokens')
@@ -333,6 +334,53 @@ def usage_tokens(usage):
             'cached_input': int(details.get('cached_tokens') or 0)}
 
 
+def load_previous_tasks(cost_dir, model):
+    """Per-task rows written by an earlier invocation of the same model run."""
+    path = Path(cost_dir) / f'{model}_summary.json'
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return []
+    tasks = payload.get('tasks') if isinstance(payload, dict) else None
+    return [row for row in tasks or [] if isinstance(row, dict) and row.get('task_dir')]
+
+
+def merge_task_rows(previous, current):
+    """Keep every task ever summarized; a re-run replaces its own row."""
+    merged = {}
+    for row in [*previous, *current]:
+        merged[row['task_dir']] = row
+    return [merged[key] for key in sorted(merged)]
+
+
+def aggregate_model_row(summaries, *, model, key_env, run_id, return_code, elapsed_s):
+    """One model-level row: counters summed, pass rates averaged over every task."""
+    total = len(summaries)
+
+    def mean(field):
+        if not total:
+            return None
+        return round(sum(float(row.get(field) or 0) for row in summaries) / total, 4)
+
+    def total_of(field):
+        return sum(row.get(field) or 0 for row in summaries)
+
+    return {
+        'model': model, 'key_env': key_env, 'run_id': run_id,
+        'return_code': return_code, 'elapsed_s': elapsed_s,
+        'requests': total_of('requests'), 'responses': total_of('responses'),
+        'decisions': total_of('decisions'), 'frame_queries': total_of('frame_queries'),
+        'pass_at_1': mean('pass_at_1'), 'pass_at_3': mean('pass_at_3'),
+        'status': None,
+        'tasks_total': total,
+        'tasks_scored': sum(1 for row in summaries if row.get('status') is not None),
+        'pass_at_3_mean': mean('pass_at_3'),
+        'input_tokens': total_of('input_tokens'),
+        'output_tokens': total_of('output_tokens'),
+        'cached_input_tokens': total_of('cached_input_tokens'),
+    }
+
+
 def summarize(task_dir):
     result = {'task_dir': str(task_dir), 'requests': 0, 'responses': 0, 'decisions': 0,
               'frame_queries': 0, 'usage_records': [], 'evaluations': [], 'errors': [],
@@ -541,23 +589,18 @@ def main():
             return_code = process.wait()
         elapsed = time.monotonic() - started
 
-        # One summarized row per task; models normally run the whole task list.
-        summaries = [summarize(task_dir) for task_dir in plan['task_dirs'].values()]
+        # One summarized row per task. A subset re-run (--task/--meta) merges with
+        # the earlier rows instead of shrinking the model summary, and the model
+        # row itself is aggregated over every task rather than copied from one.
+        current = [summarize(task_dir) for task_dir in plan['task_dirs'].values()]
+        summaries = merge_task_rows(load_previous_tasks(cost_dir, model), current)
         price = price_for(prices, model)
         for row in summaries:
             row['computed_charge_usd'] = charge_usd(row, price)
-        result = summaries[0].copy()
+        result = aggregate_model_row(
+            summaries, model=model, key_env=key_env, run_id=args.run_id,
+            return_code=return_code, elapsed_s=round(elapsed, 1))
         result['tasks'] = summaries
-        result.update(model=model, key_env=key_env, run_id=args.run_id,
-                      return_code=return_code, elapsed_s=round(elapsed, 1),
-                      tasks_total=len(summaries),
-                      tasks_scored=sum(1 for row in summaries if row['status'] is not None),
-                      pass_at_3_mean=round(sum(row['pass_at_3'] or 0 for row in summaries) / len(summaries), 4))
-        result.update(
-            input_tokens=sum(row['input_tokens'] for row in summaries),
-            output_tokens=sum(row['output_tokens'] for row in summaries),
-            cached_input_tokens=sum(row['cached_input_tokens'] for row in summaries),
-        )
         if price:
             result['computed_charge_usd'] = round(
                 sum(row['computed_charge_usd'] or 0 for row in summaries), 6)
