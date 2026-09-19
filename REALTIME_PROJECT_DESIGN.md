@@ -15,7 +15,7 @@
 
 运行网页目录只保留 69 个 `index.html`（`evaluation_examples/websites/realtime_gui_bench/games/<小写编号>/`）；69 个任务配置在 `evaluation_examples/examples/realtime_gui_bench/<UUID>.json`，清单为 `evaluation_examples/test_realtime_gui_bench.json`。游戏源是用户交付包 `RealtimeGame_v1.1(3).zip`（SHA-256 `7a4656df0e2b6b93b0bd0bb90f1830e4316d0d0d7eeef10833e244423399507a`），网页与其内 HTML 逐字节一致。
 
-VM 内运行 `desktop_env/server/realtime.py` 和 `fmp4.py`，宿主机运行 Agent、API 适配器和 runner。镜像内该服务文件的 SHA-256 `8ffc76917c4484f078f02218032ee09cc3c54650da4e0f272427d8afd7aeeab7` 与仓库同文件一致，录制前程序会再比对一次，防止旧镜像继续运行。
+VM 内运行 `desktop_env/server/realtime.py` 和 `fmp4.py`，宿主机运行 Agent、API 适配器和 runner。镜像内两份服务文件的 SHA-256（`realtime.py` 是 `8ffc76917c4484f078f02218032ee09cc3c54650da4e0f272427d8afd7aeeab7`，`fmp4.py` 是 `923f5ff1467620c1828c45cc4d2b6c8bbca628942286ab3660b6a6a6b4d5e4cf`）与仓库同文件一致，录制前程序会再比对一次，防止旧镜像继续运行。
 
 ## 接入与验收边界
 
@@ -66,7 +66,7 @@ VM 目标 30 FPS、1920×1080 fMP4，目标片段 100 ms；时间原点为首次
 
 ## 预算
 
-`max_steps` 默认 100：每个“模型 × Agent × 游戏”有 100 个动作决策回合，游戏内三次机会共用，`get_frames` 不限次数；单次动作序列最多 100 个原子动作。输出上限、thinking 档位等按模型配置。供应商返回的 `latency_s` 包含模型计算、网络与排队，**不等于纯思考时间**。
+`max_steps` 默认 100：每个“模型 × Agent × 游戏”有 100 个动作决策回合，游戏内三次机会共用，`get_frames` 不限次数；单次动作序列最多 100 个原子动作。输出上限、thinking 档位等按模型配置。`latency_s` 包含模型计算、网络与排队，**不等于纯思考时间**。
 
 ## 评分与验证边界
 

@@ -22,7 +22,7 @@
 | combine | sequence | 100 | true |
 
 - **action**：sequence 上限可设 1–100（默认 100）；所有组允许 DONE、WAIT，禁止 FAIL。
-- **observation**：`current_screenshot` 必须 true；`historical_video` 工具名固定 `get_frames`、`max_times_per_query` 固定 8；`max_queries_per_turn=0` 表示不限（无录像能力的组只能为 0）。注意区分：帧数、每次回复的调用数、每回合的查询总数和动作决策数是四个不同概念。
+- **observation**：`current_screenshot` 必须 true；`historical_video` 工具名固定 `get_frames`、`max_times_per_query` 固定 8；`max_queries_per_turn=0` 表示不限（无历史帧能力的组只能为 0）。注意区分：帧数、每次回复的调用数、每回合的查询总数和动作决策数是四个不同概念。
 - **context**：固定 `history_policy=full`、`include_screenshots=true`、`on_context_limit=fail_with_explicit_error`，禁止静默删掉早期上下文。
 - **api**：model、protocol、可选 key_env、`tool_format=native`、context_window_tokens、max_output_tokens、temperature、thinking。`context_window_tokens` 统一声明 1000000，**只用于配置校验**，不发送给 API、也不在本地估算或截断，真实容量由服务端判断；输出上限是正整数且不能超过声明窗口（Gemini 3.8 Flash 为 65536 并拒绝更大的值，其余现用模型 128000），它也不是实际生成量。`thinking.enabled`/`summary` 必须 true，MiniMax M3 的 `effort` 为 null（只开 adaptive）、其余为 high，`temperature` 为 null。HTTP 错误不会自动降预算或换模型。
 - **constraints**：必须完整包含 forbid_refresh、forbid_navigation、require_done_action、forbid_text_only_completion，且都为 true。
@@ -45,7 +45,7 @@
 7. 完整 VM 参数、实际开始/结束/耗时及截图写入 `trajectory.jsonl`。按相同调用 ID 回传模型时，每个动作只保留自己的动作类型、状态字段和实测时间，**不回显 VM 坐标、不重复附带整段执行流水**；未记录的时间不补造。
 8. 模型调用 `computer_done({})`，运行时转换为内部 DONE 并结束循环，读取 BENCH、保存 `result.json`/`result.txt`；录制在 finally 中停止，下载 MP4、索引和日志，然后自动生成只读 `trajectory.html`（失败的运行也展示已有事件，导出失败不改变实验结果）。
 
-正式游戏在 reset 后记录页面身份，并在每次动作后与评分前比较标签页、URL 和加载时间：重载、换页或复制页面时写 `run_error` 并保持未评分。该检查在环境侧，不提供给模型，也不读 `__dbg`。
+正式游戏在 reset 后记录页面身份，并在每次动作后与评分前比较标签页、URL（不含 hash）和加载时间：重载、换页或复制页面时写 `run_error` 并保持未评分。该检查在环境侧，不提供给模型，也不读 `__dbg`。
 
 示例：`computer_press({"key":"space"})` 转为 `{"action_type":"PRESS","parameters":{"key":"space"}}`（空格键不是字面空格）。模型未提交的动作不会从文字计划里自动补出。
 

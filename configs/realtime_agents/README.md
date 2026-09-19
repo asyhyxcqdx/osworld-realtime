@@ -1,6 +1,6 @@
 # Realtime 模型配置
 
-10 款模型（`configs/realtime_agents/` 下的 10 个模型名），每款都有 vanilla / anticipatory / video / combine 四份 YAML，目录合计 40 份，**共用同一套 system prompt**。
+10 款模型（`configs/realtime_agents/` 下的 10 个模型名），每款都有 vanilla / anticipatory / video / combine 四份 YAML，目录合计 40 份，**system prompt 四组各一套**（同一组内 10 份完全相同）。
 
 | model（区分大小写） | 协议 | 上下文声明 | 输出上限 | 思考 | 密钥环境变量 |
 |---|---|---:|---:|---|---|
@@ -21,8 +21,8 @@
 
 另外两点容易误解：
 
-- `temperature` 在全部 40 份里都是 `null`，而且**当前所有配置都开着 thinking**，两条路径（Messages、Gemini Chat）都会把它从请求里去掉、Responses 路径本来就不带它 —— 所以这个字段对实际请求**没有影响**，只是保留在 schema 里。校验器现在要求它必须存在，且为 `null` 或 0–2 之间的数字。
-- `observation.historical_video.max_queries_per_turn: 0` 表示**不限制每回合查询次数**（不是"禁止查询"）。40 份都写 0；有录像能力的组才能写非 0，无录像能力的组必须是 0。
+- `temperature` 在全部 40 份里都是 `null`（统一不传，走各家服务端的默认值），而且**当前所有配置都开着 thinking**，两条路径（Messages、Gemini Chat）都会把它从请求里去掉、Responses 路径本来就不带它 —— 所以这个字段对实际请求**没有影响**，只是保留在 schema 里。
+- `observation.historical_video.max_queries_per_turn: 0` 表示**不限制每回合查询次数**（不是"禁止查询"）。40 份都写 0；有历史帧能力的组才能写非 0，无历史帧能力的组必须是 0。
 
 ## 公共任务策略
 
@@ -103,7 +103,7 @@ python scripts/python/run_multienv.py \
 
 替换 `--model`、`--agent_variant` 即自动选择对应 YAML。依次运行各组，一次一个 VM。不要用 CLI 的 `--max_tokens` 改正式预算：Realtime 运行值来自 YAML。
 
-40 份配置都显式写了 `api.key_env`，而且是**一个模型一个变量**：变量名 = `PACKY_` + 模型名（全大写，非字母数字换成 `_`）+ `_API_KEY`。10 款模型对应 10 个变量，没有两款模型默认共用同一把 key；`api.key_env` 缺失时才回退 `REALTIME_API_KEY` → `PACKY_API_KEY`。
+40 份配置都显式写了 `api.key_env`，而且是**一个模型一个变量**：变量名 = `PACKY_` + 模型名（全大写，非字母数字换成 `_`）+ `_API_KEY`。10 款模型对应 10 个变量，没有两款模型默认共用同一把 key；某个模型自己的变量没值时，才回退 `REALTIME_API_KEY` → `PACKY_API_KEY`。
 
 ## 验证范围
 
