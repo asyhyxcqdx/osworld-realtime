@@ -187,6 +187,7 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 | 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常，**或判官没跑成功**），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**（可能是游戏没过、模型违反动作协议，或判官判了 `CHEAT`）。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）会记 `termination_reason: run_error`（`result.json` 字段与正常局完全一致，具体原因在 `trajectory.jsonl` 的 `run_error` 事件里）—— 这是模型失败，不能当"无成绩"忽略；判官判了作弊的，看 `result.json` 的 `judge.label` |
 | 单轮花掉约 $20 | 模型可能退化（重复刷屏）直到撞上 `max_output_tokens`（128k），网关返回 `response.incomplete`。我们的行为是**停止且不执行半段**，但那一轮照样计费。日志显示 `Responses stream response.incomplete: None` 时，去网关明细看该轮的 `completion_tokens` 是否等于上限 |
 | 整批突然中断 | 本机代理瞬断（`ProxyError: Connection refused`）会打断模型请求。批量脚本已把**账单抓取失败**降级为记录 `billing_error` 不中断；模型请求失败仍会让该任务变成"无有效成绩" |
+| 批量 40 秒就"跑完"、`0/69 tasks have result.txt` | 任务配置缺了 `instruction` 字段：环境核心 `desktop_env.py::_set_task_info` 必需它，每个任务都在 `env.reset()` 抛 `KeyError`。这个字段**不能删**；实时 Agent 的任务消息来自 YAML 的 `user_prompt`，运行时（`lib_run_realtime.py`）会把它覆盖成当前变体，所以文件里放哪套都行（现在放的是 combine 那套） |
 | 模型"来不及操作" | 环境是**实时**的：模型思考期间游戏继续运行，prompt 里也已写明"思考与回复期间时间在真实流逝"。需要精确时序时必须把"按住键 + 等待 + 松开"放进**同一条回复**，动作之间只用 `WAIT` 控时（否则一次思考 10–40 秒，角色早已走出平台） |
 | `get_frames` 返回 `not_ready` | 请求的时间比"已录完的片段"新。重查同一时间即可，不是错误 |
 | 线程/并发 | `--num_envs N` 会起 N 个进程 + N 台 VM，共用同一份 qcow2（容器内是**只读挂载**，不会互相写坏）。瓶颈是 CPU/内存与 API 限流，不是镜像 |

@@ -41,6 +41,8 @@ VM 内运行 `desktop_env/server/realtime.py` 和 `fmp4.py`，宿主机运行 Ag
 
 10 款模型各有四组配置，共 40 份 YAML；名单、协议与密钥变量见 [模型配置表](configs/realtime_agents/README.md)。指定配置缺失或 `--model` 与配置不一致时直接报错，不回退其他模型。**模型网关（Packy 或自建网关）不影响实验设计，只影响 `.env` 配置。**
 
+两段 prompt 都在 YAML 里：`system_prompt` = 反作弊与评测诚信规则（代码再追加 `api.coordinate_system` 对应的坐标约定），`user_prompt` = 该变体的任务说明（角色、实时约束、执行策略、工具与感知、规则与收尾），后者就是对话开头的唯一一条 user 消息；四组共用一套规则，`video`/`combine` 的规则与任务说明里才有 `get_frames` 相关条目。任务配置里的 `instruction` 是环境核心（`desktop_env.py::_set_task_info`）要求的字段，运行时会被覆盖成当前变体的 `user_prompt`。
+
 单动作也是长度为 1 的序列；多动作在整段完成后才返回当前截图。历史帧每次查询 1–8 个时间点，查询次数默认不限，必须先拿到结果、再在独立响应里提交动作（Agent3 每次回复只能有一个工具调用，Agent4 可在同一回复提交多个查询）。
 
 ## 每回合时序
