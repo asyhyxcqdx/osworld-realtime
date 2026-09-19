@@ -93,12 +93,19 @@ def test_prices_and_charges_are_read_from_runner_artifacts(tmp_path):
     assert prices['deepseek-flash'] == {'input': 1.0, 'cached_input': 1.0, 'output': 2.0}
     assert prices['*']['input'] == 9.0
 
-    charges = load_charges(_write(tmp_path / 'cost_report.json', {
+    charges, per_task = load_charges(_write(tmp_path / 'cost_report.json', {
         'models': [{'model': 'deepseek-flash', 'gateway_log_charge_usd': 0.5},
                    {'model': 'glm-5.3-flash', 'actual_charge_usd': 0.25},
                    {'model': 'kimi-k3', 'computed_charge_usd': 1.5}],
     }))
     assert charges == {'deepseek-flash': 0.5, 'glm-5.3-flash': 0.25, 'kimi-k3': 1.5}
+    assert per_task == {}
+
+    # A per-task attribution file fills every row with its own amount.
+    _, per_task = load_charges(_write(tmp_path / 'per_task.json', {
+        'per_task': {'task-a': 0.5, 'task-b': 0.25}, 'total_usd': 0.75,
+    }))
+    assert per_task == {'task-a': 0.5, 'task-b': 0.25}
 
 
 def test_compute_charge_prices_cached_tokens_separately():
@@ -151,3 +158,58 @@ def test_cli_writes_csv_and_json_for_a_run_tree(tmp_path, capsys):
 def _write(path, payload):
     path.write_text(json.dumps(payload), encoding='utf-8')
     return path
+
+
+def _run_export(result_dir, out, extra=()):
+    argv = ['export_realtime_results.py', '--result_dir', str(result_dir),
+            '--out', str(out), *extra]
+    old_argv = sys.argv
+    sys.argv = argv
+    try:
+        return main()
+    finally:
+        sys.argv = old_argv
+
+
+def test_a_model_total_is_not_copied_onto_every_row(tmp_path, capsys):
+    result_dir = tmp_path / 'results'
+    for name in ('task-a', 'task-b'):
+        write_task(result_dir / 'deepseek-flash' / 'run1' / 'agent4' / 'computer_13' /
+                   'screenshot' / 'realtime_gui_bench' / name)
+    charges = _write(tmp_path / 'charges.json', {'deepseek-flash': 4.0})
+
+    assert _run_export(result_dir, tmp_path / 'out', ['--charges', str(charges)]) == 0
+
+    rows = json.loads((tmp_path / 'out.json').read_text(encoding='utf-8'))
+    assert {row['成本'] for row in rows} == {None}
+    assert '_charge_source' not in rows[0]
+    assert 'CHARGES_TOTAL_ONLY deepseek-flash' in capsys.readouterr().out
+
+
+def test_per_task_charges_fill_each_row_with_its_own_amount(tmp_path):
+    result_dir = tmp_path / 'results'
+    for name in ('task-a', 'task-b'):
+        write_task(result_dir / 'deepseek-flash' / 'run1' / 'agent4' / 'computer_13' /
+                   'screenshot' / 'realtime_gui_bench' / name)
+    charges = _write(tmp_path / 'per_task.json',
+                     {'per_task': {'task-a': 0.5, 'task-b': 0.25}})
+
+    assert _run_export(result_dir, tmp_path / 'out', ['--charges', str(charges)]) == 0
+
+    rows = json.loads((tmp_path / 'out.json').read_text(encoding='utf-8'))
+    assert {row['task_id']: row['成本'] for row in rows} == {'task-a': '0.500000',
+                                                             'task-b': '0.250000'}
+
+
+def test_csv_keeps_the_sixteen_table_columns(tmp_path):
+    result_dir = tmp_path / 'results'
+    write_task(result_dir / 'deepseek-flash' / 'run1' / 'agent4' / 'computer_13' /
+               'screenshot' / 'realtime_gui_bench' / 'task-a')
+
+    assert _run_export(result_dir, tmp_path / 'out') == 0
+
+    header = (tmp_path / 'out.csv').read_text(encoding='utf-8-sig').splitlines()[0]
+    assert header.split(',') == list(COLUMNS)
+    assert 'task_id' not in header and 'run_id' not in header
+    rows = json.loads((tmp_path / 'out.json').read_text(encoding='utf-8'))
+    assert rows[0]['task_id'] == 'task-a' and rows[0]['run_id'] == 'run1'

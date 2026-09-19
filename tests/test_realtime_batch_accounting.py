@@ -1,5 +1,6 @@
 """Key resolution, gateway selection and cost math of the batch runner."""
 import argparse
+import datetime
 import json
 from pathlib import Path
 
@@ -225,3 +226,108 @@ def test_charges_accumulate_across_invocations(tmp_path):
     assert totals['gateway_charge_count'] == 822
     again = json.loads((tmp_path / 'm_charges.json').read_text())
     assert [row['tasks_run'] for row in again['charges']] == [69, 11, 1]
+
+
+def ledger_row(created_at, prompt_tokens, completion_tokens, quota=500000):
+    """One gateway ledger row; the default quota is exactly one USD."""
+    return {'created_at': created_at, 'prompt_tokens': prompt_tokens,
+            'completion_tokens': completion_tokens, 'quota': quota}
+
+
+def test_task_request_records_skip_responses_without_usage(tmp_path):
+    from scripts.python.run_realtime_batch import task_request_records
+
+    (tmp_path / 'trajectory.jsonl').write_text(''.join(json.dumps(event) + '\n' for event in [
+        {'event': 'model_request', 'wall_time': '2026-09-19T04:00:00+00:00'},
+        {'event': 'model_response', 'wall_time': '2026-09-19T04:00:05+00:00',
+         'usage': {'prompt_tokens': 6779, 'completion_tokens': 256}},
+        {'event': 'model_response', 'wall_time': '2026-09-19T04:00:20+00:00'},
+    ]), encoding='utf-8')
+
+    records = task_request_records(tmp_path)
+
+    assert len(records) == 1
+    assert records[0][1:] == (6779, 256)
+
+
+def test_concurrent_tasks_are_separated_request_by_request():
+    from scripts.python.run_realtime_batch import attribute_gateway_charge
+
+    tasks = {'task-a': [(1000.0, 100, 10), (1002.0, 200, 20)],
+             'task-b': [(1001.0, 150, 15), (1003.0, 250, 25)]}
+    rows = [ledger_row(*fields) for fields in
+            [(1003, 250, 25), (1000, 100, 10), (1002, 200, 20), (1001, 150, 15)]]
+
+    per_task, stats = attribute_gateway_charge(tasks, rows)
+
+    assert per_task == {'task-a': 2.0, 'task-b': 2.0}
+    assert stats == {'ledger_rows': 4, 'matched_rows': 4, 'unmatched_rows': 0,
+                     'matched_usd': 4.0, 'unmatched_usd': 0.0}
+
+
+def test_a_row_that_matches_nothing_stays_unattributed():
+    from scripts.python.run_realtime_batch import attribute_gateway_charge
+
+    per_task, stats = attribute_gateway_charge(
+        {'task-a': [(1000.0, 100, 10)]}, [ledger_row(1000, 100, 10), ledger_row(1000, 999, 999)])
+
+    assert per_task == {'task-a': 1.0}
+    assert stats['matched_rows'] == 1 and stats['unmatched_rows'] == 1
+    assert stats['unmatched_usd'] == 1.0
+
+
+def test_a_token_pair_far_away_in_time_is_not_claimed():
+    from scripts.python.run_realtime_batch import attribute_gateway_charge
+
+    per_task, stats = attribute_gateway_charge(
+        {'task-a': [(1000.0, 100, 10)]}, [ledger_row(999999, 100, 10)], tolerance_s=900)
+
+    assert per_task == {} and stats['unmatched_rows'] == 1
+
+
+def test_per_task_charge_accumulates_across_invocations(tmp_path):
+    from scripts.python.run_realtime_batch import append_per_task_charge, load_per_task_charge
+
+    stats = {'ledger_rows': 2, 'matched_rows': 2, 'unmatched_rows': 0,
+             'matched_usd': 0.5, 'unmatched_usd': 0.0}
+    first = append_per_task_charge(tmp_path, 'm', {'task-a': 0.5}, stats,
+                                   run_id='run1', tasks_run=69)
+    assert first['per_task'] == {'task-a': 0.5} and first['total_usd'] == 0.5
+
+    second = append_per_task_charge(tmp_path, 'm', {'task-a': 0.25, 'task-b': 0.75},
+                                    {**stats, 'matched_usd': 1.0}, run_id='run1', tasks_run=11)
+    assert second['per_task'] == {'task-a': 0.75, 'task-b': 0.75}
+    assert second['total_usd'] == 1.5
+    assert [row['tasks_run'] for row in second['windows']] == [69, 11]
+
+    totals, windows = load_per_task_charge(tmp_path, 'm')
+    assert totals == {'task-a': 0.75, 'task-b': 0.75} and len(windows) == 2
+
+
+def test_record_per_task_charge_walks_from_result_dirs_to_the_file(tmp_path):
+    """The run loop's whole path: task dirs -> trajectories -> attribution -> file."""
+    from scripts.python.run_realtime_batch import record_per_task_charge
+
+    tasks = tmp_path / 'tasks'
+    for name, prompt, completion, when in (('task-a', 100, 10, 1000),
+                                           ('task-b', 200, 20, 1001)):
+        task_dir = tasks / name
+        task_dir.mkdir(parents=True)
+        (task_dir / 'trajectory.jsonl').write_text(json.dumps({
+            'event': 'model_response',
+            'wall_time': datetime.datetime.fromtimestamp(when, datetime.timezone.utc).isoformat(),
+            'usage': {'prompt_tokens': prompt, 'completion_tokens': completion},
+        }) + '\n', encoding='utf-8')
+    rows = [ledger_row(1000, 100, 10), ledger_row(1001, 200, 20),
+            ledger_row(1001, 999, 999)]
+
+    payload, attribution = record_per_task_charge(
+        tmp_path, 'm', [str(tasks / 'task-a'), str(tasks / 'task-b')], rows, run_id='run1')
+
+    assert payload['per_task'] == {'task-a': 1.0, 'task-b': 1.0}
+    assert payload['total_usd'] == 2.0
+    assert payload['unattributed_usd'] == 1.0
+    assert payload['windows'][0]['tasks_run'] == 2
+    assert attribution['matched_rows'] == 2 and attribution['unmatched_rows'] == 1
+    saved = json.loads((tmp_path / 'm_per_task_charge.json').read_text())
+    assert saved['per_task'] == {'task-a': 1.0, 'task-b': 1.0}

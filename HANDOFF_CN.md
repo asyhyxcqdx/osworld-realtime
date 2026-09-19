@@ -183,8 +183,10 @@ C1 单任务实测花费（仅作记录口径参考，不用于限制跑量）�
 `kimi-k3` 2.65、`qwen3.8-max-0902` 0.87、`gemini-3.8-flash` 0.24、`deepseek-flash` 0.21、
 `glm-5.3-flash` 0.14、`MiniMax-M3` 0.03（美元；sol 那次含一轮退化刷屏，kimi 含一次中断重跑）。
 
-费用不设限，按你们网关的实际消耗如实记录进 `成本` 列即可；需要的话可以用 `--prices` 先算，
-或者拿到网关账单后，导出时用 `--charges <cost_report.json>` 覆盖（这是导出脚本的参数，不是跑批量的参数）。
+费用不设限，按你们网关的实际消耗如实记录进 `成本` 列即可；导出时用 `--prices prices.json`
+按 token × 单价算出每行的金额（这是导出脚本的参数，不是跑批量的参数）。如果你们的网关能给出
+**逐任务**金额文件，也可以用 `--charges <file>` 覆盖；只给一个"整轮总额"的话脚本不会硬拆到每一行，
+成本列会留空并打印 `CHARGES_TOTAL_ONLY`。
 
 **模型顺序**可以按你们网关的可用性和配额自行安排；`--models` 写几个就跑几个，之后补齐用同样的
 `--run_id` 再跑一次（已完成的会自动跳过）。
@@ -269,7 +271,7 @@ CSV 就是表头的 16 列（utf-8-sig 编码，Excel 直接可开）；同名 `
 | attempts_completed | 已结算的游戏机会数（成功失败都算，进行中的不算） |
 | pass@1 / pass@3 | 第一次 / 三次内是否成功，0 或 1；基础设施故障导致的无有效成绩留空 |
 | 结束状态 | `done`→正常结束、`decision_limit`→回合上限、`execution_error`→执行异常、`run_error`→其他运行异常、`interrupted`→中断 |
-| 成本 | token × `prices.json` 单价（美元）。导出时给 `--charges <cost_report.json>` 则改用账单原值 |
+| 成本 | token × `prices.json` 单价（美元）。导出时给 `--charges <cost_dir>/<model>_per_task_charge.json` 则改用逐任务账单原值（每行填它自己的金额，合计 = 各任务之和） |
 | 输入/输出Token数量 | 逐条模型回复的用量求和。**注意**：流中断的请求可能没有记录，会比网关统计略低 |
 
 ---

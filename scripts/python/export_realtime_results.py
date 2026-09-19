@@ -18,8 +18,9 @@ Examples:
     # cost from the token usage recorded in every trajectory
     python scripts/python/export_realtime_results.py --prices prices.json
 
-    # cost from an existing gateway cost_report.json (exact, per model)
-    python scripts/python/export_realtime_results.py --charges <cost_dir>/cost_report.json
+    # cost from the runner's per-task attribution (exact, one amount per task)
+    python scripts/python/export_realtime_results.py \
+        --charges <cost_dir>/<model>_per_task_charge.json
 
     # push the rows into the Feishu table (one lark-cli call per 200 rows)
     python scripts/python/export_realtime_results.py \
@@ -71,8 +72,9 @@ def parse_args():
                         help='JSON price table: {"<model>": {"input_per_mtok": 3, '
                              '"output_per_mtok": 15, "cached_input_per_mtok": 0.3}, "*": {...}}')
     parser.add_argument('--charges', default=None,
-                        help='JSON mapping model -> USD, or a cost_report.json from the runner; '
-                             'takes precedence over --prices')
+                        help='JSON mapping model -> USD, a per-task attribution file '
+                             '({"per_task": {task_id: usd}}, written by run_realtime_batch.py), '
+                             'or a cost_report.json; takes precedence over --prices')
     parser.add_argument('--lark-base-token', default=None)
     parser.add_argument('--lark-table-id', default=None)
     parser.add_argument('--lark-dry-run', action='store_true',
@@ -121,19 +123,29 @@ def load_prices(path):
 
 
 def load_charges(path):
-    """Accept {"model": usd} or a runner cost_report.json, returned per model."""
+    """Return ``(per_model_usd, per_task_usd)`` from any supported charges file.
+
+    A per-task attribution file (``{"per_task": {task_id: usd}}``, written by
+    ``run_realtime_batch.py``) fills every row with its own amount. A runner
+    ``cost_report.json`` only knows one total per model, which cannot be split
+    over a per-task table; that is reported instead of duplicated onto rows.
+    """
     if not path:
-        return {}
+        return {}, {}
     payload = load_json(path)
-    if isinstance(payload, dict) and isinstance(payload.get('models'), list):
+    if not isinstance(payload, dict):
+        return {}, {}
+    if isinstance(payload.get('per_task'), dict):
+        return {}, {str(key): float(value) for key, value in payload['per_task'].items()}
+    if isinstance(payload.get('models'), list):
         charges = {}
         for row in payload['models']:
             for field in ('gateway_log_charge_usd', 'actual_charge_usd', 'computed_charge_usd'):
                 if row.get(field) is not None:
                     charges[row.get('model')] = float(row[field])
                     break
-        return charges
-    return {name: float(value) for name, value in payload.items()} if isinstance(payload, dict) else {}
+        return charges, {}
+    return {name: float(value) for name, value in payload.items()}, {}
 
 
 def effort_for(agent_variant, model):
@@ -202,7 +214,7 @@ def compute_charge(tokens, price):
                   + tokens['output_tokens'] * price['output']) / 1_000_000, 6)
 
 
-def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids):
+def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids, per_task=None):
     metrics = None
     metrics_path = task_dir / 'agent_metrics.json'
     if metrics_path.exists():
@@ -219,9 +231,14 @@ def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids):
         result_cell = ''
     else:
         result_cell = 'yes' if float(score) == 1 else 'no'
-    charge = charges.get(model)
+    charge = (per_task or {}).get(task_dir.name)
+    source = 'per_task' if charge is not None else None
+    if charge is None:
+        charge = charges.get(model)
+        source = 'model' if charge is not None else None
     if charge is None:
         charge = compute_charge(tokens, price_of(prices, model))
+        source = 'prices' if charge is not None else None
 
     row = {
         'benchmark_id': (scored or {}).get('benchmark_id') or benchmark_ids.get(task_dir.name),
@@ -242,6 +259,7 @@ def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids):
         '输出Token数量': str(tokens['output_tokens']) if tokens['output_tokens'] else None,
         'task_id': task_dir.name,
         'task_dir': str(task_dir),
+        '_charge_source': source,
     }
     return row
 
@@ -309,17 +327,32 @@ def main():
     args = parse_args()
     models = {name.strip() for name in args.models.split(',')} if args.models else None
     prices = load_prices(args.prices)
-    charges = load_charges(args.charges)
+    charges, per_task = load_charges(args.charges)
     benchmark_ids = load_benchmark_ids()
 
     rows = []
     for model, run, agent_variant, task_dir in iter_task_dirs(args.result_dir, models, args.run_id):
-        row = collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids)
+        row = collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids, per_task)
         row['run_id'] = run
         rows.append(row)
     rows.sort(key=lambda row: (row['model'], row['benchmark_id'] or '', row['task_id']))
     if not rows:
         raise SystemExit('no task directories found; check --result_dir/--run_id/--models')
+
+    # One model total cannot be split over that model's tasks, so the column stays
+    # empty and the model is reported, instead of the same number on every row.
+    rows_per_model = {}
+    for row in rows:
+        rows_per_model[row['model']] = rows_per_model.get(row['model'], 0) + 1
+    total_only = set()
+    for row in rows:
+        if row.pop('_charge_source', None) == 'model' and rows_per_model[row['model']] > 1:
+            row['成本'] = None
+            total_only.add(row['model'])
+    if total_only:
+        print('CHARGES_TOTAL_ONLY ' + ','.join(sorted(total_only)) +
+              ': the charges file only has a model total, which cannot be split per task; '
+              'the cost column is left empty (pass a per-task charges file or --prices)')
 
     for row in rows:
         row.pop('task_dir', None)

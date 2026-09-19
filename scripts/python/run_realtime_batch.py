@@ -461,6 +461,135 @@ def append_charge_record(cost_dir, model, record, secrets=()):
     return ledger, totals
 
 
+LEDGER_MATCH_TOLERANCE_S = 900
+
+
+def task_request_records(task_dir):
+    """(epoch_seconds, prompt_tokens, completion_tokens) per recorded response.
+
+    One entry per request whose response the trajectory finished recording; a
+    stream that broke off leaves no usage behind and is skipped here.
+    """
+    trajectory = Path(task_dir) / 'trajectory.jsonl'
+    if not trajectory.exists():
+        return []
+    records = []
+    for line in trajectory.read_text(errors='replace').splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(event, dict) or event.get('event') != 'model_response':
+            continue
+        usage = event.get('usage') or {}
+        prompt, completion = usage.get('prompt_tokens'), usage.get('completion_tokens')
+        stamp = event.get('wall_time')
+        if prompt is None or completion is None or not stamp:
+            continue
+        try:
+            epoch = datetime.datetime.fromisoformat(stamp).timestamp()
+        except ValueError:
+            continue
+        records.append((epoch, int(prompt), int(completion)))
+    return records
+
+
+def attribute_gateway_charge(tasks, ledger_rows, *, tolerance_s=LEDGER_MATCH_TOLERANCE_S):
+    """Split one window's billed requests over the tasks that made them.
+
+    ``tasks`` maps a task id to that task's trajectory request records. A ledger
+    row is matched on its token pair first and on the closest timestamp second,
+    so tasks sharing one key across parallel VMs still separate cleanly. Returns
+    ``(per_task_usd, stats)``; a row that matches nothing stays unattributed
+    instead of being pushed onto whichever task ran nearby.
+    """
+    candidates = {}
+    for task_id, records in tasks.items():
+        for epoch, prompt, completion in records:
+            candidates.setdefault((prompt, completion), []).append([epoch, task_id, False])
+    per_task, matched_usd, unmatched = {}, 0.0, 0
+    total_usd = sum(row.get('quota') or 0 for row in ledger_rows) / QUOTA_PER_USD
+    for row in ledger_rows:
+        when = row.get('created_at') or 0
+        pool = candidates.get((row.get('prompt_tokens'), row.get('completion_tokens')))
+        pick = None
+        if pool:
+            ranked = sorted(pool, key=lambda item: (item[2], abs(item[0] - when)))
+            if abs(ranked[0][0] - when) <= tolerance_s:
+                pick = ranked[0]
+        if pick is None:
+            unmatched += 1
+            continue
+        pick[2] = True
+        usd = (row.get('quota') or 0) / QUOTA_PER_USD
+        per_task[pick[1]] = round(per_task.get(pick[1], 0.0) + usd, 6)
+        matched_usd += usd
+    stats = {
+        'ledger_rows': len(ledger_rows),
+        'matched_rows': len(ledger_rows) - unmatched,
+        'unmatched_rows': unmatched,
+        'matched_usd': round(matched_usd, 6),
+        'unmatched_usd': round(total_usd - matched_usd, 6),
+    }
+    return per_task, stats
+
+
+def load_per_task_charge(cost_dir, model):
+    """Accumulated per-task amounts and the per-invocation windows behind them."""
+    path = Path(cost_dir) / f'{model}_per_task_charge.json'
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}, []
+    if not isinstance(payload, dict):
+        return {}, []
+    totals = {str(key): float(value) for key, value in (payload.get('per_task') or {}).items()}
+    windows = [row for row in (payload.get('windows') or []) if isinstance(row, dict)]
+    return totals, windows
+
+
+def append_per_task_charge(cost_dir, model, per_task, stats, *, run_id, tasks_run,
+                           billing_error=None, secrets=()):
+    """Add one invocation's per-task amounts to ``<model>_per_task_charge.json``.
+
+    Same reasoning as the charge ledger: a subset re-run only sees its own
+    window, so the per-task amounts accumulate instead of replacing each other.
+    """
+    totals, windows = load_per_task_charge(cost_dir, model)
+    for task_id, usd in per_task.items():
+        totals[task_id] = round(totals.get(task_id, 0.0) + usd, 6)
+    windows.append({'window': len(windows) + 1, 'run_id': run_id, 'tasks_run': tasks_run,
+                    'billing_error': billing_error, **stats})
+    payload = {
+        'model': model,
+        'run_id': run_id,
+        'per_task': {key: totals[key] for key in sorted(totals)},
+        'total_usd': round(sum(totals.values()), 6),
+        'unattributed_usd': round(sum(row.get('unmatched_usd') or 0 for row in windows), 6),
+        'windows': windows,
+        'attribution': 'per request: matching token pair first, closest timestamp second',
+        'currency_note': 'Gateway ledger charge in USD, quota/500000.',
+    }
+    save(Path(cost_dir) / f'{model}_per_task_charge.json', payload, secrets)
+    return payload
+
+
+def record_per_task_charge(cost_dir, model, task_dirs, ledger_rows, *, run_id,
+                           billing_error=None, secrets=()):
+    """Attribute one window's ledger rows over its task directories and persist them.
+
+    Returns ``(payload, attribution)``; the caller only has to map them onto the
+    model row. Kept separate from the run loop so the whole path from result
+    directories to ``<model>_per_task_charge.json`` can be exercised in a test.
+    """
+    tasks = {Path(task_dir).name: task_request_records(task_dir) for task_dir in task_dirs}
+    per_task, attribution = attribute_gateway_charge(tasks, ledger_rows)
+    payload = append_per_task_charge(cost_dir, model, per_task, attribution, run_id=run_id,
+                                     tasks_run=len(tasks), billing_error=billing_error,
+                                     secrets=secrets)
+    return payload, attribution
+
+
 def charged_usd(row):
     """Gateway ledger first, then the instant delta, then our own token math."""
     for field in ('gateway_log_charge_usd', 'actual_charge_usd', 'computed_charge_usd'):
@@ -668,6 +797,24 @@ def main():
                 result['gateway_completion_tokens'] = sum(row.get('completion_tokens', 0) or 0 for row in rows)
             except Exception as exc:
                 result['ledger_detail_error'] = clean(str(exc), secrets)
+            else:
+                # Attribution is derived from the ledger rows above, so it can only
+                # run once they were read. A failure here must not look like a
+                # ledger failure or abort a run that already spent money.
+                try:
+                    per_task_payload, attribution = record_per_task_charge(
+                        cost_dir, model, [row['task_dir'] for row in current], rows,
+                        run_id=args.run_id, billing_error=result.get('billing_error'),
+                        secrets=secrets)
+                    result['per_task_charge_usd'] = per_task_payload['total_usd']
+                    result['unattributed_charge_usd'] = per_task_payload['unattributed_usd']
+                    result['per_task_charge_rows'] = attribution['matched_rows']
+                    print('PER_TASK_CHARGE', model, per_task_payload['total_usd'],
+                          'unattributed', per_task_payload['unattributed_usd'], flush=True)
+                except Exception as exc:
+                    result['per_task_charge_error'] = clean(str(exc), secrets)
+                    print('PER_TASK_CHARGE_ERROR', model,
+                          result['per_task_charge_error'][:160], flush=True)
         # Charges accumulate across invocations of the same run_id: the gateway
         # meter only ever reports this window, so summing the records keeps the
         # run-level amount from being overwritten by a later subset re-run.

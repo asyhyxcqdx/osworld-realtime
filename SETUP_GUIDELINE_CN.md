@@ -58,7 +58,7 @@ PACKY_GPT_6_ASTRA_API_KEY       gpt-6-astra
 跑实验的完整命令、参数、续跑与出表见 [执行同学作业单](HANDOFF_CN.md)；入口是 `scripts/python/run_realtime_batch.py`（逐模型记账、可续跑），它内部按模型顺序调用底层启动器 `scripts/python/run_multienv.py`（完整参数示例见 §6）。
 
 - 结果落在 `<result_dir>/<model>/<run_id>/<agent>/computer_13/screenshot/realtime_gui_bench/<UUID>/`。
-- 账单与汇总落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`）：`cost_report.json`、`<model>_summary.json`、账单快照与网关明细；成本列由导出脚本计算：`--prices`（token × 单价）或 `--charges`（网关账单原值）。
+- 账单与汇总落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`）：`cost_report.json`、`<model>_summary.json`、`<model>_per_task_charge.json`（逐任务金额）、账单快照与网关明细；成本列由导出脚本计算：`--prices`（token × 单价）或 `--charges`（逐任务金额文件，**逐任务**填；只给模型总额会留空并打印 `CHARGES_TOTAL_ONLY`）。
 - 每个模型顺序执行，单个模型内失败的任务会继续下一个；**跨模型继续需要 `--keep-going`**。
 - `--num_envs N` 每个模型同时开 N 台 VM（默认 1，批量建议 4–8）。
 - 续跑用同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次；改 prompt 或配置时必须换新的 `run_id`。
