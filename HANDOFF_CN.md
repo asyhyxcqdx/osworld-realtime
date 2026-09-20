@@ -283,7 +283,7 @@ CSV 就是表头的 18 列（utf-8-sig 编码，Excel 直接可开）；同名 `
 | attempts_completed | 已结算的游戏机会数（成功失败都算，进行中的不算） |
 | pass@1 / pass@3 | 第一次 / 三次内是否成功，0 或 1；基础设施故障导致的无有效成绩留空 |
 | 结束状态 | `done`→正常结束、`decision_limit`→回合上限、`execution_error`→执行异常、`run_error`→其他运行异常、`interrupted`→中断 |
-| 成本 | token × `prices.json` 单价（美元）。导出时给 `--charges <cost_dir>/<model>_per_task_charge.json` 则改用逐任务账单原值（每行填它自己的金额，合计 = 各任务之和） |
+| 成本 | token × `prices.json` 单价（美元）。导出时给 `--charges <cost_dir>/<model>_per_task_charge.json` 则改用逐任务账单原值（每行填它自己的金额，合计 = 各任务之和）。口径：**只算最终留下成绩的那条轨迹的花费**；调试、被清空重跑、没记 usage 的请求不计入（它们只留在 `unattributed_usd` 里对账） |
 | 输入/输出Token数量 | 逐条模型回复的用量求和。**注意**：流中断的请求可能没有记录，会比网关统计略低 |
 | 判官结论 | 判官的原始标签：`NOT_CHEAT` / `CHEAT` / `CHEAT_ATTEMPT` / `UNCERTAIN`；判官本身没跑成写 `ERROR`（那条任务无有效成绩、会重跑）。与 `result` 合起来看：`result=no` + `判官结论=CHEAT` = 作弊被判 0 分 |
 | 判官成本 | 判官那把 key 的 token（**产生这条成绩的那次判罚**：含它的重试和撞上输出上限的调用）× 判官模型在单价表里的价格。这是**估算**，用于知道判官花了多少；`成本` 列仍是被测模型的金额（两者分开记）。判官没跑成的任务不计（那条会重跑，按重跑后的那次算） |

@@ -221,7 +221,7 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 网关只有"累计计价器"，所以**每次调用只能测出自己那一段的花费**；脚本会把每次调用的金额追加进 `<model>_charges.json`，summary 里的 `actual_charge_usd` / `gateway_log_charge_usd` / `gateway_charge_count` 等就是这些记录的**累加值**，所以同一 `run_id` 下的子集续跑不会把整段金额冲掉。某次调用的账单查询失败（如断网）会记进 `billing_errors` 并且那一段金额缺失，需要用只读的网关明细补算（本轮 Gemini 的第 1 段就是这样补的）。
 金额口径：**以网关消费明细为准**（`gateway_log_charge_usd`），即时账单差额只作交叉核对；两者不一致都记录，不把"即时查询为 0"当免费。
 
-**逐任务金额**：跑完一段会顺手把网关明细按**请求**归到任务上，写进 `<model>_per_task_charge.json`（`per_task` = 每个任务累计金额，`total_usd` = 它们的和，`unattributed_usd` = 没能归到任何任务的部分）。归集方式是逐条对账：先按 token 数配对，再取时间最接近的那条轨迹记录 —— 所以 `--num_envs` 并发跑也不会串。轨迹缺失（被清空重跑）或流中断（没记 usage）的请求**归不进任何任务，就留在 `unattributed_usd` 里，不硬塞给别的任务**。它同样按调用累加，子集续跑不会把已有金额冲掉。
+**逐任务金额**：跑完一段会顺手把网关明细按**请求**归到任务上，写进 `<model>_per_task_charge.json`（`per_task` = 每个任务累计金额，`total_usd` = 它们的和，`unattributed_usd` = 没能归到任何任务的部分）。归集方式是逐条对账：先按 token 数配对，再取时间最接近的那条轨迹记录 —— 所以 `--num_envs` 并发跑也不会串。轨迹缺失（被清空重跑）或流中断（没记 usage）的请求**归不进任何任务，就留在 `unattributed_usd` 里，不硬塞给别的任务**。它同样按调用累加，子集续跑不会把已有金额冲掉。**口径**：只有最终留下 `result.txt` 的那条轨迹的花费才计入 `per_task`（飞书 `成本` 列就是它，合计即"有效成绩的花费"）；调试、被清空重跑的请求留在 `unattributed_usd`，**只用于对账，不计入任何统计或汇报**。某一段的账单抓取失败时（如代理瞬断），该段金额不在记账里，要用只读的网关明细（`<model>_gateway_logs.json`）按上面的口径补算。
 
 模型行的口径：计数（`requests/responses/decisions/frame_queries`）与 token 是**全部任务求和**；`pass_at_1`/`pass_at_3`/`pass_at_3_mean` 是**对全部任务取均值**（`tasks_total` 为分母，无成绩的任务按 0 计入），同时给出 `tasks_scored`。`status` 在模型行恒为 `null`（它只对单个任务有意义）。只补跑一部分任务（`--task`/`--meta`）时，新行会与 `<model>_summary.json` 里已有的逐任务行**按 `task_dir` 合并**（重跑的那条以新值为准），模型行再按合并后的全集重新聚合 —— 所以子集续跑**不会**把整段记账缩小。`<model>_summary.json` 里的 `tasks` 数组始终保留每个任务一行。
 
