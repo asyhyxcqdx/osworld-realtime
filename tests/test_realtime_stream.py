@@ -1,4 +1,5 @@
 import json
+import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -112,13 +113,46 @@ def test_stream_read_timeouts_stop_after_three_attempts(monkeypatch, protocol):
         response.close.assert_called_once()
 
 
-@pytest.mark.parametrize('status', [429, 500, 502, 503, 504])
+def _http_error(status):
+    return SimpleNamespace(status_code=status, json=lambda: {'error': {'message': 'temporary'}}, close=Mock())
+
+
+@pytest.mark.parametrize('status', [402, 429, 500, 502, 503, 504])
 def test_existing_http_retry_statuses_are_retained(monkeypatch, status):
-    error = SimpleNamespace(status_code=status, json=lambda: {'error': {'message': 'temporary'}}, close=Mock())
+    error = _http_error(status)
     agent = agent_with_http(monkeypatch, 'openai_chat', [error, sse(tool_events('openai_chat'))])
     assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1]
     assert agent.wire.session.post.call_count == 2
     error.close.assert_called_once()
+
+
+def test_upstream_balance_402_keeps_retrying_past_the_plain_error_budget(monkeypatch):
+    responses = [_http_error(402) for _ in range(4)] + [sse(tool_events('openai_chat'))]
+    agent = agent_with_http(monkeypatch, 'openai_chat', responses)
+    sleep = time.sleep
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1]
+    assert agent.wire.session.post.call_count == 5
+    assert [call.args[0] for call in sleep.call_args_list] == [1, 2, 4, 8]
+    for response in responses:
+        response.close.assert_called_once()
+
+
+def test_upstream_balance_402_gives_up_after_five_attempts(monkeypatch):
+    responses = [_http_error(402) for _ in range(5)]
+    agent = agent_with_http(monkeypatch, 'openai_chat', responses)
+    with pytest.raises(RuntimeError, match='HTTP 402'):
+        agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
+    assert agent.wire.session.post.call_count == 5
+    for response in responses:
+        response.close.assert_called_once()
+
+
+def test_plain_server_errors_still_stop_after_three_attempts(monkeypatch):
+    responses = [_http_error(503) for _ in range(3)]
+    agent = agent_with_http(monkeypatch, 'openai_chat', responses)
+    with pytest.raises(RuntimeError, match='HTTP 503'):
+        agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
+    assert agent.wire.session.post.call_count == 3
 
 
 def test_messages_keep_thinking_signatures_redaction_and_cumulative_usage():

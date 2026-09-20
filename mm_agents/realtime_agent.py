@@ -27,6 +27,15 @@ from mm_agents.realtime_protocol import (
 )
 
 
+RETRY_STATUS = {402, 429, 500, 502, 503, 504}
+RETRY_ATTEMPTS = 3
+# 402 is the gateway's upstream channel temporarily having no balance. The gateway
+# balances across channels, so a retry often lands on a healthy one; give it more
+# attempts than a plain server error, with the same exponential backoff.
+CHANNEL_BALANCE_STATUS = 402
+CHANNEL_BALANCE_ATTEMPTS = 5
+
+
 def text_block(text):
     return {"type": "text", "text": text}
 
@@ -361,14 +370,18 @@ class ModelWire:
         url = self.base_url + ("/" if self.base_url.endswith("/v1") else "/v1/") + path
         self.last_response_streamed = None
         last_error = None
-        for attempt in range(3):
+        attempt = 0
+        attempts_allowed = RETRY_ATTEMPTS
+        while True:
             response = None
+            status_code = None
             try:
                 response = self.session.post(
                     url, headers=headers, json=payload, timeout=self.timeout,
                     stream=True,
                 )
-                if response.status_code == 200:
+                status_code = response.status_code
+                if status_code == 200:
                     self.last_response_streamed = "text/event-stream" in getattr(response, "headers", {}).get("content-type", "").lower()
                     if self.last_response_streamed:
                         return collect_stream(response, self.protocol)
@@ -381,17 +394,21 @@ class ModelWire:
                 except ValueError:
                     pass
                 last_error = RuntimeError(
-                    f"Model API HTTP {response.status_code} ({self.protocol}): {detail or 'request failed'}"
+                    f"Model API HTTP {status_code} ({self.protocol}): {detail or 'request failed'}"
                 )
-                if response.status_code not in {429, 500, 502, 503, 504}:
+                if status_code not in RETRY_STATUS:
                     raise last_error
+                if status_code == CHANNEL_BALANCE_STATUS:
+                    attempts_allowed = max(attempts_allowed, CHANNEL_BALANCE_ATTEMPTS)
             except (requests.RequestException, IncompleteStreamError) as exc:
                 last_error = exc
             finally:
                 if response is not None and callable(getattr(response, "close", None)):
                     response.close()
-            if attempt < 2:
-                time.sleep(2 ** attempt)
+            attempt += 1
+            if attempt >= attempts_allowed:
+                break
+            time.sleep(2 ** (attempt - 1))
         raise last_error
 
     def unpack(self, response):
