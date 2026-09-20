@@ -250,6 +250,30 @@ def test_task_request_records_skip_responses_without_usage(tmp_path):
     assert records[0][1:] == (6779, 256)
 
 
+def test_task_request_records_accept_anthropic_and_chat_usage(tmp_path):
+    """anthropic/responses report input_tokens/output_tokens, which the gateway
+    ledger bills as prompt/completion tokens; both must match."""
+    from scripts.python.run_realtime_batch import attribute_gateway_charge, task_request_records
+
+    tasks = tmp_path / 'tasks'
+    for name, usage in (('task-a', {'input_tokens': 1066, 'output_tokens': 603}),
+                        ('task-b', {'prompt_tokens': 1287, 'completion_tokens': 3687})):
+        task_dir = tasks / name
+        task_dir.mkdir(parents=True)
+        (task_dir / 'trajectory.jsonl').write_text(json.dumps({
+            'event': 'model_response',
+            'wall_time': datetime.datetime.fromtimestamp(1000, datetime.timezone.utc).isoformat(),
+            'usage': usage,
+        }) + '\n', encoding='utf-8')
+
+    per_task, stats = attribute_gateway_charge(
+        {name: task_request_records(tasks / name) for name in ('task-a', 'task-b')},
+        [ledger_row(1000, 1066, 603), ledger_row(1001, 1287, 3687)])
+
+    assert per_task == {'task-a': 1.0, 'task-b': 1.0}
+    assert stats['matched_rows'] == 2 and stats['unmatched_rows'] == 0
+
+
 def test_concurrent_tasks_are_separated_request_by_request():
     from scripts.python.run_realtime_batch import attribute_gateway_charge
 

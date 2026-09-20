@@ -468,7 +468,10 @@ def task_request_records(task_dir):
     """(epoch_seconds, prompt_tokens, completion_tokens) per recorded response.
 
     One entry per request whose response the trajectory finished recording; a
-    stream that broke off leaves no usage behind and is skipped here.
+    stream that broke off leaves no usage behind and is skipped here. Both wire
+    formats are read through ``usage_tokens``: anthropic and responses report
+    ``input_tokens``/``output_tokens``, which the gateway ledger also bills as
+    prompt/completion tokens, so matching must not assume the chat keys.
     """
     trajectory = Path(task_dir) / 'trajectory.jsonl'
     if not trajectory.exists():
@@ -482,9 +485,12 @@ def task_request_records(task_dir):
         if not isinstance(event, dict) or event.get('event') != 'model_response':
             continue
         usage = event.get('usage') or {}
-        prompt, completion = usage.get('prompt_tokens'), usage.get('completion_tokens')
+        if 'prompt_tokens' not in usage and 'input_tokens' not in usage:
+            continue
+        tokens = usage_tokens(usage)
+        prompt, completion = tokens['input'], tokens['output']
         stamp = event.get('wall_time')
-        if prompt is None or completion is None or not stamp:
+        if not stamp:
             continue
         try:
             epoch = datetime.datetime.fromisoformat(stamp).timestamp()
