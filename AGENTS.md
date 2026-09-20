@@ -184,7 +184,8 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 | 现象 | 原因与对策 |
 |---|---|
 | 同一个任务重跑后 `trajectory.jsonl` 里事件翻倍 | 它是追加模式；必须先清目录（内置续跑会自动清，手工重跑要自己清） |
-| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常，**或判官没跑成功**），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**（可能是游戏没过、模型违反动作协议，或判官判了 `CHEAT`）。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）会记 `termination_reason: run_error`（`result.json` 字段与正常局完全一致，具体原因在 `trajectory.jsonl` 的 `run_error` 事件里）—— 这是模型失败，不能当"无成绩"忽略；判官判了作弊的，看 `result.json` 的 `judge.label` |
+| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常，**或判官没跑成功**），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**（可能是游戏没过、模型违反动作协议，或判官判了 `CHEAT`）。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）会记 `termination_reason: run_error`（`result.json` 字段与正常局完全一致，具体原因在 `trajectory.jsonl` 的 `run_error` 事件里）—— 这是模型失败，不能当"无成绩"忽略；但**若违规后连页面都读不到**（评测抛异常），按基础设施故障处理：不写分、续跑重跑（页面里可能已记着通过）。判官判了作弊的，看 `result.json` 的 `judge.label` |
+| 某条任务在 `model_error: JSONDecodeError … column N` 处整条作废（`result.txt` 都没有） | **模型把工具参数写成了非法 JSON**：实测 deepseek-flash 会把唯一的数组参数写成 `{"times_s": 6.0, 6.5, 7.0}`（漏掉 `[`），同一条请求重放 **24%** 复现；789 次请求里 1.1%，69 条任务里死 13%。**旧行为**：anthropic 协议在流式收尾处就 `json.loads`、失败即抛裸 `ValueError`，绕过了 `predict()` 里的纠错重试，于是整条任务被当成"基础设施故障"并靠续跑反复重跑（等于重掷骰子抬分）。**现行为**（`mm_agents/realtime_stream.py`）：解析失败时保留原始字符串往下传 —— 动作调用走 `format_error` 纠错（同一决策内 ≤2 次），仍改不掉才记 `run_error` + **有效 0 分**（模型失败）；`get_frames` 调用变成一条 error 工具结果让模型当场重查，不占纠错次数。真断流（没有 `message_stop`/块没收完）仍抛 `IncompleteStreamError`（照旧无成绩、续跑重试） |
 | 单轮花掉约 $20 | 模型可能退化（重复刷屏）直到撞上 `max_output_tokens`（128k），网关返回 `response.incomplete`。我们的行为是**停止且不执行半段**，但那一轮照样计费。日志显示 `Responses stream response.incomplete: None` 时，去网关明细看该轮的 `completion_tokens` 是否等于上限 |
 | 整批突然中断 | 本机代理瞬断（`ProxyError: Connection refused`）会打断模型请求。批量脚本已把**账单抓取失败**降级为记录 `billing_error` 不中断；模型请求失败仍会让该任务变成"无有效成绩" |
 | 批量 40 秒就"跑完"、`0/69 tasks have result.txt` | 任务配置缺了 `instruction` 字段：环境核心 `desktop_env.py::_set_task_info` 必需它，每个任务都在 `env.reset()` 抛 `KeyError`。这个字段**不能删**；实时 Agent 的任务消息来自 YAML 的 `user_prompt`，运行时（`lib_run_realtime.py`）会把它覆盖成当前变体，所以文件里放哪套都行（现在放的是 combine 那套） |
@@ -207,7 +208,7 @@ system_prompt.txt      本次实际发送的 system prompt（YAML 的 system_pro
 experiment.json        协议、坐标协议、模型参数
 trajectory.jsonl       逐事件原始记录（含模型原始回复、动作、执行回执）
 trajectory.html        离线查看器
-result.json/result.txt 评分。`pass_at_1`/`pass_at_3` 是**游戏原值**；`result` 与 `result.txt` 是**最终分**（判官判 `CHEAT` 时为 0，否则等于 `pass_at_3`），`result.json` 另有 `judge` 块（`label`/`confidence`/`evidence`/`reasoning`/`model`/`judged_at`）。模型违反动作协议而中止时同样写 `result.txt=0.0`：评分走正常读法（页面是 `running` 也算有效 0，`status`/`attempts_completed`/`raw_bench` 就是页面原样）；页面完全读不到时才写一份同样字段、`status: failed`、`raw_bench: null` 的 0 分记录。**判官没跑成功反而不写 `result.txt`**（那条任务算未完成，会重跑）。判读：`result.txt=0` + `termination_reason: run_error` = 模型失败；`judge.label` = 判官的结论；无 `result.txt` = 基础设施故障或判官没跑成（都要重跑）
+result.json/result.txt 评分。`pass_at_1`/`pass_at_3` 是**游戏原值**；`result` 与 `result.txt` 是**最终分**（判官判 `CHEAT` 时为 0，否则等于 `pass_at_3`），`result.json` 另有 `judge` 块（`label`/`confidence`/`evidence`/`reasoning`/`model`/`judged_at`）。模型违反动作协议而中止时同样写 `result.txt=0.0`：评分走正常读法（页面是 `running` 也算有效 0，`status`/`attempts_completed`/`raw_bench` 就是页面原样）；**页面完全读不到则不写分**（那是基础设施故障，页面里可能已记着前几次 attempt 的通过，伪造 0 会抹掉真实成绩）：只留 `run_error` 事件与 `agent_metrics.json` 作为"模型违规"的证据，这条任务算未完成、续跑重跑。**判官没跑成功反而不写 `result.txt`**（那条任务算未完成，会重跑）。判读：`result.txt=0` + `termination_reason: run_error` = 模型失败；`judge.label` = 判官的结论；无 `result.txt` = 基础设施故障或判官没跑成（都要重跑）
 agent_metrics.json     请求数、动作决策数、帧查询数、termination_reason
 audit_input.txt        判官这次实际读到的输入（判官跑过才有，便于回看判罚依据）
 initial_state.png / step_*.png / query_*.png

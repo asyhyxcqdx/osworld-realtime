@@ -200,6 +200,54 @@ def test_messages_output_limit_with_partial_json_preserves_usage_without_replay(
     assert agent.pending_action_calls is None
 
 
+def anthropic_tool_events(name, arguments, *, stop_reason='tool_use'):
+    """One finished anthropic tool_use block carrying raw argument text."""
+    return [
+        {'type': 'message_start', 'message': {'id': 'm1', 'role': 'assistant', 'content': [], 'usage': {'input_tokens': 1, 'output_tokens': 1}}},
+        {'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'tool_use', 'id': 'a1', 'name': name, 'input': {}}},
+        {'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'input_json_delta', 'partial_json': arguments}},
+        {'type': 'content_block_stop', 'index': 0},
+        {'type': 'message_delta', 'delta': {'stop_reason': stop_reason}, 'usage': {'output_tokens': 5}},
+        {'type': 'message_stop'},
+    ]
+
+
+def test_messages_unparsable_arguments_are_kept_verbatim_for_the_log():
+    # Seen in the wild: deepseek-flash drops the array brackets of the only
+    # array-typed parameter ({"times_s": 6.0, 6.5, 7.0} instead of [6.0, 6.5, 7.0]).
+    raw = '{"times_s": 6.0, 6.5, 7.0}'
+    body = collect_stream(sse(anthropic_tool_events('get_frames', raw)), 'anthropic_messages')
+    assert body['content'][0]['input'] == raw
+    assert body['stop_reason'] == 'tool_use'
+
+
+def test_messages_unparsable_action_arguments_are_corrected_not_fatal(monkeypatch):
+    bad = sse(anthropic_tool_events('computer_click', '{"x": 994, "y": 719,}'))
+    good = sse(tool_events('anthropic_messages', key='space'))
+    agent = agent_with_http(monkeypatch, 'anthropic_messages', [bad, good])
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1] == [
+        {'action_type': 'PRESS', 'parameters': {'key': 'space'}}]
+    assert agent.wire.session.post.call_count == 2  # same decision, one correction
+    assert not [e for e in agent.last_events if e['event'] == 'model_error']
+    error = next(e for e in agent.last_events if e['event'] == 'format_error')
+    assert 'not valid JSON' in error['message'] and error['will_retry'] is True
+    assert agent.pending_action_calls
+
+
+def test_messages_unparsable_frame_arguments_return_an_error_result(monkeypatch):
+    bad = sse(anthropic_tool_events('get_frames', '{"times_s": 6.0, 6.5, 7.0}'))
+    good = sse(tool_events('anthropic_messages', key='space'))
+    agent = agent_with_http(monkeypatch, 'anthropic_messages', [bad, good])
+    query = Mock()
+    agent.bind_frame_query(query)
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1] == [
+        {'action_type': 'PRESS', 'parameters': {'key': 'space'}}]
+    query.assert_not_called()  # nothing was executed, the model just re-asks
+    result = next(e for e in agent.last_events if e['event'] == 'tool_result')
+    assert result['result']['status'] == 'error'
+    assert agent.wire.session.post.call_count == 2
+
+
 def test_gateway_reused_indices_with_distinct_ids_remain_separate(monkeypatch):
     events = [
         {'choices': [{'index': 0, 'delta': {'tool_calls': [{'index': 0, 'id': 'click-id', 'type': 'function', 'function': {'name': 'computer_click', 'arguments': '{"x":995,"y":670}'}}]}}]},

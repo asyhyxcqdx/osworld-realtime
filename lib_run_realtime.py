@@ -3,7 +3,6 @@ import base64
 from datetime import datetime, timezone
 import json
 import logging
-import os
 import time
 from pathlib import Path
 
@@ -13,38 +12,6 @@ from mm_agents.realtime_protocol import (
     FRAME_TOOL,
     ForbiddenShortcutError,
 )
-
-
-def _write_agent_failure_result(out: Path, example, exc, decision_count):
-    """Persist a 0 score for an episode the model itself aborted.
-
-    An infrastructure failure leaves no ``result.txt`` (no valid score, retry
-    later). A protocol violation is a real model failure, so it must be written
-    as 0 - otherwise it looks like "no score" and a resume clears the directory.
-    """
-    source = str(example.get("source") or "")
-    details = {
-        "benchmark_id": str(example.get("benchmark_id") or "").upper(),
-        "protocol_version": "realtime-gui-bench/1.1",
-        "task": Path(source).parent.name if source else None,
-        "attempts_completed": None,
-        "passed": False,
-        "result": 0.0,
-        "pass_at_1": 0.0,
-        "pass_at_3": 0.0,
-        "max_attempts": 3,
-        "status": "failed",
-        "termination_reason": "run_error",
-        "raw_bench": None,
-    }
-    result_path = out / "result.json"
-    temporary_path = f"{result_path}.tmp.{os.getpid()}"
-    with open(temporary_path, "w", encoding="utf-8") as handle:
-        json.dump(details, handle, ensure_ascii=False, indent=2)
-        handle.write("\n")
-    os.replace(temporary_path, result_path)
-    (out / "result.txt").write_text("0.0\n")
-    return 0.0
 
 
 def _finish_scored_task(out, result, example, args, scores):
@@ -312,11 +279,9 @@ def run_realtime_example(
         _finish_scored_task(out, result, example, args, scores)
         termination_reason = completion_reason
     except AgentProtocolError as exc:
-        # The model broke the action protocol: record a real 0 instead of
-        # leaving the task without a score. Score through the normal evaluator
-        # first, so the record is whatever window.BENCH says (a consistent
-        # "running" state is a valid 0); only fall back to a synthetic 0 when
-        # the page cannot be read at all.
+        # The model broke the action protocol: this is a real model failure, so it
+        # scores 0. Score through the normal evaluator, so the record is whatever
+        # window.BENCH says (a consistent "running" state is a valid 0).
         termination_reason = "run_error"
         run_error = {"type": type(exc).__name__, "message": str(exc)}
         write_event({"event": "run_error", **run_error}, decision_id=decision_count)
@@ -333,8 +298,19 @@ def run_realtime_example(
                 },
                 decision_id=decision_count,
             )
-        except Exception:
-            result = _write_agent_failure_result(out, example, exc, decision_count)
+        except Exception as evaluation_error:
+            # An unreadable page is an infrastructure condition, not a model
+            # outcome: the record it holds (including whether an earlier attempt
+            # already passed) is unknown, so inventing a 0 could overwrite a real
+            # win. Leave no result.json/result.txt - exactly like any other
+            # infrastructure failure - and let the resume re-run and re-judge it.
+            # The violation itself stays on record in the run_error event and in
+            # agent_metrics.json, so nothing about it is lost.
+            logging.getLogger(__name__).warning(
+                "Could not evaluate %s after a model protocol violation (%s); leaving no "
+                "result.txt so the task is re-run", out, evaluation_error,
+            )
+            return
         _finish_scored_task(out, result, example, args, scores)
     except Exception as exc:
         termination_reason = "execution_error" if execution_error is not None else "run_error"

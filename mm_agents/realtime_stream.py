@@ -123,10 +123,15 @@ def _messages(response):
                     try:
                         blocks[index]["input"] = json.loads(encoded)
                     except ValueError:
-                        if message.get("stop_reason") != "max_tokens":
-                            raise
-                        # Preserve truncated arguments and usage for the log;
-                        # ModelWire.unpack rejects max_tokens before any action.
+                        # Keep the raw text instead of failing the episode here.
+                        # A stream that terminated cleanly but carried unparsable
+                        # arguments is the model breaking the action protocol, and
+                        # the correction loop above ModelWire.unpack is what has to
+                        # handle it: action calls are told to correct themselves,
+                        # frame calls get an error tool result. It also preserves
+                        # arguments truncated by the output limit, which unpack
+                        # still rejects before any action; a stream that never
+                        # terminated is rejected above.
                         blocks[index]["input"] = encoded
             message["content"] = _ordered(blocks)
             return message
