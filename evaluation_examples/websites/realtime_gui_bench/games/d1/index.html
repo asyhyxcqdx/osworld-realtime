@@ -61,7 +61,7 @@
 <body>
   <div class="status" id="status">Get ready… 准备…</div>
   <canvas id="cv" width="800" height="460"></canvas>
-  <div class="tip">Click the enemy when it appears  敌人出现时点击</div>
+  <div class="tip">Click the enemy when it appears — only one shot  敌人出现时点击——只有一枪</div>
   <div class="hint" id="hint">Attempt 0 / 3 尝试 0 / 3</div>
 
   <div class="toast" id="toast"></div>
@@ -82,7 +82,7 @@
   <div class="intro" id="rulesOverlay">
     <div class="intro-box">
       <div class="intro-title">Random Enemy 随机迎敌</div>
-      <div class="intro-rule">敌人从掩体后随机冒头并瞄准你，在他开枪前点中他；每次冒头只停留 1 秒。<br>An enemy pops up from behind a random cover and aims at you. Click him before he shoots — each enemy only stays up for 1 second.</div>
+      <div class="intro-rule">敌人从掩体后随机冒头并瞄准你，在他开枪前点中他；每次冒头只停留 1 秒。每次冒头<b>只有一枪</b>：点空就打偏了，只能等他还击。<br>An enemy pops up from behind a random cover and aims at you. Click him before he shoots — each enemy only stays up for 1 second. You get <b>only one shot</b> per pop-up: miss it and you must wait to be shot.</div>
       <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
@@ -101,6 +101,7 @@
   const MAX_ATTEMPTS = 3;
   const WINDOW_MS = 1000;
   const POP_MS = 260;
+  const BULLET_MS = 450;   // 我方子弹飞行动画时长（点空后：子弹飞行 → 敌人还击）
   const GROUND_Y = 385;
   const ENEMY_W = 46, ENEMY_H = 74;
 
@@ -141,11 +142,13 @@
   function setHint(){ const n = attemptLabel(); hintEl.textContent="Attempt "+n+" / "+MAX_ATTEMPTS+"  尝试 "+n+" / "+MAX_ATTEMPTS; }
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
-  let phase = "waiting";   // waiting | popping | out | shot | hit
+  let phase = "waiting";   // waiting | popping | out | bullet | shot | hit
   let enemyBox = null, enemyVis = 0, windowEnd = 0, popStart = 0, appearAt = 0, shotAt = 0;
   let mouseX = 400, mouseY = 200;
+  let shotFired = false;                       // 一枪制：本次冒头是否已开过枪（置位后不再接受任何点击）
+  let bulletAt = 0, bulletTo = { x: 400, y: 200 };
 
-  window.__dbg = function(){ return { phase, enemyX: enemyBox?enemyBox.x:null, enemyVis, rect: enemyBox&&phase==="out"?enemyRect():null, attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status }; };
+  window.__dbg = function(){ return { phase, enemyX: enemyBox?enemyBox.x:null, enemyVis, rect: enemyBox&&phase==="out"?enemyRect():null, shotFired, attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status }; };
 
   function pickBox(){
     // 避免与上一次出现在同一位置（且 3 次尝试内尽量不重复）
@@ -159,6 +162,7 @@
 
   function scheduleEnemy(){
     phase = "waiting"; enemyBox = pickBox(); enemyVis = 0;
+    shotFired = false;                                   // 新的一轮冒头：射击机会重置（一枪制）
     appearAt = performance.now() + 600 + Math.random()*900;
     setStatus("Get ready… 准备…","");
   }
@@ -166,8 +170,14 @@
   function enemyOut(){ phase = "out"; windowEnd = performance.now() + WINDOW_MS; setStatus("Shoot! 开枪！","alert"); }
 
   function enemyShoot(){
-    // 单次失败：敌人开枪（本轮 miss）
+    // 超时未开枪（完全不点）→ 敌人开枪（本轮 miss）；点空路径见 playerMiss()
     phase = "shot"; shotAt = performance.now();
+    setStatus("Got hit 被击中！","lose");
+    settleMiss(800);
+  }
+
+  // 本轮 miss 的原子结算 + 视觉编排（动画只影响显示，不影响评分状态）
+  function settleMiss(visualDelay){
     BENCH.results.push(false);
     // —— 判定瞬间先原子写完 BENCH，再播动画（动画只影响显示，不影响评分状态）——
     BENCH.attempts_completed += 1;
@@ -176,24 +186,36 @@
     if (exhausted) BENCH.attempts_completed = MAX_ATTEMPTS;   // 第三次失败：钳到 3
     BENCH.status = exhausted ? "failed" : "running";
     setHint(); syncURL();
-    setStatus("Got hit 被击中！","lose");
+    const d = visualDelay || 800;
     if (exhausted) {
       // 全部失败：已定稿为 failed，仅延迟显示失败画面（不提供第四次入口）
-      setTimeout(()=>{ failOverlay.classList.add("show"); }, 800);
+      setTimeout(()=>{ failOverlay.classList.add("show"); }, d);
       return;
     }
     // 下一轮（新的敌人）：BENCH 已写为 running，仅延迟显示重试入口
     setTimeout(()=>{
+      if (BENCH.status !== "running") return;               // 终态冻结：期间已变终态则不再给入口
       const n = attemptLabel();
       document.getElementById("nextTitle").textContent = "Attempt " + n + " / " + MAX_ATTEMPTS + "  尝试 " + n + " / " + MAX_ATTEMPTS;
       const _d = document.getElementById("nextDots"); _d.innerHTML = "";
       for (let _i = 0; _i < MAX_ATTEMPTS; _i++) { const _s = document.createElement("span"); _s.className = "next-dot" + (_i < BENCH.attempts_completed ? " on" : ""); _d.appendChild(_s); }
       document.getElementById("nextOverlay").classList.add("show");
-    }, 800);
+    }, d);
+  }
+
+  function playerMiss(p){
+    // 点空：立即锁定并开出一枪（子弹动画只影响表现），本轮结算为 miss，随后敌人还击
+    phase = "bullet";
+    bulletAt = performance.now();
+    bulletTo = { x: p.x, y: p.y };
+    setStatus("Missed! 打偏了…","lose");
+    settleMiss(BULLET_MS + 800);                            // 判定瞬间原子写 BENCH
+    setTimeout(()=>{ if (phase === "bullet"){ phase = "shot"; shotAt = performance.now(); setStatus("Got hit 被击中！","lose"); } }, BULLET_MS);
   }
 
   function onHit(){
     if (phase !== "out" || BENCH.status !== "running") return;   // 终态冻结：不再接受会改变结果的操作
+    shotFired = true;                                            // 一枪制：开过枪即锁定
     phase = "hit";
     BENCH.results.push(true);
     BENCH.attempts_completed += 1;                                  // 成功也 +1
@@ -306,6 +328,19 @@
     BOXES.forEach(b=>{ if (b.baseY < GROUND_Y) drawPlatform(b); });
     BOXES.forEach(drawBox);
     drawEnemy();
+    // 我方子弹（点空后的「开了枪但打偏」表现；判定已在点击瞬间原子写完，动画不改任何状态）
+    if (phase==="bullet"){
+      const t = Math.min(1, (performance.now()-bulletAt)/BULLET_MS);
+      const e = 1 - Math.pow(1-t, 2);                              // easeOutQuad
+      const sx = 400, sy = 445;                                    // 我方枪口（画布底部中央）
+      const tx = sx + (bulletTo.x-sx)*e, ty = sy + (bulletTo.y-sy)*e;
+      const px = sx + (bulletTo.x-sx)*Math.max(0, e-0.28), py = sy + (bulletTo.y-sy)*Math.max(0, e-0.28);
+      ctx.strokeStyle = "rgba(255,214,102,"+(0.9*(1-0.4*t))+")"; ctx.lineWidth = 3; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(tx,ty); ctx.stroke();
+      ctx.fillStyle = "#ffe08a"; ctx.beginPath(); ctx.arc(tx,ty,4.5,0,7); ctx.fill();
+      const mt = Math.max(0, 1-(performance.now()-bulletAt)/130);  // 枪口火光
+      if (mt>0){ ctx.fillStyle="rgba(255,236,150,"+(0.95*mt)+")"; ctx.beginPath(); ctx.arc(sx,sy,6+16*mt,0,7); ctx.fill(); }
+    }
     if (phase==="shot"){
       const a=Math.max(0,1-(performance.now()-shotAt)/800);
       ctx.fillStyle="rgba(255,40,40,"+(a*0.35)+")"; ctx.fillRect(0,0,800,460);
@@ -322,7 +357,12 @@
   cv.addEventListener("mousemove",(e)=>{ const p=canvasPos(e); mouseX=p.x; mouseY=p.y; });
   cv.addEventListener("click",(e)=>{
     const p=canvasPos(e); mouseX=p.x; mouseY=p.y;
-    if (phase==="out" && BENCH.status === "running"){ const r=enemyRect(); if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h) onHit(); }
+    // 一枪制：每次冒头只有一次射击机会——第一次点击即开枪，之后（含点空）锁定，不再接受任何点击
+    if (phase !== "out" || BENCH.status !== "running" || shotFired) return;
+    shotFired = true;
+    const r=enemyRect();
+    if (p.x>=r.x && p.x<=r.x+r.w && p.y>=r.y && p.y<=r.y+r.h) onHit();
+    else playerMiss(p);
   });
 
   function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
