@@ -284,6 +284,23 @@ RETIRED_PROMPT_LINES = (
     'Do not finish with a text-only response.',
     'Never refresh, reload, reopen, or navigate away from the game page.',
 )
+# Cut from the user prompt when the policy list went from 14 items to 5. They were
+# advisory colour ("be conservative", "do not rush"), duplicates of another item, or
+# mechanics this benchmark's games do not have (score, health, cooldowns, resources,
+# multi-stage levels), so they must not come back.
+DROPPED_USER_PROMPT_LINES = (
+    'You may submit multiple actions in one response using the registered',
+    'do not rush into action',
+    'Prefer reversible, low-cost actions',
+    'Avoid loops.',
+    'Manage attempts carefully',
+    'On the final attempt, be conservative',
+    'Track progress indicators',
+    'Complete multi-stage tasks step by step',
+    'Never refresh, reload, reopen, or navigate away from the game page.',
+    'Only use registered tools.',
+    'no hidden delay is inserted between actions',
+)
 
 
 def test_every_agent_config_carries_its_variant_user_prompt():
@@ -292,11 +309,11 @@ def test_every_agent_config_carries_its_variant_user_prompt():
     from mm_agents.realtime_config import VARIANT_TO_AGENT_ID
 
     single_action = 'Submit one action per response.'
-    sequence = ('You may submit multiple actions in one response using the registered '
-                'action tools when appropriate.')
+    sequence = ('When you already know the whole sequence of actions and its timing, submit '
+                'them all in one response.')
     frames = 'You may call `get_frames` multiple times to inspect historical video frames'
     no_mix = 'Never mix `get_frames` with action tools in one response.'
-    lines = {'vanilla': 64, 'anticipatory': 65, 'video': 68, 'combine': 69}
+    lines = {'vanilla': 33, 'anticipatory': 33, 'video': 37, 'combine': 37}
     root = Path(__file__).resolve().parents[1] / 'configs' / 'realtime_agents'
     variants = {agent_id: variant for variant, agent_id in VARIANT_TO_AGENT_ID.items()}
     for path in sorted(root.glob('*.yaml')):
@@ -311,6 +328,8 @@ def test_every_agent_config_carries_its_variant_user_prompt():
         assert (single_action in prompt) == (agent_id in {'vanilla', 'video'})
         assert (sequence in prompt) == (agent_id in {'anticipatory', 'combine'})
         assert len(prompt.splitlines()) == lines[agent_id], path.name
+        for dropped in DROPPED_USER_PROMPT_LINES:
+            assert dropped not in prompt, path.name
 
 
 def test_every_agent_prompt_is_only_the_anti_cheating_rules():
