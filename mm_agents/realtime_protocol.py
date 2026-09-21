@@ -23,8 +23,13 @@ FRAME_TOOL = {
     "name": "get_frames",
     "description": (
         "Read historical screen images at 1-8 task-relative times in seconds. "
-        "Each result has requested_time_s, actual_time_s and status. "
-        "ok includes an image; not_ready means the requested time is not yet readable "
+        "Results come back in the same order as the times you send, so the first "
+        "result answers your first time. Each result has actual_time_s and status, "
+        "where actual_time_s is the timestamp of the frame actually returned: the "
+        "nearest recorded frame to the time you asked for (the recording runs at "
+        "about 30 frames per second). Use actual_time_s, not the time you "
+        "requested, for every comparison between frames. "
+        "ok includes an image; not_ready means that time is not yet readable "
         "and includes available_until_s; error means decoding failed. "
         "No keyboard or mouse action is executed. You may query again before acting."
     ),

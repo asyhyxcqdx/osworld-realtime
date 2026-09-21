@@ -358,8 +358,9 @@ def test_chat_frame_details_appear_once_and_stay_with_their_images():
     text = "\n".join(m["content"] for m in messages[:2]) + "\n".join(
         b["text"] for b in messages[-1]["content"] if b["type"] == "text"
     )
-    assert text.count('"requested_time_s"') == 4
+    assert '"requested_time_s"' not in text
     assert '"query_completed_time_s"' not in text
+    assert text.count('"actual_time_s"') == 2
     assert results == original
 
 
@@ -375,8 +376,12 @@ def test_chat_query_without_images_keeps_details_in_tool_reply(result):
     assert messages[0]["role"] == "tool"
     assert messages[0]["tool_call_id"] == "query"
     metadata = [json.loads(line) for line in messages[0]["content"].splitlines()]
-    expected = result.get("frames", [result])[-1]
+    # The VM receipt's requested_time_s is withheld: only the returned frame's own
+    # timestamp reaches the model.
+    expected = {k: v for k, v in result.get("frames", [result])[-1].items()
+                if k != "requested_time_s"}
     assert metadata[-1] == expected
+    assert '"requested_time_s"' not in messages[0]["content"]
     assert '"query_completed_time_s"' not in messages[0]["content"]
 
 

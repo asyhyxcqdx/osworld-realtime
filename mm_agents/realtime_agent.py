@@ -55,15 +55,22 @@ def result_blocks(result):
     """Render one tool result for the model.
 
     A frame query answers with one block per returned frame (metadata plus the
-    image) and nothing else. The query's own completion timestamp used to ride
-    along as ``query_completed_time_s``; it is withheld because the next
-    screenshot's task time already reports where the clock stands, and a second
-    "now" reading next to the frames' historical timestamps only invites using
-    the wrong one in a duration calculation.
+    image) and nothing else. Two derived timestamps used to ride along and are
+    now withheld, because each was a second, slightly different reading sitting
+    next to the one that actually matters:
+
+    * ``query_completed_time_s`` -- the query's own completion time. The next
+      screenshot's task time already reports where the clock stands, and a
+      second "now" next to the frames' historical timestamps invites using the
+      wrong one in a duration.
+    * ``requested_time_s`` -- the value the caller asked for. Frames land on the
+      recording's own grid, so the returned frame sits up to half a frame away
+      from that request; ``actual_time_s`` is the only honest timestamp to
+      difference, and the requested number is the tempting wrong one.
     """
     blocks = []
     for frame in result.get("frames", [result]):
-        metadata = {k: v for k, v in frame.items() if k != "image"}
+        metadata = {k: v for k, v in frame.items() if k not in ("image", "requested_time_s")}
         blocks.append(text_block(json.dumps(rounded_time_fields(metadata), ensure_ascii=False)))
         if frame.get("status") == "ok" and frame.get("image"):
             blocks.append({"type": "image", "source": frame["image"]})
