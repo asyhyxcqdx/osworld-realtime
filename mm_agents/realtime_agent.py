@@ -611,13 +611,22 @@ class RealtimeAgent:
             self.event_sink(event)
 
     def record_action_result(self, actions, *, reward=0, done=False, info=None, error=None):
-        """Close the previous assistant action calls with environment results."""
+        """Close the previous assistant action calls with environment results.
+
+        A model-facing result reports what happened and nothing about when: the
+        action type, whether it executed, the reward/done flags and whether it
+        ended the round. The VM's ``started_s``/``finished_s``/``duration_s`` are
+        deliberately withheld. They timestamp the injection of the event, not the
+        instant the world received it, so subtracting one from a frame timestamp
+        folds in the unmeasurable action-to-world gap. The runner still records
+        the complete receipt in the ``action_executed`` event, so the trajectory
+        log and the judge keep every measurement.
+        """
         calls = self.pending_action_calls
         if not calls:
             raise RuntimeError("No pending native action calls to close.")
         if len(calls) != len(actions):
             raise ValueError("Environment returned a different number of action results.")
-        execution_records = (info or {}).get("sequence_actions", [])
         results = []
         for index, (call, action) in enumerate(zip(calls, actions)):
             result = {
@@ -627,14 +636,6 @@ class RealtimeAgent:
                 "done": bool(done),
                 "last_in_decision": index == len(actions) - 1,
             }
-            if index < len(execution_records):
-                # The runner retains the complete VM receipt in action_executed.
-                # Each model-facing result needs only this call's measured times;
-                # its original arguments already remain in assistant history.
-                record = execution_records[index]
-                for field in ("started_s", "finished_s", "duration_s"):
-                    if field in record:
-                        result[field] = record[field]
             if error is not None:
                 result["error"] = error
             results.append((call, result))

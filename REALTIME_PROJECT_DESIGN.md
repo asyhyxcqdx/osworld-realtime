@@ -58,7 +58,7 @@ VM 内运行 `desktop_env/server/realtime.py` 和 `fmp4.py`，宿主机运行 Ag
 - KEY_DOWN 跨回合保持，直到 KEY_UP 或录制结束；模型思考期间游戏不会暂停。
 - DONE 是唯一终止动作、必须最后提交，只指示 runner 读分，本身不代表通关。
 
-VM 的 `PyAutoGUI.PAUSE=0`；整段序列只发一次 HTTP 请求，动作之间不取当前截图、不隐藏等待。每个动作返回 `started_s`、`finished_s`、`duration_s`。执行失败的序列**不自动重放**，避免重复已执行的前缀。刷新/导航快捷键在宿主控制器发送前校验，禁用清单见 [BENCH 协议](REALTIME_GUI_BENCH_PROTOCOL.md#9-禁用快捷键)。
+VM 的 `PyAutoGUI.PAUSE=0`；整段序列只发一次 HTTP 请求，动作之间不取当前截图、不隐藏等待。VM 为每个动作回一条执行回执（`started_s`、`finished_s`、`duration_s`），**这份回执只进轨迹日志**（`action_executed` 事件）；发给模型的动作回执**不带任何时间**，只报 `action_type`、`executed`、`reward`、`done`、`last_in_decision`。原因是 `started_s` 标的是宿主注入事件的时刻，而不是世界收到它的时刻，两者之间隔着不可测的 δ——把它和帧时间戳相减会把 δ 算进去。模型侧的时间锚只有两个：每轮截图的 `task_time_s` 和 `get_frames` 每帧的 `actual_time_s`（同一时间原点）。执行失败的序列**不自动重放**，避免重复已执行的前缀。刷新/导航快捷键在宿主控制器发送前校验，禁用清单见 [BENCH 协议](REALTIME_GUI_BENCH_PROTOCOL.md#9-禁用快捷键)。
 
 ## 录像与时间轴
 

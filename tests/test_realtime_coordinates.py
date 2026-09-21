@@ -194,6 +194,6 @@ def test_production_config_runner_logs_and_viewer_keep_both_coordinate_spaces(tm
     feedback = next(e for e in data['events'] if e['event'] == 'action_tool_result')
     assert feedback['calls'][0][1] == {
         'action_type': 'CLICK', 'executed': True, 'reward': 0, 'done': True,
-        'last_in_decision': False, 'duration_s': .1,
+        'last_in_decision': False,
     }
     assert (tmp_path / 'trajectory.html').exists()

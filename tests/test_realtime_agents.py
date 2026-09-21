@@ -449,7 +449,7 @@ def test_screenshot_time_precision_does_not_change_action_execution_precision():
     ('openai_chat', 'normalized_0_1000'),
     ('openai_responses', 'native_pixels'),
 ])
-def test_next_request_has_each_actions_own_times_without_vm_coordinates(variant, protocol, coordinate_system):
+def test_next_request_reports_actions_without_any_timestamps_or_vm_coordinates(variant, protocol, coordinate_system):
     caps = CAPABILITIES[variant]
     relative = coordinate_system != 'native_pixels'
     raw_actions = [{
@@ -488,8 +488,8 @@ def test_next_request_has_each_actions_own_times_without_vm_coordinates(variant,
     original_info = copy.deepcopy(info)
     agent.record_action_result(actions, reward=0, done=False, info=info)
     recorded = next(e for e in events if e['event'] == 'action_tool_result')
-    for index, (_, result) in enumerate(recorded['calls']):
-        assert result['started_s'] == measurements[index][0]  # Raw logs keep original precision.
+    for _, result in recorded['calls']:
+        assert 'started_s' not in result and 'finished_s' not in result and 'duration_s' not in result
         assert 'info' not in result
         assert 'execution_coordinate_system' not in result
     agent.predict('task', {'screenshot': b'after png', 'task_time_s': 3.0})
@@ -503,12 +503,11 @@ def test_next_request_has_each_actions_own_times_without_vm_coordinates(variant,
     else:
         outputs = [(m['tool_call_id'], json.loads(m['content'])) for m in sent if m.get('role') == 'tool']
     assert len(outputs) == len(actions)
-    for index, ((call_id, result), action, (start, end, duration)) in enumerate(zip(outputs, actions, measurements)):
+    for index, ((call_id, result), action) in enumerate(zip(outputs, actions)):
         assert call_id == f'a{index}'
         assert result == {
             'action_type': action['action_type'], 'executed': True,
             'reward': 0, 'done': False, 'last_in_decision': index == len(actions) - 1,
-            'started_s': round(start, 3), 'finished_s': round(end, 3), 'duration_s': round(duration, 3),
         }
     assert info == original_info
     assert first_reply == raw_snapshot
