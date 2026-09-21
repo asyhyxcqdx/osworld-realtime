@@ -64,7 +64,7 @@ VM 的 `PyAutoGUI.PAUSE=0`；整段序列只发一次 HTTP 请求，动作之间
 
 VM 目标 30 FPS、1920×1080 fMP4，目标片段 100 ms；时间原点为首次 X11 录制帧，截图带 `task_time_s`，动作时长另用单调时钟测量。30 FPS 是目标，负载下不保证每 33.3 ms 都有一帧。
 
-`get_frames` 接受 1–8 个秒数（可小数），对已完成片段返回最接近时间的真实记录帧，相等时取早帧、不插帧；返回 `requested_time_s`、`actual_time_s`、`status`、`available_until_s`，`not_ready` 没有图片。
+`get_frames` 接受 1–8 个秒数（可小数），对已完成片段返回最接近时间的真实记录帧，相等时取早帧、不插帧；返回 `actual_time_s`、`status`、`available_until_s`，`not_ready` 没有图片。请求的那几个秒数不回传：帧落在录屏自己的时间栅格上（30 FPS，相邻帧约 33.3 ms），`actual_time_s` 才是唯一可做差的时间戳。
 
 ## 预算
 

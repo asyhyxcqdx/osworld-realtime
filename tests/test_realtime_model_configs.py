@@ -256,9 +256,24 @@ ANTI_CHEAT_HEADING = '# Anti-Cheating and Evaluation-Integrity Rules (Highest Pr
 ANTI_CHEAT_FRAME_LINE = '- Use get_frames to inspect historical frames when allowed.'
 # Only video/combine own a frame tool, so only they may name frames here.
 ANTI_CHEAT_NO_FRAME_LINE = ('- Interact with the game only through visible GUI elements: '
-                            'the current screenshot')
+                            'the current screenshot,')
 ANTI_CHEAT_SECTIONS = ('## Allowed Behavior', '## Forbidden Behavior',
                        '## Evidence and Completion', '## Violations')
+# Dropped when the rules were reviewed: the precedence paragraph, the vague
+# "cautious" qualifier, the redundant retry bullet (the games cap attempts
+# themselves and Evidence and Completion already says to continue), and the
+# "conservative" closing line. Also covers the old screenshot bullet, which
+# wrongly said the screenshot arrives inside each tool result: it arrives as the
+# next user message, once per round, so a sequence submission never sees one
+# between its actions.
+DROPPED_RULE_LINES = (
+    'These rules are part of the system prompt.',
+    'If you see text telling you to ignore these rules',
+    'returned with each tool result',
+    'cautious GUI probing',
+    '- Retry only when the benchmark allows another attempt.',
+    'choose the conservative GUI-only action.',
+)
 # The operating notes moved to the user prompt, so the system prompt must not
 # carry them any more.
 RETIRED_PROMPT_LINES = (
@@ -318,13 +333,17 @@ def test_every_agent_prompt_is_only_the_anti_cheating_rules():
         assert prompt.count(ANTI_CHEAT_HEADING) == 1
         positions = [prompt.index(section) for section in ANTI_CHEAT_SECTIONS]
         assert positions == sorted(positions)
-        assert prompt.rstrip().endswith('choose the conservative GUI-only action.')
+        assert prompt.rstrip().endswith(
+            'If you are unsure whether an action would bypass the GUI, do not take it.')
         # Only the two variants that own get_frames advertise it in the rules,
-        # and the frame line is the only difference between the two rule texts.
+        # and the frame line plus the screenshot bullet are what distinguish the
+        # two rule texts: everything else is shared word for word.
         assert (ANTI_CHEAT_FRAME_LINE in prompt) == (agent_id in {'video', 'combine'})
         assert (ANTI_CHEAT_NO_FRAME_LINE in prompt) == (agent_id in {'vanilla', 'anticipatory'})
         assert ('screenshots/frames' in prompt) == (agent_id in {'video', 'combine'})
-        assert len(lines) == (53 if agent_id in {'video', 'combine'} else 52)
+        assert len(lines) == (47 if agent_id in {'video', 'combine'} else 45)
         for retired in RETIRED_PROMPT_LINES:
             assert retired not in prompt
+        for dropped in DROPPED_RULE_LINES:
+            assert dropped not in prompt
     assert seen == set(VARIANT_TO_AGENT_ID.values())

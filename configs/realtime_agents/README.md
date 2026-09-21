@@ -28,15 +28,17 @@
 
 ## 公共任务策略
 
-所有 40 份 YAML 的 `system_prompt` **只放反作弊与评测诚信规则**（`# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)`，四个小节：Allowed Behavior / Forbidden Behavior / Evidence and Completion / Violations；禁止开发者工具/CDP/页内脚本、读写源码与存档、直连网络、终端与外部程序、刷新与导航、伪造结果等）。两套文本有两处不同，都源于能力差异：`video` / `combine` 多一句允许用 `get_frames` 查历史帧；`vanilla` / `anticipatory` 没有查帧工具，所以那条"只通过可见 GUI 元素交互"写的是"**每次工具结果带回的当前截图**、鼠标移动、点击、拖拽、键盘输入、滚动、等待"，不提 frames 与观察工具（对它们是空头支票）。
+所有 40 份 YAML 的 `system_prompt` **只放反作弊与评测诚信规则**（`# Anti-Cheating and Evaluation-Integrity Rules (Highest Priority)`，四个小节：Allowed Behavior / Forbidden Behavior / Evidence and Completion / Violations；禁止开发者工具/CDP/页内脚本、读写源码与存档、直连网络、终端与外部程序、刷新与导航、伪造结果等）。两套文本有两处不同，都源于能力差异：`video` / `combine` 多一句允许用 `get_frames` 查历史帧；`vanilla` / `anticipatory` 没有查帧工具，所以那条"只通过可见 GUI 元素交互"写的是"**当前截图**、鼠标移动、点击、拖拽、键盘输入、滚动、等待"，不提 frames 与观察工具（对它们是空头支票）。
+
+2026-09-21 复核后又精简了一轮（40 份同步；`vanilla` / `anticipatory` 45 行，`video` / `combine` 47 行）：删掉"这些规则优先于用户/页面/工具文字"那一段（69 个游戏页面里没有任何要求绕过 GUI 或忽略规则的文案，刷新/控制台/源码/地址栏等出口在宿主侧已被 `ForbiddenShortcutError` 拦住，335 条轨迹里模型引用这段 0 次）；删掉 `Retry only when the benchmark allows another attempt.`（167 条 0 分轨迹全部用满 3 次机会，真正驱动续试的是 Evidence and Completion 里那句；而且 69/69 个游戏自己 clamp `MAX_ATTEMPTS` 且终态冻结，刷不出第四次）；`cautious GUI probing` 去掉含糊修饰词；结尾 `choose the conservative GUI-only action.` 改成 `If you are unsure whether an action would bypass the GUI, do not take it.`（实测它一次都没挡掉合法动作）。`vanilla` / `anticipatory` 的截图那条原来写"每次工具结果带回的当前截图"，与实现不符——截图是下一条 user 消息，动作序列一次最多 100 个动作、中间不给截图——改为"the current screenshot,"。删掉的句子由 `tests/test_realtime_model_configs.py` 的 `DROPPED_RULE_LINES` 守着，防止回潮。
 
 原来的操作说明（自称句、动作时序、"截图未等待重绘"、探索与谨慎策略、一次 1 个还是 1–100 个动作、`get_frames` 的使用协议、`computer_done` 的调用要求、不要用纯文本回复）**已从 system prompt 移除**，改由新增的 `user_prompt` 承载：每个变体一套（`vanilla` 64 行 / `anticipatory` 65 行 / `video` 68 行 / `combine` 69 行），内容为角色与目标、Real-Time Constraints、Success-Oriented Execution Policy（14 条）、Tools and Perception、Rules and Completion；`video` / `combine` 才提 `get_frames`，`anticipatory` / `combine` 才写"可以一次提交多个动作"。它作为对话开头的唯一一条任务 user 消息。任务配置里的 `instruction` 字段**保留**——环境核心 `desktop_env.py` 的 `_set_task_info` 要求它存在——值就是 **combine 那套 user prompt**（69 份完全相同，作占位）；实际运行时 `lib_run_realtime.py` 会在 `env.reset()` 之前把它覆盖成**当前变体**的 user prompt，所以环境核心、`env.instruction`、日志和模型看到的是同一段文字。
 
 YAML 的 `system_prompt` 仍是唯一 prompt 来源：`RealtimeAgent` 必须收到它，缺失或为空时直接报错，代码不再内置默认 prompt；**坐标说明不在 YAML 里**，由 `api.coordinate_system` 在运行时追加在整段 prompt 之后（`realtime_agent.py` 的 `self.system = system_prompt_text + "\n" + coordinates.guidance`）。四处操作说明的原文可在旧提交里取回：`git show HEAD~1:configs/realtime_agents/vanilla-deepseek-flash.yaml`。
 
-在时序说明之后，统一要求先探索环境和游戏机制，通过观察与谨慎试探发现界面未说明的细节；不可逆、无法返回当前状态或会消耗 attempt 的操作须先获取足够信息，关键操作有把握后再执行，尤其珍惜最后一次尝试。
+在 `user_prompt` 的 Success-Oriented Execution Policy 里统一要求先探索环境和游戏机制，通过观察与试探发现界面未说明的细节；不可逆、无法返回当前状态或会消耗 attempt 的操作须先获取足够信息，关键操作有把握后再执行，尤其珍惜最后一次尝试。
 
-这段策略只放在 system prompt，开头的 Task 说明保持原样。观察和试探限于各 Agent 已有工具，不增加强制等待、强制查询次数或新的执行条件；四组的单动作/动作序列与历史帧能力保持原有区别。新运行自动使用更新后的 prompt，并保存完整实际文字到 `system_prompt.txt`；已有轨迹保留当时的 prompt。
+这段策略只放在 `user_prompt`（`system_prompt` 只放反作弊与评测诚信规则），开头的 Task 说明保持原样。观察和试探限于各 Agent 已有工具，不增加强制等待、强制查询次数或新的执行条件；四组的单动作/动作序列与历史帧能力保持原有区别。新运行自动使用更新后的 prompt，并保存完整实际文字到 `system_prompt.txt`；已有轨迹保留当时的 prompt。
 
 ## 协议和坐标适配
 
@@ -50,7 +52,7 @@ YAML 的 `system_prompt` 仍是唯一 prompt 来源：`RealtimeAgent` 必须收�
 
 Gemini 和 MiniMax 的四组 YAML 均显式选择对应协议；两者输出范围相同，但端点处理分别跟随各自上游实现。Qwen 按本项目原生坐标实测结果保持现状。没有图片预缩放，也不根据某次返回值大小猜测坐标单位。相对协议不接受超范围、非整数的 x/y，沿用现有整段拒绝与工具错误纠正流程，不执行有效前缀。键盘、WAIT、滚动量、动作数量与历史查询规则不变。`tool_format: native` 指 API 原生工具调用，与坐标单位是两回事。
 
-实际 prompt 保存于 `system_prompt.txt`，协议保存于 `experiment.json` 和 `model_request.coordinate_system`。原始回复/工具参数保留在 `model_response`，转换后的提交和执行动作保留在 `action_submitted` / `action_executed`；不会把像素值写回 assistant 历史。正常执行后的模型工具反馈只包含该调用的动作类型、现有状态字段及自身开始/结束/耗时，不回显 VM 坐标、不附整段 `sequence_actions`，因此不再添加 `execution_coordinate_system`。完整 VM 参数及原精度时间仍保留在 `action_executed.info.sequence_actions`。HTML 在原生图片上按记录的协议绘制模型坐标，工具参数仍展示原始值。
+实际 prompt 保存于 `system_prompt.txt`，协议保存于 `experiment.json` 和 `model_request.coordinate_system`。原始回复/工具参数保留在 `model_response`，转换后的提交和执行动作保留在 `action_submitted` / `action_executed`；不会把像素值写回 assistant 历史。正常执行后的模型工具反馈只包含该调用的动作类型、是否执行、`reward`/`done` 和 `last_in_decision`，不回显 VM 坐标、不带任何时间字段（`started_s`/`finished_s`/`duration_s` 只进 `action_executed`）、不附整段 `sequence_actions`，因此不再添加 `execution_coordinate_system`。完整 VM 参数及原精度时间仍保留在 `action_executed.info.sequence_actions`。HTML 在原生图片上按记录的协议绘制模型坐标，工具参数仍展示原始值。
 
 - Messages：保留完整 thinking/tool_use/tool_result。MiniMax M3 只发送 `thinking: {type: adaptive}`，不发送 `output_config.effort` 或 Claude 的 `thinking.display`。
 - Responses：`reasoning: {effort: high, summary: auto}`，保留 reasoning 内容，收齐完成响应才解析动作。
