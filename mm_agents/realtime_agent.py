@@ -52,11 +52,16 @@ def rounded_time_fields(value, key=""):
 
 
 def result_blocks(result):
+    """Render one tool result for the model.
+
+    A frame query answers with one block per returned frame (metadata plus the
+    image) and nothing else. The query's own completion timestamp used to ride
+    along as ``query_completed_time_s``; it is withheld because the next
+    screenshot's task time already reports where the clock stands, and a second
+    "now" reading next to the frames' historical timestamps only invites using
+    the wrong one in a duration calculation.
+    """
     blocks = []
-    if "task_time_s" in result:
-        blocks.append(
-            text_block(json.dumps(rounded_time_fields({"query_completed_time_s": result["task_time_s"]})))
-        )
     for frame in result.get("frames", [result]):
         metadata = {k: v for k, v in frame.items() if k != "image"}
         blocks.append(text_block(json.dumps(rounded_time_fields(metadata), ensure_ascii=False)))

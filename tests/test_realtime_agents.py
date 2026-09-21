@@ -349,18 +349,17 @@ def test_chat_frame_details_appear_once_and_stay_with_their_images():
     assert list(groups) == ["a", "b"]
     for call_id, image in (("a", IMAGE), ("b", second_image)):
         group = groups[call_id]
-        assert group[2]["type"] == "image_url"
-        assert group[2]["image_url"]["url"] == "data:image/png;base64," + image["data"]
-        assert json.loads(group[1]["text"])["status"] == "ok"
-    assert json.loads(groups["a"][0]["text"]) == {"query_completed_time_s": 5.123}
-    assert json.loads(groups["a"][1]["text"])["actual_time_s"] == 1.003
-    assert json.loads(groups["a"][3]["text"])["status"] == "not_ready"
-    assert json.loads(groups["a"][4]["text"])["message"] == "Frame decode failed"
+        assert group[1]["type"] == "image_url"
+        assert group[1]["image_url"]["url"] == "data:image/png;base64," + image["data"]
+        assert json.loads(group[0]["text"])["status"] == "ok"
+    assert json.loads(groups["a"][0]["text"])["actual_time_s"] == 1.003
+    assert json.loads(groups["a"][2]["text"])["status"] == "not_ready"
+    assert json.loads(groups["a"][3]["text"])["message"] == "Frame decode failed"
     text = "\n".join(m["content"] for m in messages[:2]) + "\n".join(
         b["text"] for b in messages[-1]["content"] if b["type"] == "text"
     )
     assert text.count('"requested_time_s"') == 4
-    assert text.count('"query_completed_time_s"') == 2
+    assert '"query_completed_time_s"' not in text
     assert results == original
 
 
@@ -378,8 +377,7 @@ def test_chat_query_without_images_keeps_details_in_tool_reply(result):
     metadata = [json.loads(line) for line in messages[0]["content"].splitlines()]
     expected = result.get("frames", [result])[-1]
     assert metadata[-1] == expected
-    if "task_time_s" in result:
-        assert metadata[0] == {"query_completed_time_s": 5.123}
+    assert '"query_completed_time_s"' not in messages[0]["content"]
 
 
 @pytest.mark.parametrize('protocol', ['anthropic_messages', 'openai_responses', 'openai_chat'])
@@ -400,9 +398,11 @@ def test_model_tool_results_round_only_time_fields_without_mutating_measurements
     original = copy.deepcopy((result, execution))
     messages = wire.tool_results([({'id': 'frame'}, result), ({'id': 'action'}, execution)])
     serialized = json.dumps(messages)
-    for expected in ('31.716', '15.235', '29.875', '7.129', '7.132', '0.004', '7.137', '7.273'):
+    for expected in ('15.235', '29.875', '7.129', '7.132', '0.004', '7.137', '7.273'):
         assert expected in serialized
-    for raw in ('31.715886116', '7.128817319869995', '0.003609571000001921'):
+    for withheld in ('31.716', '31.715886116', 'query_completed_time_s'):
+        assert withheld not in serialized
+    for raw in ('7.128817319869995', '0.003609571000001921'):
         assert raw not in serialized
     assert '960.123456' in serialized  # Coordinates are not rounded.
     assert IMAGE['data'] in serialized
