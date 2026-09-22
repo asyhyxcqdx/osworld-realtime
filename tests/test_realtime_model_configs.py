@@ -334,7 +334,10 @@ RETRY_SEQUENCE_LINES = (
     'never send that click on its own',
     'it must be the first action of the response that also contains the `computer_wait`',
 )
-# Studying the attempts already played is only actionable where frames exist.
+# Studying the attempts already played needs only the conversation history, which every
+# variant keeps (context.history_policy=full, include_screenshots=True), so the study half
+# belongs to every sequence variant; naming get_frames is what only combine can use.
+RETRY_STUDY_LINES = ('study the attempts you have already played',)
 RETRY_FRAME_LINES = ('study the attempts you have already played with `get_frames`',)
 # C32's hit window is 170 ms (simulated from the game's own collision maths), but the
 # model measured the ball's plate crossing from frames 150 ms apart, so its reading was
@@ -376,8 +379,10 @@ def test_every_agent_config_carries_its_variant_user_prompt():
         # next-click-in-one-response needs a sequence, denser frames need get_frames.
         for retry in RETRY_SEQUENCE_LINES:
             assert (retry in prompt) == owns_sequence, path.name
-        for study in RETRY_FRAME_LINES:
-            assert (study in prompt) == (agent_id == 'combine'), path.name
+        for study in RETRY_STUDY_LINES:
+            assert (study in prompt) == owns_sequence, path.name
+        for study_frames in RETRY_FRAME_LINES:
+            assert (study_frames in prompt) == (agent_id == 'combine'), path.name
         for resolution in FRAME_RESOLUTION_LINES:
             assert (resolution in prompt) == owns_frames, path.name
         for dropped in DROPPED_USER_PROMPT_LINES:
