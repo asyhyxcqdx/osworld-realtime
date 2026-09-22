@@ -112,10 +112,6 @@ def parse_args():
     parser.add_argument('--max_steps', type=int, default=100)
     parser.add_argument('--num_envs', type=int, default=1,
                         help='environments per model (parallel tasks); one VM each')
-    parser.add_argument('--env_start_stagger_s', type=float, default=2.0,
-                        help='seconds between starting each environment process; keeps a '
-                             'high --num_envs batch from booting every VM at the same instant '
-                             '(0 disables)')
     parser.add_argument('--keys-file', default=None,
                         help='read the {model: key} JSON from this 0600 file instead of no-echo stdin')
     parser.add_argument('--exclusive-keys-confirmed', action='store_true',
@@ -678,7 +674,6 @@ def main():
             '--max_steps', str(args.max_steps), '--sleep_after_execution', '0',
             '--environment_ready_wait_s', '3', '--evaluation_settle_s', '3',
             '--num_envs', str(args.num_envs), '--result_dir', str(result_dir),
-            '--env_start_stagger_s', str(args.env_start_stagger_s),
         ]
         plans.append({'model': model, 'command': command, 'task_dirs': task_dirs})
 
