@@ -48,8 +48,10 @@ PYAUTOGUI_PKGS_PREFIX = (
 # Retry schedule for POST /realtime/start. High --num_envs runs lose a task now and
 # then because the VM answers the first start before its screen is 1920x1080 (400)
 # or before ffmpeg produced the first fragment within its 15 s deadline (409); both
-# clear on their own, so wait a little and ask again (5 retries, about 67 s total).
-START_RETRY_DELAYS = (2.0, 5.0, 10.0, 20.0, 30.0)
+# clear on their own, so wait and ask again. Measured at --num_envs 16: some VMs
+# only report 1920x1080 about two minutes after boot, which is why the budget runs
+# to ~157 s (7 retries) -- a shorter one lost 3 of 17 tasks in validation.
+START_RETRY_DELAYS = (2.0, 5.0, 10.0, 20.0, 30.0, 30.0, 30.0)
 
 
 def _inject_pyautogui_input_patch(script: str) -> str:
@@ -517,6 +519,15 @@ class PythonController:
             raise RuntimeError(f"Realtime endpoint {path} failed ({response.status_code}): {response.text[:500]}")
         return response.json()
 
+    def _realtime_screen_size(self) -> Optional[str]:
+        """Best-effort read of the VM screen size, for diagnostics only."""
+        try:
+            result = self.execute_python_command("print(tuple(pyautogui.size()))")
+            output = str((result or {}).get("output", "")).strip()
+            return output.splitlines()[-1].strip() if output else None
+        except Exception:
+            return None
+
     def start_realtime_recording(self, fragment_ms=100):
         from desktop_env.realtime_contract import verify_server_source
 
@@ -544,6 +555,10 @@ class PythonController:
                 if "needs the realtime extension" in message:
                     raise
                 last_error = exc
+                if "Set the VM screen" in message:
+                    size = self._realtime_screen_size()
+                    if size:
+                        message = f"{message.splitlines()[0]} (VM screen is {size})"
                 logger.warning(
                     "start_realtime_recording attempt %d/%d failed, retrying in %.0fs: %s",
                     attempt, len(START_RETRY_DELAYS) + 1,
