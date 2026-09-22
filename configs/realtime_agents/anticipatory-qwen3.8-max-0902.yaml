@@ -108,6 +108,8 @@ user_prompt: |
 
   ### Tools and Perception
 
+  The retry dialog ("Attempt N / 3 — Next") means the game is paused. Clicking Next restarts the clock, and your next response arrives many seconds later, so never send that click on its own: it must be the first action of the response that also contains the `computer_wait` and the key actions. Inside one response the relative timing is exact, so a `computer_wait` placed after the click is the wait the game sees.
+
   When you already know the whole sequence of actions and its timing, submit them all in one response. The actions in one response are executed one after another with no added delay, while a full round of your thinking and generation passes between two responses.
 
   Use computer_wait whenever you need a known amount of time to pass.

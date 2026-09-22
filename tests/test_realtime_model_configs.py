@@ -322,6 +322,28 @@ ATTEMPT_REVIEW_LINES = (
     'work out what happened: what you did, how long after the start you did it',
     "Let that decide the next attempt's timing",
 )
+# The attempt-review line asks for a number but says nothing about when to click Next,
+# so the first attempt is still spent on a lone start click: pass@1 was 0 in every C
+# batch, 62 of 63 task instances opened with a single action, and the failures that
+# lost on composition said so themselves ("I intended to do the click + wait + press in
+# ONE response, but I only sent the click"; another attempt fired 32 key presses in
+# 0.05 s before the Next click had taken effect). Only the sequence variants can act on
+# this: vanilla/video send exactly one action per response, so clicking Next and
+# pressing the key in one response is impossible for them by construction.
+RETRY_SEQUENCE_LINES = (
+    'never send that click on its own',
+    'it must be the first action of the response that also contains the `computer_wait`',
+)
+# Studying the attempts already played is only actionable where frames exist.
+RETRY_FRAME_LINES = ('study the attempts you have already played with `get_frames`',)
+# C32's hit window is 170 ms (simulated from the game's own collision maths), but the
+# model measured the ball's plate crossing from frames 150 ms apart, so its reading was
+# only good to about half a window and the task flipped between batches (passed in
+# ds_c_clean/ds_c_origctl, failed in ds_c_measure/ds_c_measure6). The winning C36/C37
+# attempts sampled 0.05 s apart. Frame spacing is the measurement precision, so the line
+# asks for a denser sample around the moment; it deliberately names no interval, because
+# an 8-frame query at a fixed fine spacing would miss the moment entirely.
+FRAME_RESOLUTION_LINES = ('ask `get_frames` for frames closer together around it',)
 
 
 def test_every_agent_config_carries_its_variant_user_prompt():
@@ -334,7 +356,7 @@ def test_every_agent_config_carries_its_variant_user_prompt():
                 'them all in one response.')
     frames = 'You may call `get_frames` multiple times to inspect historical video frames'
     no_mix = 'Never mix `get_frames` with action tools in one response.'
-    lines = {'vanilla': 35, 'anticipatory': 35, 'video': 39, 'combine': 39}
+    lines = {'vanilla': 35, 'anticipatory': 37, 'video': 41, 'combine': 43}
     root = Path(__file__).resolve().parents[1] / 'configs' / 'realtime_agents'
     variants = {agent_id: variant for variant, agent_id in VARIANT_TO_AGENT_ID.items()}
     for path in sorted(root.glob('*.yaml')):
@@ -344,11 +366,20 @@ def test_every_agent_config_carries_its_variant_user_prompt():
         assert prompt.startswith('You are the computer-using Agent in a real-time GUI benchmark.')
         assert prompt != config['system_prompt']
         owns_frames = agent_id in {'video', 'combine'}
+        owns_sequence = agent_id in {'anticipatory', 'combine'}
         assert (frames in prompt) == owns_frames
         assert (no_mix in prompt) == owns_frames
         assert (single_action in prompt) == (agent_id in {'vanilla', 'video'})
-        assert (sequence in prompt) == (agent_id in {'anticipatory', 'combine'})
+        assert (sequence in prompt) == owns_sequence
         assert len(prompt.splitlines()) == lines[agent_id], path.name
+        # New rules are owned by the variants that can actually carry them out:
+        # next-click-in-one-response needs a sequence, denser frames need get_frames.
+        for retry in RETRY_SEQUENCE_LINES:
+            assert (retry in prompt) == owns_sequence, path.name
+        for study in RETRY_FRAME_LINES:
+            assert (study in prompt) == (agent_id == 'combine'), path.name
+        for resolution in FRAME_RESOLUTION_LINES:
+            assert (resolution in prompt) == owns_frames, path.name
         for dropped in DROPPED_USER_PROMPT_LINES:
             assert dropped not in prompt, path.name
         for command in BEHAVIOUR_COMMAND_LINES:

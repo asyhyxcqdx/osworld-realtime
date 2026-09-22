@@ -113,6 +113,8 @@ user_prompt: |
 
   You may call `get_frames` multiple times to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
 
+  When you need to pin down a short moment, ask `get_frames` for frames closer together around it instead of spreading them over the whole attempt.
+
   Submit one action per response.
 
   Use computer_wait whenever you need a known amount of time to pass.
