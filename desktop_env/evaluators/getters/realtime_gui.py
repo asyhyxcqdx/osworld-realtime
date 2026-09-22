@@ -340,9 +340,18 @@ def get_realtime_gui_bench_state(env, config: Dict[str, Any]) -> Dict[str, Any]:
     ) from last_error
 
 
-def realtime_page_identity(env, config):
-    """Read document identity without exposing DOM or BENCH to the model."""
-    response = requests.get(f"http://{env.vm_ip}:{env.chromium_port}/json/list", timeout=10)
+# A freshly booted VM under a high --num_envs answers the Chrome DevTools probe
+# slowly; a timeout here used to abort the task before it started (no result.txt).
+# Timeouts and connection errors are therefore retried, while a genuine "page
+# missing/duplicated" or a JavaScript error is reported immediately.
+PAGE_IDENTITY_TIMEOUT_S = 10.0
+PAGE_IDENTITY_RETRY_DELAYS = (2.0, 5.0, 10.0)
+
+
+def _read_page_identity(env, config):
+    response = requests.get(
+        f"http://{env.vm_ip}:{env.chromium_port}/json/list", timeout=PAGE_IDENTITY_TIMEOUT_S
+    )
     response.raise_for_status()
     pages = [p for p in response.json() if p.get("type") == "page"]
     fragment = config.get("target_url_contains", "127.0.0.1:8765/")
@@ -352,11 +361,34 @@ def realtime_page_identity(env, config):
     target = matches[0]
     document = _evaluate_cdp_expression(
         _rewrite_websocket_url(env, target["webSocketDebuggerUrl"]),
-        "({url: location.href.split('#')[0], time_origin: performance.timeOrigin})", 10,
+        "({url: location.href.split('#')[0], time_origin: performance.timeOrigin})",
+        PAGE_IDENTITY_TIMEOUT_S,
     )
     if not isinstance(document, dict) or not isinstance(document.get("time_origin"), (int, float)):
         raise RuntimeError("Cannot verify realtime document identity")
     return {"target_id": target["id"], "page_ids": sorted(p["id"] for p in pages), **document}
+
+
+def realtime_page_identity(env, config):
+    """Read document identity without exposing DOM or BENCH to the model."""
+    delays = (0.0,) + tuple(PAGE_IDENTITY_RETRY_DELAYS)
+    last_error = None
+    for attempt, delay in enumerate(delays, start=1):
+        if delay:
+            time.sleep(delay)
+        try:
+            return _read_page_identity(env, config)
+        except (TimeoutError, OSError) as error:
+            # Read-only probe: retrying cannot change any state.
+            last_error = error
+            if attempt < len(delays):
+                logger.warning(
+                    "realtime_page_identity attempt %d/%d failed, retrying in %.0fs: %s",
+                    attempt, len(delays), delays[attempt], error,
+                )
+    raise TimeoutError(
+        f"Realtime page identity probe failed after {len(delays)} attempts: {last_error}"
+    ) from last_error
 
 
 def verify_realtime_page_identity(env, config, expected):

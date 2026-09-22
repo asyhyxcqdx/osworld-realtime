@@ -118,8 +118,9 @@ python scripts/python/run_realtime_batch.py \
   --exclusive-keys-confirmed
 ```
 
-- **并发数怎么定**：`--num_envs` 决定吞吐，**但它同时是"宿主机负载"变量**——16 台 VM 并发时每台的帧率/延迟比 6 台时差，**实时类游戏的成绩可能因此变化**。所以**做 prompt/配置的分数 A/B 时固定同一个 `--num_envs`**（我们的 C 类对照一律用 6），只有追吞吐时才开大。
+- **并发数怎么定**：`--num_envs` 决定吞吐，**但它同时是"宿主机负载"变量**，所以**做 prompt/配置的分数 A/B 时固定同一个 `--num_envs`**（我们的 C 类对照一律用 6），只有追吞吐时才开大。**实测 16 并发并没有把 VM 拖慢**（录像 30.00 fps、动作派发中位 0.216 s、`WAIT` 误差 0.1%、帧时刻偏差中位 6 ms，与 6 并发同量级）——但同一配置换一批 run，C 类过/不过仍能翻 4 题（详见"单任务结果不可复现"那条），所以固定 `--num_envs` 是为了让 A/B 的噪声保持一致，不是因为高并发会系统性压分。
 - **高并发（≥10）会偶发 `/realtime/start` 失败**（`400 Set the VM screen to 1920x1080…` 或 `409 Timed out waiting for the first complete fragment`；实测 `num_envs=6` → 0/17 失败、`10` → 3/17、`18` → 7/17）：刚开机又赶上负载高峰的 VM 回答过早。现在宿主侧**自动重试 5 次**（等 2/5/10/20/30 秒，共约 67 秒，日志里会打 `start_realtime_recording attempt i/n failed: …`），另外 `--env_start_stagger_s`（默认 2 秒）把各台 VM 错开开机。重试是幂等的：VM 侧 `Recorder.start()` 出错时会自己 `stop()`，不留 ffmpeg、不留半开会话。**遇到失败仍先续跑补齐**（无成绩的任务会被清目录重跑）。
+- **高并发下同一台 VM 的 Chrome 也可能答不动开跑前那次身份探针**：实测 `num_envs=16` 时 17 题里有 **2 题在 `lib_run_realtime.py:82` 的 `realtime_page_identity` 处 `TimeoutError: timed out in 10.0s`**，异常被 worker 兜底吃掉、任务**连目录都没有**（也就没有 `result.txt`，必须续跑）。现在这个只读探针也会重试 3 次（等 2/5/10 秒）；"页面丢失/重复"和 JS 报错仍然立刻上报不重试。`num_envs=16` 的现场数据：16 台里 8 台第一次 `/start` 就吃 409、全部重试成功，0 题因 `/start` 作废；录像仍是精确 30.00 fps，动作派发中位 0.216 s、`WAIT` 误差 0.1%、帧时刻偏差中位 6 ms —— **16 并发的时序没有可测退化**，同一批分数与 6 并发的差异来自任务本身的随机性（见下面一条）。
 - 不传 `--task/--meta` 时默认跑全部 69 个任务。
 - 结果：`<result_dir>/<model>/<run_id>/<agent>/<action_space>/<observation_type>/<domain>/<uuid>/`
 - 账单与汇总：`--cost_dir`（默认 `<result_dir>/_cost/<run_id>`），含 `cost_report.json`、`<model>_summary.json`、账单快照与网关明细。
@@ -199,6 +200,7 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 | 飞书行数翻倍 | `export_realtime_results.py` 写入是**新增记录**，不是覆盖；同一次 run 只导一次，重导前先在飞书删旧行 |
 | 轨迹里的 token 比网关少 | 流中断/未完成的请求没有 `model_response` 事件，token 统计不到；金额仍以网关值为准（`--charges`） |
 | 换网关后脚本报账单接口错误 | 账单接口是 Packy 专用的；非 packyapi.ai 会自动跳过，也可显式加 `--skip-billing` |
+| 单任务结果不可复现：同一个任务、同一份配置，换一批 run 过/不过会翻面 | C 类 17 题跑了 7 个批次（4 组配置）实测：**44 次过关里 43 次发生在第 2/3 次尝试**（`pass@1` 在 7 个批次里 6 个是 0），C29 6/7、C27 5/6 属于"会做"，C12/C31/C34/C35 是 0/7"不会做"，中间 7 题只有 1~3/7 —— 翻面全在中间这档。对源码核对：`c36` 要求起跳后 0.429 s **±100 ms** 按 J、`c37` 松键窗口 **±200 ms**、`c3` 闪现 500 ms + 起跑延迟 100 ms，而模型给的等待常数是**猜的**（同一题两批分别猜 `WAIT(0.35)` 和 `WAIT(0.20)`），猜进窗口就过、猜偏就不过。**所以：单任务分数不能用来比较 prompt/并发；要看批次总分（C 类实测在 3~10 之间摆动）或多批平均**；失败后它还会去按 `enter` 找"隐藏重开"（判官记 `CHEAT_ATTEMPT`，分数不受影响） |
 | 某个任务突然"无成绩"，`agent_metrics.json` 里是 `run_error: Realtime page was reloaded, navigated, or replaced` | **模型自己把页面弄重载了**：三次机会用完后它想找"隐藏的重开按钮"，就用键盘遍历焦点（`PRESS(tab)` 把焦点送出页面 → `PRESS(enter)` 在地址栏等于重新导航）。没有 `result.txt` 就不算分、还会被续跑（等于白拿一次重掷）。两道防线已加：`tab`/`enter`/`return`/`esc`/`escape` 被宿主侧禁用并给出说明性纠正（69 个游戏用 `e.key`/`e.code`/`keyCode` 三种写法都不使用这三个键，禁用不影响玩法），system prompt 的 Evidence 段写明"成功或没有剩余尝试后页面冻结、没有隐藏重开入口、也没有可发现的东西"。历史实例：trim 批 C39（续跑后从 0 变 1）、contract 批 C30（作废） |
 
 ---
