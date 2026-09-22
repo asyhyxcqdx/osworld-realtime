@@ -101,14 +101,14 @@
     <div class="intro-box">
       <div class="intro-title">Random Recovery 随机起身处决</div>
       <div class="intro-rule">In a torchlit dungeon, you've struck down an <b>undead guard</b>. It lies still for a <b>random time</b> — but you never know when it will lurch back up.<br>Watch it rise, and <b>press SPACE to execute it the instant it stands fully upright</b>. Strike too early (while it's still down or rising) and you'll waste your blow.<br>幽暗地牢中，你击倒了一个<b>不死守卫</b>。它倒地躺一段<b>随机时间</b>——但你永远不知道它何时突然起身。<br>看着它起身，<b>在它完全站直的瞬间按空格处决</b>。按早了（它还躺着或正在起身）会落空。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Wrong timing! 时机不对！</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -407,13 +407,25 @@
     })(t0);
   }
 
-  // 输入：空格触发 Start/Next（phase 隔离）；游戏内空格 = 处决
+  // 输入：Start/Next 只能点按钮（P1，2026-09-22）；游戏内空格 = 处决
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   addEventListener("keydown", (e)=>{
     const isSpace = e.code === "Space" || e.key === " " || e.keyCode === 32;
     if (!isSpace) return;
     e.preventDefault();
-    if (!introEl.classList.contains("hidden")) { startGame(); return; }
-    if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
+    if (!introEl.classList.contains("hidden")) return;   // P1：空格不再开局（只允许点按钮），也不触发游戏动作
+    if (!retryEl.classList.contains("hidden")) return;   // P1：重试页同上
     if (e.repeat) return;
     doExecute();
   });

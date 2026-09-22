@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Grapple Swing 钩爪荡</div>
       <div class="intro-rule">You hang from a grapnel on the left and swing rightward. Release <b>R</b> at the right moment to swing <b>as far as possible</b> and fly across the chasm onto the ground on the right.<br>你从左侧钩爪荡向右方，找准<b>让荡程最远</b>的时机按 R 释放，飞越深渊落到右侧地面。<br><br>Press R to release 按 R 释放</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Release R at the right moment 在正确时刻按 R 释放</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -398,25 +398,17 @@
     })(t0);
   }
 
-  // 释放键 = R（keydown 触发 release）
+  // 释放键 R = 游戏内动作（松手释放）
+  // 开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
   addEventListener("keydown",(e)=>{
     const k = (e.key || "").toLowerCase();
     const c = e.code || "";
     const kc = e.keyCode || e.which || 0;
-    const isSpace = k === " " || c === "Space" || kc === 32;
     const isRelease = k === "r" || c === "KeyR" || kc === 82;
+    if (k === " " || c === "Space" || kc === 32 || e.key === "Enter") { e.preventDefault(); return; }   // 空格/Enter：不落任何动作、不激活聚焦按钮
     if (isRelease) {
       e.preventDefault();
       release();
-    }
-    // 空格仅在规则页/retry 页触发 Start/Next，进入游戏后（intro 与 retryOverlay 均隐藏）不误触
-    if (isSpace) {
-      e.preventDefault();
-      if (!introEl.classList.contains("hidden")) {
-        startGame();
-      } else if (!retryOverlay.classList.contains("hidden")) {
-        nextRound();
-      }
     }
   });
   cv.addEventListener("mousedown", ()=>release());

@@ -100,14 +100,14 @@
     <div class="intro-box">
       <div class="intro-title">Erratic-Rush Dodge 随机暴冲闪避</div>
       <div class="intro-rule">A <b>shadow ghost</b> rushes at you with <b>randomly changing acceleration</b> (sometimes slow, sometimes a sudden burst). Dodge by <b>rolling under it</b> with <b>J</b> right before it reaches you!<br>一只<b>幽影</b>朝你暴冲，它的<b>加速度随机变化</b>（时而慢、时而突然暴冲）。在它逼近的瞬间按 <b>J</b> <b>翻滚压低</b>从它下面躲开！</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
       <div class="retry-sub" id="retrySub">Hit! 被击中了！</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -163,6 +163,7 @@
   let enemyV = 200;            // 幽影速度
   let enemyA = 0;              // 幽影加速度（随机游走）
   let rolling = false;         // 玩家是否正在翻滚
+  let rollUsed = false;        // 一枪制（P2）：本次冲刺是否已用掉翻滚机会
   let rollStart = 0;           // 翻滚开始时刻
   let roundStart = 0;
   let settleLock = false;
@@ -189,7 +190,7 @@
     const pose = playerPose();
     return {
       phase, enemyX:Math.round(enemyX), enemyV:Math.round(enemyV), enemyA:+enemyA.toFixed(1),
-      rolling, playerLift:+pose.lift.toFixed(1), distance:Math.round(PLAYER_X - enemyX),
+      rolling, rollUsed, rollStart, playerLift:+pose.lift.toFixed(1), distance:Math.round(PLAYER_X - enemyX),
       attempts_completed:BENCH.attempts_completed, passed:BENCH.passed, status:BENCH.status
     };
   };
@@ -201,6 +202,7 @@
     enemyV = 160 + Math.random()*150;
     enemyA = 0;
     rolling = false;
+    rollUsed = false;                              // 新的一次冲刺：翻滚机会重置（一枪制）
     roundStart = performance.now();
     settleLock = false;
     setStatus("Dodge! 闪避！","action");
@@ -209,6 +211,8 @@
   function doRoll(){
     if (phase !== "rush") return;
     if (rolling) return;
+    if (rollUsed) return;        // 一枪制（P2）：本次冲刺只有一次翻滚机会，用掉后再按无效
+    rollUsed = true;
     rolling = true;
     rollStart = performance.now();
   }
@@ -447,16 +451,24 @@
   function frame(now){ update(now); render(); requestAnimationFrame(frame); }
 
   // ============ 输入 ============
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   window.addEventListener("keydown",(e)=>{
     const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
     if (kc === 32 || k==="j" || c==="KeyJ" || kc===74) e.preventDefault();
     if (k==="j" || c==="KeyJ" || kc===74){
       doRoll();
       return;
-    }
-    if (e.code === "Space" && !e.repeat){
-      if (!introEl.classList.contains("hidden")) { startGame(); return; }
-      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
     }
   });
 

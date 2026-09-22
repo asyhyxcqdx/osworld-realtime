@@ -99,14 +99,14 @@
     <div class="intro-box">
       <div class="intro-title">Shadow Circle Escape 幽影包围圈逃离</div>
       <div class="intro-rule">You are <b>surrounded</b> by drifting <b>shadows</b> that circle around you, leaving a <b>gap</b> that shifts randomly. Wait for the gap, then <b>WASD</b> through it before it closes! Touching a shadow ends you.<br>你被一群<b>幽影</b>包围，它们绕着你<b>随机飘移</b>，中间留有一个<b>不断移动的缺口</b>。趁缺口出现，用 <b>WASD</b> 穿过去逃出包围圈！碰到幽影就完了。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
       <div class="retry-sub" id="retrySub">Caught by a shadow! 被幽影抓住了！</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -378,6 +378,18 @@
   function frame(now){ update(now); render(); requestAnimationFrame(frame); }
 
   // ============ 输入 ============
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   window.addEventListener("keydown",(e)=>{
     const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
     const up    = k==="w"||k==="arrowup"||c==="KeyW"||c==="ArrowUp"||kc===87||kc===38;
@@ -389,10 +401,6 @@
     if (down) keys.down = true;
     if (left) keys.left = true;
     if (right) keys.right = true;
-    if (e.code === "Space" && !e.repeat){
-      if (!introEl.classList.contains("hidden")) { startGame(); return; }
-      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
-    }
   });
   window.addEventListener("keyup",(e)=>{
     const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;

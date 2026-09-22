@@ -108,7 +108,7 @@ body{
   </div>
 
   <div class="row">
-    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <button class="btn" id="startBtn">Start 开始</button>
     <div class="hint" id="hint">Attempt 0 / 3 第0/3次</div>
   </div>
 
@@ -130,14 +130,14 @@ body{
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
       <div class="intro-title">Claw Grab 摆锤下抓</div>
       <div class="intro-rule">In the gold mine, a <b>retracted</b> claw hangs from the ceiling and swings like a pendulum from the <b>left side</b> with a period of <b>2 seconds per cycle</b>. A gold nugget sits at a <b>random position below</b> (always visible). Press <b>SPACE</b> when the claw swings <b>directly over the gold</b> — the claw then <b>extends, grabs the gold, and pulls back</b>. Read the gold's position + the 2s period + the live angle to time your grab.<br>在金矿里，一只<b>缩着的</b>抓斗从<b>左侧</b>像单摆一样荡下，周期为 <b>每循环 2 秒</b>。一块金块躺在下方<b>随机位置</b>（始终可见）。当抓斗摆到<b>金块正上方</b>时按 <b>空格</b>下抓——抓斗会<b>伸出、抓住金块、收回</b>。读金块位置 + 2 秒周期 + 实时角度，即可预判何时下抓。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -442,21 +442,25 @@ body{
     document.getElementById("retryOverlay").classList.remove("show");
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
+  // 空格 = 游戏内动作（下抓）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
   function onSpaceKey(e){
     if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
     if(e.repeat) return;
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    if(!introEl.classList.contains("hidden")){ e.preventDefault(); onIntroStart(); return; }   // 规则页 → Start
-    if(retryEl.classList.contains("show")){ e.preventDefault(); onNext(); return; }              // retry 页 → Next
-    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }     // 空闲 → 开始
-    if(phase==="swing"){ e.preventDefault(); doGrab(); return; }                                 // 游戏中 → 下抓
+    if(phase==="swing"){ e.preventDefault(); doGrab(); return; }
   }
 
   startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
   window.addEventListener("keydown", onSpaceKey);
   document.getElementById("introStart").addEventListener("click", onIntroStart);
   document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
+  });
 
   window.__dbg = function(){
     const a = (phase==="idle" || phase==="swing") ? alpha : grabAlpha;

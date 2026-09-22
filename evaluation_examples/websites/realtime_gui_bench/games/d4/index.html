@@ -99,14 +99,14 @@
     <div class="intro-box">
       <div class="intro-title">Chase the Wisp 追鬼火</div>
       <div class="intro-rule">You are the <b>Warden of the Marsh</b>. At night, lost souls drift over the bog as <b>wisps</b> — glowing orbs that <b>sway unpredictably</b> with no fixed path. Touch a wisp with your cursor <b>before it fades (1.4s)</b> to guide it home.<br>你是<b>沼泽守夜人</b>。夜里，迷失的灵魂化作<b>鬼火</b>——一团<b>飘忽不定</b>、无固定轨迹的幽光。在它<b>消散（1.4 秒）前</b>，用光标轻轻触碰它，接引它归去。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
       <div class="retry-sub" id="retrySub">Faded 消散了</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -152,6 +152,7 @@
   let mouseX = 400, mouseY = 250;
   let lastPos = null;      // 上一出现位置（闭包内，非全局，用于避让）
   let settleLock = false;
+  let touchFired = false;   // 一枪制（P2）：本次出现是否已触碰过（置位后不再接受任何点击）
   let hitAt = 0, missAt = 0, appearTime = 0;
 
   function setStatus(t,c){ statusEl.textContent=t; statusEl.className="status "+(c||""); }
@@ -160,7 +161,7 @@
   function showToast(m){ toast.textContent=m; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),1400); }
 
   window.__dbg = function(){
-    return { phase, wispX: Math.round(wx), wispY: Math.round(wy), r: R, vx: Math.round(vx), vy: Math.round(vy),
+    return { phase, wispX: Math.round(wx), wispY: Math.round(wy), r: R, vx: Math.round(vx), vy: Math.round(vy), touchFired,
              attempts_completed: BENCH.attempts_completed, passed: BENCH.passed, status: BENCH.status };
   };
 
@@ -181,6 +182,7 @@
   function resetRound(){
     phase = "waiting";
     settleLock = false;
+    touchFired = false;                                // 新的一次出现：触碰机会重置（一枪制）
     const w = pickWisp(); wx = w.x; wy = w.y; vx = w.vx; vy = w.vy;
     appearAt = performance.now() + 500 + Math.random()*800;   // 随机延迟：时机随机
     lastNow = performance.now();
@@ -366,7 +368,11 @@
   cv.addEventListener("mousemove",(e)=>{ const p=canvasPos(e); mouseX=p.x; mouseY=p.y; });
   cv.addEventListener("click",(e)=>{
     const p = canvasPos(e); mouseX=p.x; mouseY=p.y;
-    if (phase === "out"){ if (Math.hypot(p.x-wx, p.y-wy) <= R) hit(); }
+    // 一枪制（P2）：每次出现只有一次触碰机会——第一次点击即结算，之后（含点空）锁定，不再接受任何点击
+    if (phase !== "out" || BENCH.status !== "running" || touchFired) return;
+    touchFired = true;
+    if (Math.hypot(p.x-wx, p.y-wy) <= R) hit();
+    else miss();                                             // 点空 → 立即结算失败（不再靠超时）
   });
 
   function celebrate(){ overlay.classList.add("show"); launchConfetti(); }
@@ -385,14 +391,22 @@
     })(t0);
   }
 
-  // 阻止空格/方向键/Tab 触发页面滚动、刷新、焦点切换；空格触发 Start/Next（phase 隔离）
+  // 阻止空格/方向键/Tab 触发页面滚动、刷新、焦点切换（空格不再触发 Start/Next）
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   window.addEventListener("keydown",(e)=>{
     const kc = e.keyCode||e.which||0;
     if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
-    if (e.code === "Space" && !e.repeat){
-      if (!introEl.classList.contains("hidden")) { startGame(); return; }
-      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
-    }
   });
 
   setHint(); syncURL();

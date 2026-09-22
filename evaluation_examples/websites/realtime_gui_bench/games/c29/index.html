@@ -101,14 +101,14 @@
     <div class="intro-box">
       <div class="intro-title">Fruit Slice 切水果</div>
       <div class="intro-rule">A ninja in training: a <b>watermelon</b> launches up and flies in an arc. Drag your blade <b>through</b> it mid-flight to slice it in half — miss it and it splatters on the ground.<br>忍者修炼中：一颗<b>西瓜</b>抛向空中、沿抛物线飞行。在它飞过时<b>拖动刀刃划过</b>它、一刀切成两半——切不中它就会摔碎在地上。<br><br>Drag to slice 拖动划切</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Drag through the flying fruit 划过飞行的水果</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -477,19 +477,11 @@
   });
   window.addEventListener("mouseup",()=>{ slicing = false; });
 
-  // 空格触发 Start/Next（游戏内无键盘操作，划线是唯一动作）
+  // 开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
+  // 保留空守卫：空格不做任何事，但阻止它滚动页面 / 激活聚焦中的按钮
   addEventListener("keydown",(e)=>{
-    const k=(e.key||"").toLowerCase();
-    const c=e.code||"";
-    const kc=e.keyCode||e.which||0;
-    const isSpace = k===" "||c==="Space"||kc===32;
-    if (isSpace){
-      e.preventDefault();
-      if (!introEl.classList.contains("hidden")) startGame();
-      else if (!retryOverlay.classList.contains("hidden")) nextRound();
-    }
+    if (e.code === "Space" || e.key === " " || e.keyCode === 32 || e.key === "Enter") e.preventDefault();   // 含 Enter：浏览器默认的按钮激活键
   });
-
   setHint(); syncURL();
   function startGame(){
     if (BENCH.status !== "ready") return;   // 只在 ready 时首次开始（不消耗机会）

@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Batter Up 挥棒击球</div>
       <div class="intro-rule">On the ball diamond, a fast ball is pitched your way.<br>Swing <b>just as the ball crosses the plate</b> to send it flying.<br>棒球场上，投手掷出快球——在<b>球飞过本垒板</b>的瞬间挥棒，把球击飞出去。<br><br>Space to swing 按空格挥棒</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Swing at the pitch 挥棒击球</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -484,17 +484,15 @@
   }
 
   addEventListener("keydown",(e)=>{
-    // 空格触发 Start / Next（phase 隔离：intro / retry 页生效）
-    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
-      const introShown = !introEl.classList.contains("hidden");
-      const retryShown = !retryOverlay.classList.contains("hidden");
-      if (introShown) { e.preventDefault(); startGame(); return; }
-      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
-    }
+    // 空格 = 游戏内动作（挥棒）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
-    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    if (["Space","ArrowUp"].includes(c) || e.key === "Enter") e.preventDefault();   // Enter 与 Space 同属浏览器默认按钮激活键
+    if (c === "Space" || k === " " || kc === 32 || e.key === "Enter") {
+      // 空格/Enter 在规则页/重试页既不落动作也不开局（开始/重开只允许点击按钮）
+      if (!introEl.classList.contains("hidden") || !retryOverlay.classList.contains("hidden")) return;
+    }
     const swingKey = k===" " || k==="w" || k==="arrowup" || c==="Space" || c==="KeyW" || c==="ArrowUp" || kc===32 || kc===87 || kc===38;
     if (swingKey) swing(e);
   });

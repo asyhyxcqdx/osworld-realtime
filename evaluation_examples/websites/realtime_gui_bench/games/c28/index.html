@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Parry 弹反</div>
       <div class="intro-rule">In a moonlit bamboo grove, a masked assassin's flying blade rushes at you.<br>Swing your sword to <b>parry it at the exact moment it reaches you</b>.<br>竹林月夜，蒙面刺客的飞剑疾冲而来——在<b>剑锋劈到身前的瞬间</b>挥刀格挡，把它弹开。<br><br>Space to parry 按空格弹反</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Parry at the hit moment 命中瞬间弹反</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -499,17 +499,15 @@
   }
 
   addEventListener("keydown",(e)=>{
-    // 空格触发 Start / Next（phase 隔离）
-    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
-      const introShown = !introEl.classList.contains("hidden");
-      const retryShown = !retryOverlay.classList.contains("hidden");
-      if (introShown) { e.preventDefault(); startGame(); return; }
-      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
-    }
+    // 空格 = 游戏内动作（弹反）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
-    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    if (["Space","ArrowUp"].includes(c) || e.key === "Enter") e.preventDefault();   // Enter 与 Space 同属浏览器默认按钮激活键
+    if (c === "Space" || k === " " || kc === 32 || e.key === "Enter") {
+      // 空格/Enter 在规则页/重试页既不落动作也不开局（开始/重开只允许点击按钮）
+      if (!introEl.classList.contains("hidden") || !retryOverlay.classList.contains("hidden")) return;
+    }
     const up = k===" " || k==="w" || k==="arrowup" || c==="Space" || c==="KeyW" || c==="ArrowUp" || kc===32 || kc===87 || kc===38;
     if (up) parry(e);
   });

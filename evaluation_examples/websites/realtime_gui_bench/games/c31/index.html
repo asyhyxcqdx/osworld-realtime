@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Cave Collapse 矿洞求生</div>
       <div class="intro-rule">A runaway ore cart hurtles along the raised track. <b>Crouch at the right moment</b> to duck under it.<br>矿洞深处，一辆失控的运料矿车沿着高架轨道飞驰而来——在<b>正确时机</b>下蹲蜷身，从轨道下方钻过去。<br><br>Down to crouch 按下键下蹲</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Duck under the cart 下蹲躲矿车</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -487,17 +487,12 @@
   }
 
   addEventListener("keydown",(e)=>{
-    // 空格触发 Start / Next（phase 隔离：只在 intro / retry 页生效，进游戏后空格=游戏无关，不误触）
-    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
-      const introShown = !introEl.classList.contains("hidden");
-      const retryShown = !retryOverlay.classList.contains("hidden");
-      if (introShown) { e.preventDefault(); startGame(); return; }
-      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
-    }
+    // 开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
     if (["ArrowDown","KeyS"].includes(c)) e.preventDefault();
+    if (k === " " || c === "Space" || kc === 32 || e.key === "Enter") { e.preventDefault(); return; }   // 空格/Enter：不落任何动作、不激活聚焦按钮
     const down = k==="s" || k==="arrowdown" || c==="KeyS" || c==="ArrowDown" || kc===83 || kc===40;
     if (down) crouch(e);
   });

@@ -123,7 +123,7 @@ body{
   <div class="feedback" id="feedback">Hold SPACE to charge, release at the tick 按住蓄力、到刻度松手</div>
 
   <div class="row">
-    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <button class="btn" id="startBtn">Start 开始</button>
     <div class="hint" id="hint">Attempt 1 / 3 第1/3次</div>
   </div>
 
@@ -145,14 +145,14 @@ body{
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
       <div class="intro-title">Charge Distance 蓄力距离</div>
       <div class="intro-rule">You're playing a slingshot game. A target platform sits at a distance that needs <b>65% power</b>. Press and hold <b>SPACE</b> to pull the slingshot — the charge bar fills — and release exactly when it reaches the golden <b>65% tick</b> (within ±5%) to launch the bird onto the platform. Overcharge or undercharge misses.<br>你在玩弹弓游戏。目标平台的距离需要 <b>65% 力度</b>。<b>按住空格</b>拉弹弓——蓄力条会填充——在它到达金色 <b>65% 刻度</b>（±5%）时松手，把小鸟发射上平台。蓄过头或蓄不够都会射偏。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -425,14 +425,10 @@ body{
     document.getElementById("retryOverlay").classList.remove("show");
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
+  // 空格 = 游戏内动作（蓄力）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
   function onSpaceKey(e){
     if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
     if(e.repeat) return;
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    if(!introEl.classList.contains("hidden") && phase!=="armed"){ e.preventDefault(); onIntroStart(); return; }
-    if(retryEl.classList.contains("show") && phase!=="armed"){ e.preventDefault(); onNext(); return; }
-    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }
     if(phase==="armed"){ e.preventDefault(); startCharge(); return; }
   }
   function onSpaceUp(e){
@@ -445,6 +441,14 @@ body{
   window.addEventListener("keyup", onSpaceUp);
   document.getElementById("introStart").addEventListener("click", onIntroStart);
   document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
+  });
 
   window.__dbg = function(){
     // 落平台对应力度区间（测试/Agent 可算出「蓄到多少力度会落到平台」）

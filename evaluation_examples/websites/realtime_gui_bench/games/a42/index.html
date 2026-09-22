@@ -126,7 +126,7 @@
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3</div>
       <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -134,7 +134,7 @@
     <div class="intro-box">
       <div class="intro-title">Picross Snapshot 图案局部整体</div>
       <div class="intro-rule">A pixel-art picture is hiding under a <b>cloth</b>. You get to <b>peek at its top half</b> for a moment, then the cloth <b>drops back over the whole thing</b>. Guess which full picture it is from the <b>6 candidates</b>.<br>一幅像素画藏在<b>蒙布</b>下。你只能<b>偷看它的上半部分</b>一眼，然后蒙布又<b>落下盖住整幅图</b>。从 <b>6 张候选整图</b>里猜出是哪张。</div>
-      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
 
@@ -381,14 +381,11 @@
     document.getElementById("retryOverlay").classList.add("hidden");
     startRound();
   });
-  // 空格触发 Start/Next（弹层显示时）
+  // 空格与 Enter 都是浏览器默认的「按钮激活键」：按钮聚焦时按它们会触发该按钮的 click（等价于用鼠标点它），
+  // 属浏览器默认行为、与 keydown 分支无关，故显式阻止其默认行为，堵住「聚焦按钮 + 按键」这条越权路径。
+  // 本类游戏游戏态均无空格/Enter 动作、页面内亦无文本输入框，故全时阻止、无副作用。
   document.addEventListener("keydown", (e)=>{
-    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
-    if (!space) return;
-    const introEl = document.getElementById("intro");
-    const retryEl = document.getElementById("retryOverlay");
-    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
-    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+    if (e.key === " " || e.code === "Space" || e.keyCode === 32 || e.key === "Enter") e.preventDefault();
   });
   setHint(); syncURL(); startRound();
   requestAnimationFrame(frame);

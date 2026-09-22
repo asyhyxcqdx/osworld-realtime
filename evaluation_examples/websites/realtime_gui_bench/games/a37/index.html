@@ -126,7 +126,7 @@
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3</div>
       <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -134,7 +134,7 @@
     <div class="intro-box">
       <div class="intro-title">Arc Recall 抛物线落点</div>
       <div class="intro-rule">A catapult fires a ball along a <b>parabolic arc, which flashes then disappears</b>. Remember the arc, then <b>tap the slot where the ball lands</b>.<br>一架投石车沿一条<b>抛物线弧线</b>抛出球，弧线<b>闪现后消失</b>。记住弧线，然后<b>点球实际落点的那个槽位</b>。</div>
-      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
 
@@ -421,14 +421,11 @@
     document.getElementById("retryOverlay").classList.add("hidden");
     startRound();
   });
-  // 空格触发 Start/Next（弹层显示时），进游戏后空格不误触（作答用鼠标点槽位）
+  // 空格与 Enter 都是浏览器默认的「按钮激活键」：按钮聚焦时按它们会触发该按钮的 click（等价于用鼠标点它），
+  // 属浏览器默认行为、与 keydown 分支无关，故显式阻止其默认行为，堵住「聚焦按钮 + 按键」这条越权路径。
+  // 本类游戏游戏态均无空格/Enter 动作、页面内亦无文本输入框，故全时阻止、无副作用。
   document.addEventListener("keydown", (e)=>{
-    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
-    if (!space) return;
-    const introEl = document.getElementById("intro");
-    const retryEl = document.getElementById("retryOverlay");
-    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
-    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+    if (e.key === " " || e.code === "Space" || e.keyCode === 32 || e.key === "Enter") e.preventDefault();
   });
   setHint(); syncURL(); startRound();
   requestAnimationFrame(frame);

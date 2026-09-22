@@ -13,7 +13,9 @@
 | C | 17 | 可复现动态下的感知与动作 |
 | D | 18 | 随机动态下的感知与动作 |
 
-运行网页目录只保留 69 个 `index.html`（`evaluation_examples/websites/realtime_gui_bench/games/<小写编号>/`）；69 个任务配置在 `evaluation_examples/examples/realtime_gui_bench/<UUID>.json`，清单为 `evaluation_examples/test_realtime_gui_bench.json`。游戏源是用户交付包 `RealtimeGame_v1.1(3).zip`（SHA-256 `7a4656df0e2b6b93b0bd0bb90f1830e4316d0d0d7eeef10833e244423399507a`），网页与其内 HTML 逐字节一致。
+运行网页目录只保留 69 个 `index.html`（`evaluation_examples/websites/realtime_gui_bench/games/<小写编号>/`）；69 个任务配置在 `evaluation_examples/examples/realtime_gui_bench/<UUID>.json`，清单为 `evaluation_examples/test_realtime_gui_bench.json`。游戏源是用户交付包 `RealtimeGame_v1.1(5).zip`（SHA-256 `99ff8b98ffb6a63c34ec028a56ff0f76f3ce7859cc85e2ce75f084b5614ee46d`），网页与其内 HTML 逐字节一致（69/69 已逐字节核对）。
+
+2026-09-22 的 **v1.1(5)** 相对 v1.1(3) 只改三件事，**协议版本、`BENCH` 字段、状态机与评分口径全部未变**：① **开始 / 重开只允许点击按钮**——按钮不再标注 `(Space)`，keydown 里已无开局 / 下一轮分支，并对 `Space` 与 `Enter` 显式 `preventDefault()`（否则按钮处于聚焦态时按空格会触发浏览器默认激活，变成"以为在开始、实际执行游戏动作"的假通关）；统一按钮 id 为 `#introStart` / `#startBtn` / `#revealBtn` / `#nextBtn`，游戏内操作键完全不变；② **两个游戏防枚举**：`d4` 一次出现只认第一次点击、点空立即结算失败，`d36` 加 `rollUsed`（一次冲刺只有一次翻滚机会，此前可连按 J 通关）；③ 交付包测试脚本 `test.mjs` 的调试端口改为 `--remote-debugging-port=0` + 读 `DevToolsActivePort`（并发不再串台），并修正 `d35` 测试侧低频抖动（`index.html` 未动）。**69 个 `index.html` 全部改变**，所以本次更新之前的所有成绩与新版不可比：后续运行必须换新 `run_id`，HF 数据集 `bright-star123/osworld-realtime-games` 也要重新生成逐文件 sha256 清单并重传。另注：包内 `realtime_game_test_report.json` 的 `generated_at` 仍是 2026-09-14（未随本包重新生成），其 69/69 与 CHANGELOG 1.5 节的结论一致，但不是本包实测产物。
 
 VM 内运行 `desktop_env/server/realtime.py` 和 `fmp4.py`，宿主机运行 Agent、API 适配器和 runner。镜像内两份服务文件的 SHA-256（`realtime.py` 是 `8ffc76917c4484f078f02218032ee09cc3c54650da4e0f272427d8afd7aeeab7`，`fmp4.py` 是 `923f5ff1467620c1828c45cc4d2b6c8bbca628942286ab3660b6a6a6b4d5e4cf`）与仓库同文件一致，录制前程序会再比对一次，防止旧镜像继续运行。
 
@@ -58,7 +60,7 @@ VM 内运行 `desktop_env/server/realtime.py` 和 `fmp4.py`，宿主机运行 Ag
 - KEY_DOWN 跨回合保持，直到 KEY_UP 或录制结束；模型思考期间游戏不会暂停。
 - DONE 是唯一终止动作、必须最后提交，只指示 runner 读分，本身不代表通关。
 
-VM 的 `PyAutoGUI.PAUSE=0`；整段序列只发一次 HTTP 请求，动作之间不取当前截图、不隐藏等待。VM 为每个动作回一条执行回执（`started_s`、`finished_s`、`duration_s`），**这份回执只进轨迹日志**（`action_executed` 事件）；发给模型的动作回执**不带任何时间**，只报 `action_type`、`executed`、`reward`、`done`、`last_in_decision`。原因是 `started_s` 标的是宿主注入事件的时刻，而不是世界收到它的时刻，两者之间隔着不可测的 δ——把它和帧时间戳相减会把 δ 算进去。模型侧的时间锚只有两个：每轮截图的 `task_time_s` 和 `get_frames` 每帧的 `actual_time_s`（同一时间原点）。执行失败的序列**不自动重放**，避免重复已执行的前缀。刷新/导航快捷键在宿主控制器发送前校验，禁用清单见 [BENCH 协议](REALTIME_GUI_BENCH_PROTOCOL.md#9-禁用快捷键)。
+VM 的 `PyAutoGUI.PAUSE=0`；整段序列只发一次 HTTP 请求，动作之间不取当前截图、不隐藏等待。VM 为每个动作回一条执行回执（`started_s`、`finished_s`、`duration_s`），**这份回执只进轨迹日志**（`action_executed` 事件）；发给模型的动作回执**不带任何时间**，只报 `action_type`、`executed`、`reward`、`done`、`last_in_decision`。原因是 `started_s` 标的是宿主注入事件的时刻，而不是世界收到它的时刻，两者之间隔着不可测的 δ——把它和帧时间戳相减会把 δ 算进去。模型侧的时间锚只有两个：每轮截图的 `task_time_s` 和 `get_frames` 每帧的 `actual_time_s`（同一时间原点）。执行失败的序列**不自动重放**，避免重复已执行的前缀。刷新/导航快捷键在宿主控制器发送前校验，禁用清单见 [BENCH 协议](REALTIME_GUI_BENCH_PROTOCOL.md#9-禁用快捷键)；此外本基准还禁用了焦点键 `tab` / `enter` / `return` / `esc` / `escape`——它们在 69 个游戏里都不是游戏键（三种写法下均 0/69），但会把键盘焦点送出页面，Enter 落在地址栏即等于重新导航，会把任务页弄重载（`run_error: Realtime page was reloaded, navigated, or replaced`，任务作废并续跑）。
 
 ## 录像与时间轴
 

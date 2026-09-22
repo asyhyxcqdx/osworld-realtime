@@ -126,7 +126,7 @@
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3</div>
       <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -134,7 +134,7 @@
     <div class="intro-box">
       <div class="intro-title">Flash Path 路径复现</div>
       <div class="intro-rule">A rolled-up treasure map lies before you — its route is already drawn on it. <b>Unroll the map</b> to see the route, but it's <b>starting to burn from the edges</b>! Memorize the route to the chest before the flames consume it, then pick that route from 6 candidates.<br>你面前是一卷藏宝图——路线本来就画在上面。点揭示<b>展开地图</b>看到路线，但它正从边缘<b>开始燃烧</b>！趁火焰吞没地图前记住通向宝箱的路线，然后从 6 条候选路线里认出那条路。</div>
-      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
 
@@ -540,14 +540,11 @@
     document.getElementById("retryOverlay").classList.add("hidden");
     startRound();
   });
-  // 空格触发 Start/Next（弹层显示时）
+  // 空格与 Enter 都是浏览器默认的「按钮激活键」：按钮聚焦时按它们会触发该按钮的 click（等价于用鼠标点它），
+  // 属浏览器默认行为、与 keydown 分支无关，故显式阻止其默认行为，堵住「聚焦按钮 + 按键」这条越权路径。
+  // 本类游戏游戏态均无空格/Enter 动作、页面内亦无文本输入框，故全时阻止、无副作用。
   document.addEventListener("keydown", (e)=>{
-    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
-    if (!space) return;
-    const introEl = document.getElementById("intro");
-    const retryEl = document.getElementById("retryOverlay");
-    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
-    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+    if (e.key === " " || e.code === "Space" || e.keyCode === 32 || e.key === "Enter") e.preventDefault();
   });
   setHint(); syncURL(); startRound();
   requestAnimationFrame(frame);

@@ -86,14 +86,14 @@
     <div class="intro-box">
       <div class="intro-title">Random Stomp 随机踩怪</div>
       <div class="intro-rule">A <b>mushroom enemy</b> is <b>escaping off-screen</b>! It wanders on the ground with a <b>randomly shifting path</b> — <b>jump on its head to stomp it before it gets away (4s)</b> (don't touch its side, or you'll be hit!). Move with <b>A/D</b>, jump with <b>W / Space</b>.<br>一只<b>蘑菇怪</b>正<b>逃出屏幕</b>！它在地面<b>随机游走</b>——<b>在它逃走前（4 秒）跳到它头上踩扁它</b>（别碰到它的侧面，否则你会被撞死！）。<b>A/D</b> 移动，<b>W / 空格</b> 跳。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
       <div class="retry-sub" id="retrySub">Touched the enemy! 碰到了敌人！</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -380,12 +380,24 @@
   }
 
   // ---- 输入 ----
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   window.addEventListener("keydown",(e)=>{
     const kc = e.keyCode||e.which||0;
     if (kc === 32 || kc === 37 || kc === 38 || kc === 39 || kc === 40 || kc === 9) e.preventDefault();
     if (e.code === "Space" && !e.repeat){
-      if (!introEl.classList.contains("hidden")) { startGame(); return; }
-      if (!retryEl.classList.contains("hidden") && (phase === "die" || phase === "timeout")) { nextRound(); return; }
+      if (!introEl.classList.contains("hidden")) return;   // P1：空格不再开局（只允许点按钮），也不触发游戏动作
+      if (!retryEl.classList.contains("hidden") && (phase === "die" || phase === "timeout")) return;   // P1：重试页同上
     }
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";

@@ -87,14 +87,14 @@
     <div class="intro-box">
       <div class="intro-title">Curving Bullet Dodge 弯曲子弹闪避</div>
       <div class="intro-rule">Bullets fly toward you while <b>randomly curving</b>, then <b>track you</b>. Dodge all of them with <b>A/D or ←/→</b> — keep moving and make a sudden turn at the last moment!<br>几颗子弹朝你飞来，先<b>随机弯曲</b>、再<b>追踪你</b>。用 <b>A/D 或 ←/→</b> 躲开全部——持续移动，在最后时刻<b>突然变向</b>才能甩掉！</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
       <div class="retry-sub" id="retrySub">Hit! 被击中了！</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -367,6 +367,18 @@
     requestAnimationFrame(frame);
   }
 
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   window.addEventListener("keydown",(e)=>{
     const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;
     const left = k==="a"||k==="arrowleft"||c==="KeyA"||c==="ArrowLeft"||kc===65||kc===37;
@@ -374,10 +386,6 @@
     if (kc === 32 || left || right) e.preventDefault();
     if (left) keys.left = true;
     if (right) keys.right = true;
-    if (e.code === "Space" && !e.repeat) {
-      if (!introEl.classList.contains("hidden")) { startGame(); return; }
-      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
-    }
   });
   window.addEventListener("keyup",(e)=>{
     const k = (e.key||"").toLowerCase(), c = e.code||"", kc = e.keyCode||0;

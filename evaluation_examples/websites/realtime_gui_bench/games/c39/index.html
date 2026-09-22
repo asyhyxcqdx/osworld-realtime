@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Trick Landing 滑雪转体落地</div>
       <div class="intro-rule">The skier launches off the jump and spins in the air. Press <b>J</b> at the moment his body returns upright (head up, board down) to stop the spin and land safely — spin too late and he crashes.<br>滑雪者跳出跳台空中转体，在<b>身体转回竖直（头朝上、板朝下）的瞬间</b>按 J 停止转体安全落地——转过头或没转正都会摔倒。<br><br>Press J when upright 身体转正时按 J</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Press J when the body is upright 身体转正时按 J</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -422,19 +422,14 @@
     })(t0);
   }
 
-  // 落地键 J + 空格触发 Start/Next（phase 隔离）
+  // 落地键 J = 游戏内动作（落地）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
   addEventListener("keydown",(e)=>{
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
     const isJ = k==="j"||c==="KeyJ"||kc===74;
-    const isSpace = k===" "||c==="Space"||kc===32;
+    if (k === " " || c === "Space" || kc === 32 || e.key === "Enter") { e.preventDefault(); return; }   // 空格/Enter：不落任何动作、不激活聚焦按钮
     if (isJ) { e.preventDefault(); pressLand(); }
-    if (isSpace) {
-      e.preventDefault();
-      if (!introEl.classList.contains("hidden")) startGame();
-      else if (!retryOverlay.classList.contains("hidden")) nextRound();
-    }
   });
   cv.addEventListener("mousedown", ()=>pressLand());
 

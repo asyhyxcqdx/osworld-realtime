@@ -302,6 +302,13 @@
     document.getElementById("retryOverlay").classList.remove("show");
     startRound();
   });
+  // 空格与 Enter 都是浏览器默认的「按钮激活键」：按钮聚焦时按它们会触发该按钮的 click（等价于用鼠标点它），
+  // 属浏览器默认行为、与 keydown 分支无关，故显式阻止其默认行为，堵住「聚焦按钮 + 按键」这条越权路径。
+  // 本类游戏游戏态均无空格/Enter 动作、页面内亦无文本输入框，故全时阻止、无副作用。
+  document.addEventListener("keydown", (e)=>{
+    if (e.key === " " || e.code === "Space" || e.keyCode === 32 || e.key === "Enter") e.preventDefault();
+  });
+
   buildBoard(); setHint(); syncURL();
 })();
 </script>

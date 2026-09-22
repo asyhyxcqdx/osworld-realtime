@@ -191,7 +191,7 @@
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 尝试 2 / 3</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
@@ -206,7 +206,7 @@
         Press <b>GO</b> while the <b>green</b> is lit: cars stopped, cross safely (success); on red cars are moving — you get hit (fail).<br>
         （绿灯在启动后 1.0s 亮起、持续 0.5s，之后每 1.5s 重复。Green turns on at 1.0s after Start for 0.5s, repeating every 1.5s.）
       </div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -528,12 +528,8 @@
   }
 
   // 空格触发 Start/Next/GO（phase 隔离）
+  // 空格 = 游戏内动作（GO）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
   function onSpaceKey(){
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    if(introEl && !introEl.classList.contains("hidden")){ document.getElementById("introStart").click(); return; }
-    if(retryEl.classList.contains("show")){ document.getElementById("nextBtn").click(); return; }
-    if(phase==="idle"){ startBtn.click(); return; }
     if(phase==="armed"){ onTarget(); return; }
   }
   document.addEventListener("keydown",(e)=>{
@@ -552,6 +548,14 @@
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("retryOverlay").classList.remove("show");
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 尝试 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS);
+  });
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
   });
 
   window.__dbg = function(){

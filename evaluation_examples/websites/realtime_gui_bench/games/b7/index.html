@@ -155,7 +155,7 @@ body{
   <div class="rule">Three stations fill at different speeds (1 → 3s, 2 → 1s, 3 → 2s). <b>Mouse-click each station card in the order it fills up</b> (which one fills first, click it first).<br>三个工位满格速度不同（1 号 3 秒、2 号 1 秒、3 号 2 秒）。<b>用鼠标点击工位卡片，按满格先后顺序点击</b>（谁先满先点谁）。</div>
 
   <div class="row">
-    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <button class="btn" id="startBtn">Start 开始</button>
     <div class="hint" id="hint">Attempt 1 / 3 第1/3次</div>
   </div>
 
@@ -177,14 +177,14 @@ body{
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
       <div class="intro-title">Assembly Line 流水线质检</div>
       <div class="intro-rule">You're the factory <b>quality inspector</b>. Three stations — <b>1 Feed</b>, <b>2 Weld</b>, <b>3 Paint</b> — fill up at different speeds (<b>1 → 3s, 2 → 1s, 3 → 2s</b>). Press Start, then <b>mouse-click each station card in the order it fills up</b>: whichever station's ring fills first, click that card first, and so on. Click too early or out of order and the inspection fails.<br>你是工厂<b>质检员</b>。三个工位——<b>1 号上料</b>、<b>2 号焊接</b>、<b>3 号喷涂</b>——满格速度不同（<b>1 号 3 秒、2 号 1 秒、3 号 2 秒</b>）。点 Start，然后<b>用鼠标点击工位卡片，按满格先后顺序</b>：哪个工位的进度环先满，就先点哪张卡片，依次点击。点太早或顺序错，检验失败。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -366,21 +366,20 @@ body{
     document.getElementById("retryOverlay").classList.remove("show");
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
-  function onSpaceKey(e){
-    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
-    if(e.repeat) return;
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    if(!introEl.classList.contains("hidden")){ e.preventDefault(); onIntroStart(); return; }
-    if(retryEl.classList.contains("show")){ e.preventDefault(); onNext(); return; }
-    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }
-  }
+  // 开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
 
   startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
   for(const k in st){ st[k].addEventListener("click",()=>onStation(k)); }
-  window.addEventListener("keydown", onSpaceKey);
   document.getElementById("introStart").addEventListener("click", onIntroStart);
   document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
+  });
 
   window.__dbg = function(){
     const el = (phase==="armed"||phase==="done") ? performance.now()-armNow : 0;

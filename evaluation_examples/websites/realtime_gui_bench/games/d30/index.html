@@ -88,14 +88,14 @@
     <div class="intro-box">
       <div class="intro-title">Shotgun Spread 霰弹云缩放</div>
       <div class="intro-rule">Night ambush — an enemy <b>commander</b> is in your sights, but <b>civilians</b> huddle close behind him. Your breathing makes the <b>shotgun spread circle</b> keep <b>randomly growing and shrinking</b>.<br>Press <b>SPACE</b> to fire only when the spread circle <b>covers the enemy</b> yet stays <b>out of the red civilian zone</b>.<br><br>夜间伏击——敌方<b>指挥官</b>进入你的准星，但他身后紧贴着<b>平民人质</b>。你的呼吸让<b>霰弹散布圈</b>持续<b>随机放大缩小</b>。<br>当散布圈<b>包住敌人</b>、但<b>没侵入红色人质区</b>时，按<b>空格</b>击发。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
       <div class="retry-sub" id="retrySub">Wrong spread! 散布不对！</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -387,12 +387,24 @@
     requestAnimationFrame(frame);
   }
 
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   window.addEventListener("keydown",(e)=>{
     if (e.code !== "Space" || e.repeat) return;
     e.preventDefault();
-    // phase 隔离：intro/retry 页空格触发按钮，游戏内空格才击发
-    if (!introEl.classList.contains("hidden")) { startGame(); return; }
-    if (!retryOverlay.classList.contains("hidden")) { nextRound(); return; }
+    // P1（2026-09-22）：intro/retry 页空格不再触发开局（只允许点按钮），游戏内空格才击发
+    if (!introEl.classList.contains("hidden")) return;   // P1：空格不再开局（只允许点按钮），也不触发游戏动作
+    if (!retryOverlay.classList.contains("hidden")) return;   // P1：重试页同上
     fire();
   });
 

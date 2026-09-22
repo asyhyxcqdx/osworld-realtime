@@ -453,6 +453,14 @@ body{
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   });
 
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
+  });
+
   window.__dbg = function(){
     return { phase, remainingMs, stepIdx, totalSteps:SEQ.length,
       seq:SEQ.map(s=>s.arrow), expectCode:stepIdx<SEQ.length?SEQ[stepIdx].code:null,

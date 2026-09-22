@@ -85,7 +85,7 @@
 <body>
   <div class="status" id="status">Watch the wheel spin, then tap the color under the pointer · 看转盘旋转，点指针指向的颜色</div>
   <canvas id="cv" width="800" height="420"></canvas>
-  <button class="reveal-btn" id="revealBtn">Spin 旋转 (Space)</button>
+  <button class="reveal-btn" id="revealBtn">Spin 旋转</button>
   <div class="palette" id="palette"></div>
   <div class="hint" id="hint">Attempt 0 / 3 · 第 0 / 3 次</div>
 
@@ -107,7 +107,7 @@
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
@@ -119,7 +119,7 @@
         转盘停下后霓虹灯熄灭，所有颜色都变暗。 When it stops the neon lights go out and all the colors dim.<br>
         从下方调色板点出指针指向的颜色。 Tap the color the pointer was pointing at from the palette below.
       </div>
-      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -412,15 +412,11 @@
     startRound();
   });
 
-  // 空格触发 Start/Next（弹层显示时；进游戏后空格无动作，不误触）
+  // 空格与 Enter 都是浏览器默认的「按钮激活键」：按钮聚焦时按它们会触发该按钮的 click（等价于用鼠标点它），
+  // 属浏览器默认行为、与 keydown 分支无关，故显式阻止其默认行为，堵住「聚焦按钮 + 按键」这条越权路径。
+  // 本类游戏游戏态均无空格/Enter 动作、页面内亦无文本输入框，故全时阻止、无副作用。
   document.addEventListener("keydown", (e)=>{
-    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
-    if (!space) return;
-    const introEl = document.getElementById("intro");
-    const retryEl = document.getElementById("retryOverlay");
-    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
-    else if (retryEl && retryEl.classList.contains("show")){ e.preventDefault(); retryEl.classList.remove("show"); startRound(); }
-    else if (phase === "idle"){ e.preventDefault(); onSpin(); }
+    if (e.key === " " || e.code === "Space" || e.keyCode === 32 || e.key === "Enter") e.preventDefault();
   });
 
   setHint(); syncURL(); startRound();

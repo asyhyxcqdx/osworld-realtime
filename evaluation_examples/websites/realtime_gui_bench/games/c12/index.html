@@ -101,14 +101,14 @@
     <div class="intro-box">
       <div class="intro-title">Anti-Air Gunnery 防空炮</div>
       <div class="intro-rule">Two enemy planes flash on the radar, then vanish under jamming. The <b>HIGHER</b> plane is the dive bomber — the bigger threat. Remember its position, aim the gun, and fire before the timer runs out.<br>两架敌机在雷达上闪现，随后被电子干扰消失。<b>更高的那架</b>是俯冲轰炸机——威胁更大。记住它的位置，调整炮管仰角，在倒计时结束前发射击落。<br><br>← / → aim 瞄准 &nbsp;·&nbsp; Space fire 发射</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Fire at the higher plane 击落更高的敌机</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -449,21 +449,21 @@
     })(t0);
   }
 
-  // 键盘：左右键瞄准 + 空格发射/触发 Start/Next（phase 隔离）
+  // 空格 = 游戏内动作（发射）、←→ = 瞄准；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
   addEventListener("keydown",(e)=>{
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
-    if (["ArrowLeft","ArrowRight","Space"].includes(c)) e.preventDefault();
+    if (["ArrowLeft","ArrowRight","Space"].includes(c) || e.key === "Enter") e.preventDefault();   // Enter 与 Space 同属浏览器默认按钮激活键
     const left  = k==="a" || k==="arrowleft"  || c==="KeyA" || c==="ArrowLeft"  || kc===65 || kc===37;
     const right = k==="d" || k==="arrowright" || c==="KeyD" || c==="ArrowRight" || kc===68 || kc===39;
     const space = k===" "||c==="Space"||kc===32;
     if (left) keys.left = true;
     if (right) keys.right = true;
     if (space){
-      if (!introEl.classList.contains("hidden")) startGame();
-      else if (!retryOverlay.classList.contains("hidden")) nextRound();
-      else if (phase === "aim") fire();
+      // 空格在规则页/重试页既不落动作也不开局（开始/重开只允许点击按钮）
+      if (!introEl.classList.contains("hidden") || !retryOverlay.classList.contains("hidden")) return;
+      if (phase === "aim") fire();
     }
   });
   addEventListener("keyup",(e)=>{

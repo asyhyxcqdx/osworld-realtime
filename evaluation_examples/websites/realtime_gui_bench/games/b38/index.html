@@ -182,7 +182,7 @@ body{
   <div class="feedback" id="feedback">Press and hold both keys together 同时按住双键</div>
 
   <div class="row">
-    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <button class="btn" id="startBtn">Start 开始</button>
     <div class="hint" id="hint">Attempt 1 / 3 第1/3次</div>
   </div>
 
@@ -204,14 +204,14 @@ body{
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
       <div class="intro-title">Dual Hold 双押长按</div>
       <div class="intro-rule">You're playing a rhythm game. Two <b>long hold notes</b> (long bars) fall <b>continuously</b> toward the hit line. When the note's <b>bottom edge reaches the line</b>, press and hold <b>both D and K together</b> (within 250ms). Keep holding while the bar keeps falling — release only when the note's <b>top edge leaves the line</b> (about <b>2 seconds</b> later). The progress bar shows your hold. Press too early/late, release too early/late, or not in sync, and the notes break.<br>你在玩音游。两个<b>长按音符（长条）持续下落</b>。当音符的<b>下缘到达判定线</b>时，<b>同时按住 D 和 K</b>（间隔 250ms 内）；带宽继续下落，你要持续按住——直到音符的<b>上缘离开判定线</b>（约 <b>2 秒</b>后）才松手。进度条显示按住进度。按太早/太晚、松太早/太晚、或两键不同步，音符就断了。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -430,22 +430,21 @@ body{
     document.getElementById("retryOverlay").classList.remove("show");
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
-  function onSpaceKey(e){
-    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
-    if(e.repeat) return;
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    if(!introEl.classList.contains("hidden")){ e.preventDefault(); onIntroStart(); return; }
-    if(retryEl.classList.contains("show")){ e.preventDefault(); onNext(); return; }
-    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }
-  }
+  // 开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
 
   startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
-  window.addEventListener("keydown", onSpaceKey);
   document.getElementById("introStart").addEventListener("click", onIntroStart);
   document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
+  });
 
   window.__dbg = function(){
     const el=phase==="armed"?performance.now()-armNow:0;

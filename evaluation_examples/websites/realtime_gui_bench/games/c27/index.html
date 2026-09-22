@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Air Dash 空中冲刺</div>
       <div class="intro-rule">You pilot a hover-glider through the station. A <b>blast door cycles open and shut</b> ahead — dash through <b>just as it opens</b>.<br>你驾驶悬浮滑翔翼穿过空间站通道，前方一道<b>防爆舱门周期性开合</b>——在它<b>打开的瞬间</b>冲刺穿过。<br><br>Space to dash 按空格冲刺</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Dash when the door opens 舱门打开时冲刺</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -410,17 +410,15 @@
   }
 
   addEventListener("keydown",(e)=>{
-    // 空格触发 Start / Next（phase 隔离）
-    if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
-      const introShown = !introEl.classList.contains("hidden");
-      const retryShown = !retryOverlay.classList.contains("hidden");
-      if (introShown) { e.preventDefault(); startGame(); return; }
-      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
-    }
+    // 空格 = 游戏内动作（冲刺）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
-    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    if (["Space","ArrowUp"].includes(c) || e.key === "Enter") e.preventDefault();   // Enter 与 Space 同属浏览器默认按钮激活键
+    if (c === "Space" || k === " " || kc === 32 || e.key === "Enter") {
+      // 空格/Enter 在规则页/重试页既不落动作也不开局（开始/重开只允许点击按钮）
+      if (!introEl.classList.contains("hidden") || !retryOverlay.classList.contains("hidden")) return;
+    }
     const up = k===" " || k==="w" || k==="arrowup" || c==="Space" || c==="KeyW" || c==="ArrowUp" || kc===32 || kc===87 || kc===38;
     if (up) dash(e);
   });

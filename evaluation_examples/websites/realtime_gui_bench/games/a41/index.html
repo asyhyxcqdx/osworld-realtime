@@ -126,7 +126,7 @@
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3</div>
       <div class="retry-sub">Get ready for the next try 准备下一次尝试</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -134,7 +134,7 @@
     <div class="intro-box">
       <div class="intro-title">Kitchen Order Match 厨房订单配对</div>
       <div class="intro-rule">The kitchen is slammed. Three order tickets are <b>pinned at the pass</b> — each shows a dish and which <b>table</b> it goes to. Then a server <b>grabs them away</b>. Send each dish to its <b>right table</b> from memory.<br>后厨忙翻了。三张订单票<b>贴在出餐口</b>——每张写着菜名和它要送到<b>哪一桌</b>。接着服务员<b>取走出菜</b>，订单没了。凭记忆把每道菜送到<b>对应桌号</b>。</div>
-      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
 
@@ -409,14 +409,11 @@
     document.getElementById("retryOverlay").classList.add("hidden");
     startRound();
   });
-  // 空格触发 Start/Next（弹层显示时）
+  // 空格与 Enter 都是浏览器默认的「按钮激活键」：按钮聚焦时按它们会触发该按钮的 click（等价于用鼠标点它），
+  // 属浏览器默认行为、与 keydown 分支无关，故显式阻止其默认行为，堵住「聚焦按钮 + 按键」这条越权路径。
+  // 本类游戏游戏态均无空格/Enter 动作、页面内亦无文本输入框，故全时阻止、无副作用。
   document.addEventListener("keydown", (e)=>{
-    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
-    if (!space) return;
-    const introEl = document.getElementById("intro");
-    const retryEl = document.getElementById("retryOverlay");
-    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
-    else if (retryEl && !retryEl.classList.contains("hidden")){ e.preventDefault(); retryEl.classList.add("hidden"); startRound(); }
+    if (e.key === " " || e.code === "Space" || e.keyCode === 32 || e.key === "Enter") e.preventDefault();
   });
   setHint(); syncURL(); startRound();
   requestAnimationFrame(frame);

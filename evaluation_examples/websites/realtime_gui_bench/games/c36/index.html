@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Green Release 跳投弧顶</div>
       <div class="intro-rule">The player jumps up automatically. Release <b>J</b> at the <b>instant he reaches the top of the jump</b> (the green ring) for a perfect shot.<br>球员自动起跳上升。在<b>升到最高点（绿色判定环）的瞬间</b>按 J 松手投篮，才会完美投进。<br><br>Press J at the apex 弧顶瞬间按 J</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Release J at the apex 在弧顶瞬间按 J</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -395,19 +395,14 @@
     })(t0);
   }
 
-  // 投篮键 J（松手）+ 空格触发 Start/Next（phase 隔离）
+  // 投篮键 J = 游戏内动作（松手投篮）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
   addEventListener("keydown",(e)=>{
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
     const isJ = k==="j"||c==="KeyJ"||kc===74;
-    const isSpace = k===" "||c==="Space"||kc===32;
+    if (k === " " || c === "Space" || kc === 32 || e.key === "Enter") { e.preventDefault(); return; }   // 空格/Enter：不落任何动作、不激活聚焦按钮
     if (isJ) { e.preventDefault(); pressRelease(); }
-    if (isSpace) {
-      e.preventDefault();
-      if (!introEl.classList.contains("hidden")) startGame();
-      else if (!retryOverlay.classList.contains("hidden")) nextRound();
-    }
   });
   cv.addEventListener("mousedown", ()=>pressRelease());
 

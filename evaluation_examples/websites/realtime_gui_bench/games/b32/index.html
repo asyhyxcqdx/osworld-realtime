@@ -167,7 +167,7 @@ body.started .interval-card{ opacity:0; }
   <div class="feedback" id="feedback">Keep the rhythm 跟上节奏</div>
 
   <div class="row">
-    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <button class="btn" id="startBtn">Start 开始</button>
     <div class="hint" id="hint">Attempt 0 / 3 第0/3次</div>
   </div>
 
@@ -189,14 +189,14 @@ body.started .interval-card{ opacity:0; }
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
       <div class="intro-title">Multi-Lane Rhythm 多轨道节奏</div>
       <div class="intro-rule">In this rhythm game, <b>4 notes</b> are scattered <b>randomly across 4 lanes</b> (keys <b>D F J K</b> from left to right). Before they fall, the notes stay still and each note shows the time it reaches the hit line — the <b>first note reaches the line 1.5s after Start</b>, then one every <b>0.8 second</b>. Press the matching lane key when a note hits the line (±150ms). Wrong key or bad timing breaks the rhythm.<br>在这款音游里，<b>4 个音符随机分散在 4 条轨道</b>上（从左到右对应 <b>D F J K</b>）。下落前音符会<b>静止显示</b>，且每个音符标出它到达判定线的时刻——<b>第一个音符在 Start 后 1.5 秒到达判定线</b>，之后每隔 <b>0.8 秒</b>一个。当音符到达判定线时按对应轨道键（±150 毫秒）。按错键或时机不对都会断节奏。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -427,36 +427,19 @@ body.started .interval-card{ opacity:0; }
     document.getElementById("retryOverlay").classList.remove("show");
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
-  function onSpaceKey(e){
-    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
-    if(e.repeat) return;
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    // 规则页显示时：空格触发 Start（关规则页进 idle）
-    if(!introEl.classList.contains("hidden") && phase!=="armed"){
-      e.preventDefault();
-      onIntroStart();
-      return;
-    }
-    // retry 页显示时：空格触发 Next
-    if(retryEl.classList.contains("show") && phase!=="armed"){
-      e.preventDefault();
-      onNext();
-      return;
-    }
-    // 空闲状态（startBtn 可点）：空格触发 startBtn 开始本局
-    if(phase==="idle" && !startBtn.disabled){
-      e.preventDefault();
-      startBtn.click();
-      return;
-    }
-    // 游戏进行中（armed）/ 成功后：空格不触发任何按钮（避免误触）
-  }
+  // 开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
 
   window.addEventListener("keydown", onKey);
-  window.addEventListener("keydown", onSpaceKey);
   document.getElementById("introStart").addEventListener("click", onIntroStart);
   document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
+  });
 
   window.__dbg = function(){
     return { phase, hitCount, targetN:TARGET_N, targetIntervalMs:INTERVAL_MS,

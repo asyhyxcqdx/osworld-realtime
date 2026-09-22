@@ -77,7 +77,7 @@
 <body>
   <div class="status" id="status">Watch the coin, then track the shuffle and tap its cup · 盯住硬币，跟踪戏法后点藏着它的杯子</div>
   <canvas id="cv" width="800" height="460"></canvas>
-  <button class="reveal-btn" id="revealBtn">Start 开始 (Space)</button>
+  <button class="reveal-btn" id="revealBtn">Start 开始</button>
   <div class="hint" id="hint">Attempt 0 / 3 · 第 0 / 3 次</div>
 
   <div class="toast" id="toast"></div>
@@ -98,7 +98,7 @@
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 · 第 2 / 3 次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
@@ -110,7 +110,7 @@
         你要一直盯住藏硬币的那个杯子。 Keep your eyes on the cup hiding the coin.<br>
         最后点出硬币藏在哪个杯子下。 Finally, tap the cup hiding the coin.
       </div>
-      <button class="intro-start" id="startBtn">Start 开始 (Space)</button>
+      <button class="intro-start" id="startBtn">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -417,15 +417,11 @@
     startRound();
   });
 
-  // 空格触发 Start/Next（弹层显示时；进游戏后空格无动作，不误触）
+  // 空格与 Enter 都是浏览器默认的「按钮激活键」：按钮聚焦时按它们会触发该按钮的 click（等价于用鼠标点它），
+  // 属浏览器默认行为、与 keydown 分支无关，故显式阻止其默认行为，堵住「聚焦按钮 + 按键」这条越权路径。
+  // 本类游戏游戏态均无空格/Enter 动作、页面内亦无文本输入框，故全时阻止、无副作用。
   document.addEventListener("keydown", (e)=>{
-    const space = (e.key === " " || e.code === "Space" || e.keyCode === 32);
-    if (!space) return;
-    const introEl = document.getElementById("intro");
-    const retryEl = document.getElementById("retryOverlay");
-    if (introEl && !introEl.classList.contains("hidden")){ e.preventDefault(); introEl.classList.add("hidden"); }
-    else if (retryEl && retryEl.classList.contains("show")){ e.preventDefault(); retryEl.classList.remove("show"); startRound(); }
-    else if (phase === "idle"){ e.preventDefault(); onStart(); }
+    if (e.key === " " || e.code === "Space" || e.keyCode === 32 || e.key === "Enter") e.preventDefault();
   });
 
   setHint(); syncURL(); startRound();

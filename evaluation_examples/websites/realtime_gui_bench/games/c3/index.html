@@ -101,14 +101,14 @@
     <div class="intro-box">
       <div class="intro-title">Sky Hop 云端跳跃</div>
       <div class="intro-rule">A cloud traveller hops between floating islands. A <b>hidden platform</b> flashes through the clouds for a moment, then vanishes into the mist. Remember where it was, and jump at the right moment as you auto-run to land on it.<br>云端旅人在浮空岛之间跳跃。一块<b>隐藏平台</b>在云雾中闪现片刻，随后隐入云雾消失。记住它的位置，在自动奔跑中把握时机跳起、落在上面。<br><br>Space to jump 按空格跳跃</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Jump at the right moment 把握时机跳起</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -439,18 +439,18 @@
     })(t0);
   }
 
-  // 空格触发 Start/Next + 跳跃（phase 隔离：intro/retry 页空格触发按钮，游戏内空格=跳跃）；W/Up 也跳跃
+  // 空格 = 游戏内动作（跳跃）；W/Up 同效；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
   addEventListener("keydown",(e)=>{
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
     const isSpace = k===" "||c==="Space"||kc===32;
     const isJump  = k==="w"||k==="arrowup"||c==="KeyW"||c==="ArrowUp"||kc===87||kc===38;
-    if (["Space","ArrowUp"].includes(c)) e.preventDefault();
+    if (["Space","ArrowUp"].includes(c) || e.key === "Enter") e.preventDefault();   // Enter 与 Space 同属浏览器默认按钮激活键
     if (isSpace){
-      if (!introEl.classList.contains("hidden")) startGame();
-      else if (!retryOverlay.classList.contains("hidden")) nextRound();
-      else jump();
+      // 空格在规则页/重试页既不落动作也不开局（开始/重开只允许点击按钮）
+      if (!introEl.classList.contains("hidden") || !retryOverlay.classList.contains("hidden")) return;
+      jump();
     } else if (isJump){
       jump();
     }

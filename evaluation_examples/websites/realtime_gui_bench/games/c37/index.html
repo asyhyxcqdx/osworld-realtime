@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Drift Exit 漂移出弯</div>
       <div class="intro-rule">The car drifts through the corner while its nose keeps turning. Release <b>J</b> at the moment the nose lines up with the exit arrow to regain grip and accelerate out.<br>赛车在弯道中漂移，车头持续转动。在<b>车头对准出弯方向箭头的瞬间</b>按 J 松键恢复抓地、加速出弯。<br><br>Press J when the nose points at the exit arrow 车头对准箭头时按 J</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Release J when the nose points at the exit 车头对准出口时按 J</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -400,19 +400,14 @@
     })(t0);
   }
 
-  // 出弯键 J + 空格触发 Start/Next（phase 隔离）
+  // 出弯键 J = 游戏内动作（出弯）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
   addEventListener("keydown",(e)=>{
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
     const isJ = k==="j"||c==="KeyJ"||kc===74;
-    const isSpace = k===" "||c==="Space"||kc===32;
+    if (k === " " || c === "Space" || kc === 32 || e.key === "Enter") { e.preventDefault(); return; }   // 空格/Enter：不落任何动作、不激活聚焦按钮
     if (isJ) { e.preventDefault(); pressExit(); }
-    if (isSpace) {
-      e.preventDefault();
-      if (!introEl.classList.contains("hidden")) startGame();
-      else if (!retryOverlay.classList.contains("hidden")) nextRound();
-    }
   });
   cv.addEventListener("mousedown", ()=>pressExit());
 

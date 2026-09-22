@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Parkour Vault 跑酷翻越</div>
       <div class="intro-rule">The runner sprints toward a low obstacle. Jump <b>Space</b> at the right moment to arc over it — jump too early and he lands before it, too late and he crashes into it.<br>跑者冲向低矮障碍，在<b>正确时机</b>按空格跳起、沿弧线越过障碍——跳太早落在障碍前、太晚撞上障碍。<br><br>Press Space to jump 按空格跳跃</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Jump Space at the right moment 在正确时机按空格跳</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -356,17 +356,18 @@
     })(t0);
   }
 
-  // 空格跳跃 + 空格触发 Start/Next（phase 隔离：intro/retry 页空格触发按钮，游戏内空格=跳跃）
+  // 空格 = 游戏内动作（跳跃）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮）
   addEventListener("keydown",(e)=>{
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
+    if (e.key === "Enter") e.preventDefault();   // Enter 与 Space 同属浏览器默认按钮激活键
     const isSpace = k===" "||c==="Space"||kc===32;
     if (isSpace) {
       e.preventDefault();
-      if (!introEl.classList.contains("hidden")) startGame();
-      else if (!retryOverlay.classList.contains("hidden")) nextRound();
-      else jump();   // 进入游戏后空格 = 跳跃
+      // 空格在规则页/重试页既不落动作也不开局（开始/重开只允许点击按钮）
+      if (!introEl.classList.contains("hidden") || !retryOverlay.classList.contains("hidden")) return;
+      jump();   // 空格 = 跳跃
     }
   });
   cv.addEventListener("mousedown", ()=>jump());

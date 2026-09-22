@@ -360,7 +360,7 @@
     const k = (e.key || "").toLowerCase();
     const c = e.code || "";
     const kc = e.keyCode || e.which || 0;
-    if (["ArrowLeft","ArrowRight","ArrowUp","Space"].includes(c)) e.preventDefault();
+    if (["ArrowLeft","ArrowRight","ArrowUp","Space"].includes(c) || e.key === "Enter") e.preventDefault();   // Enter 与 Space 同属浏览器默认按钮激活键
     const left  = k==="a" || k==="arrowleft"  || c==="KeyA" || c==="ArrowLeft"  || kc===65 || kc===37;
     const right = k==="d" || k==="arrowright" || c==="KeyD" || c==="ArrowRight" || kc===68 || kc===39;
     const up    = k==="w" || k===" " || k==="arrowup" || c==="KeyW" || c==="Space" || c==="ArrowUp" || kc===87 || kc===32 || kc===38;

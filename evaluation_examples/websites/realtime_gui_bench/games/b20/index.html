@@ -199,14 +199,14 @@ body{
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
       <div class="intro-title">Morse Reply 摩斯回电</div>
       <div class="intro-rule">It's a stormy night at sea. You are the ship's <b>radio operator</b> — headquarters calls, and you must reply <b>R</b> (· − ·, "received / Roger") on the <b>telegraph key</b>. <b>Press and hold</b> the key (or <b>hold the SPACE bar</b>): a <b>short hold of ≤0.2s</b> sends a dot (·), a <b>long hold of 0.2~0.5s</b> sends a dash (−), holding over <b>0.5s</b> is too long. Three holds total: short – long – short.<br>海上风雨夜，你是船上的<b>无线电操作员</b>——总部呼叫，你要用<b>发报键</b>回复摩斯字母 <b>R</b>（· − ·，代表「收到」）。<b>按住发报键（或按住空格键）</b>：<b>短按 ≤0.2 秒</b> 发点（·），<b>长按 0.2~0.5 秒</b> 发划（−），按住超过 <b>0.5 秒</b> 则太长。共按 3 次：短 – 长 – 短。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -253,6 +253,8 @@ body{
   function targetOf(i){ return SEQ[i]; }
   // 区间判定：≤200ms=短按，200~500ms=长按，>500ms=太长
   function classify(durMs){ return durMs<=SHORT_MAX ? "short" : (durMs<=LONG_MAX ? "long" : "too_long"); }
+  // 规则页未关时门控：不接受任何游戏内动作（不消耗机会、不改 status）——P1 配套（空格不再关规则页后必须显式拦）
+  function introOpen(){ const el=document.getElementById("intro"); return !!el && !el.classList.contains("hidden"); }
   function slotEls(){ return [document.getElementById("slot0"),document.getElementById("slot1"),document.getElementById("slot2")]; }
 
   function renderSeq(){
@@ -334,6 +336,7 @@ body{
   }
   function startHold(){
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
+    if (introOpen()) return;                                              // 规则页未关 → 忽略（不消耗机会、不改 status）
     if (BENCH.status === "ready") BENCH.status = "running";               // 第一次尝试：ready → running（不消耗机会）
     if(phase!=="idle") return;
     phase="holding"; downTime=performance.now();
@@ -456,11 +459,7 @@ body{
   window.addEventListener("keydown",(e)=>{
     if(e.repeat) return;
     if(!isSpace(e)) return;
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    if(!introEl.classList.contains("hidden")){ e.preventDefault(); onIntroStart(); return; }
-    if(retryEl.classList.contains("show")){ e.preventDefault(); onNext(); return; }
-    if(phase==="idle"){ e.preventDefault(); startHold(); }
+    if(phase==="idle"){ e.preventDefault(); startHold(); }   // 空格 = 游戏内动作（按住发报）；开始/重开只允许点击按钮（P1）
   });
   window.addEventListener("keyup",(e)=>{
     if(!isSpace(e)) return;
@@ -468,6 +467,14 @@ body{
   });
   document.getElementById("introStart").addEventListener("click",onIntroStart);
   document.getElementById("nextBtn").addEventListener("click",onNext);
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
+  });
 
   window.__dbg = function(){
     return {

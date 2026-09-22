@@ -126,7 +126,7 @@ body{
   <div class="feedback" id="feedback">Slide the knob to the end 把滑块滑到尾端</div>
 
   <div class="row">
-    <button class="btn" id="startBtn">Start 开始 (Space)</button>
+    <button class="btn" id="startBtn">Start 开始</button>
     <div class="hint" id="hint">Attempt 0 / 3 第0/3次</div>
   </div>
 
@@ -148,14 +148,14 @@ body{
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 第2/3次</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
       <div class="intro-title">Slide Note 滑动到尾端</div>
       <div class="intro-rule">In this rhythm game, drag the <b>note knob</b> along the straight track from <b>START</b> to the green <b>END</b> zone <b>within 2 seconds</b>. The countdown shows the remaining time — finish (release the knob at END) before it reaches 0.00. Dragging the knob off the track fails, and running out of time fails.<br>在这款音游里，沿直线滑轨把<b>音符滑块</b>从<b>起点</b>拖到绿色<b>尾端 END</b>区，须在 <b>2 秒内</b>完成。倒计时显示剩余时间——在它走到 0.00 之前完成（在 END 松手）。拖出轨道会失败，超时也会失败。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -337,20 +337,19 @@ body{
     document.getElementById("retryOverlay").classList.remove("show");
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" 第"+(BENCH.attempts_completed+1)+"/"+MAX_ATTEMPTS+"次");
   }
-  function onSpaceKey(e){
-    if(e.code!=="Space" && e.key!==" " && e.keyCode!==32) return;
-    if(e.repeat) return;
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    if(!introEl.classList.contains("hidden") && phase!=="armed"){ e.preventDefault(); onIntroStart(); return; }
-    if(retryEl.classList.contains("show") && phase!=="armed"){ e.preventDefault(); onNext(); return; }
-    if(phase==="idle" && !startBtn.disabled){ e.preventDefault(); startBtn.click(); return; }
-  }
+  // 开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
 
   startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
-  window.addEventListener("keydown", onSpaceKey);
   document.getElementById("introStart").addEventListener("click", onIntroStart);
   document.getElementById("nextBtn").addEventListener("click", onNext);
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
+  });
 
   window.__dbg = function(){
     return { phase, dragging, derailed, knobX:Math.round(knobX()), remainingMs:Math.round(DURATION_MS-(performance.now()-armNow)),

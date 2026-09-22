@@ -99,14 +99,14 @@
     <div class="intro-box">
       <div class="intro-title">Wandering Flip 游走充能</div>
       <div class="intro-rule">You are an <b>energy harvester</b>. Three <b>wandering orbs</b> drift in the dark — one is <b>charged gold</b> (collectible), and the charge <b>randomly jumps</b> between them. <b>Click the golden orb</b> while it glows <b>before they fade (3.4s)</b>.<br>你是<b>能量采集者</b>。三个<b>游走的光球</b>在黑暗中漂移——其中一个<b>充能成金色</b>（可采集），充能会在它们之间<b>随机跳跃</b>。在它们<b>消散（3.4 秒）前</b>，<b>点击发光的金色光球</b>。</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryTitle">Attempt 2 / 3 尝试 2 / 3</div>
       <div class="retry-sub" id="retrySub">Faded 消散了</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -361,14 +361,22 @@
     })(t0);
   }
 
-  // 阻止空格/方向键/Tab 触发页面滚动、刷新、焦点切换；空格触发 Start/Next（phase 隔离）
+  // 阻止空格/方向键/Tab 触发页面滚动、刷新、焦点切换（空格不再触发 Start/Next）
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   window.addEventListener("keydown",(e)=>{
     const kc = e.keyCode||e.which||0;
     if (kc === 32 || (kc >= 37 && kc <= 40) || kc === 9) e.preventDefault();
-    if (e.code === "Space" && !e.repeat){
-      if (!introEl.classList.contains("hidden")) { startGame(); return; }
-      if (!retryEl.classList.contains("hidden")) { nextRound(); return; }
-    }
   });
 
   setHint(); syncURL();

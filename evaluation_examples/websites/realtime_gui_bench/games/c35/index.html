@@ -104,14 +104,14 @@
     <div class="intro-box">
       <div class="intro-title">Graze Dodge 极限闪避</div>
       <div class="intro-rule">A homing missile has locked onto your fighter and flies in. <b>Graze past its edge</b> to break the radar lock: dodge too close and you crash; dodge too far and the radar re-locks onto you.<br>一枚追踪导弹已锁定你的战机，正飞来。贴<b>导弹边缘极限闪避</b>来甩掉雷达追踪：贴太近会撞上，躲太远雷达会重新锁定你。<br><br>↑ / ↓ or W / S to move 上下键移动战机 · <b>金色环 = 极限闪避区，红色核心 = 撞毁区</b></div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Graze past the missile's edge 贴导弹边缘极限闪避</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -381,21 +381,16 @@
     })(t0);
   }
 
-  // 移动键 + 空格触发 Start/Next（phase 隔离）
+  // 移动键 ↑↓/W/S = 游戏内动作（移动躲避）；开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
   addEventListener("keydown",(e)=>{
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";
     const kc=e.keyCode||e.which||0;
     const up = k==="arrowup"||k==="w"||c==="ArrowUp"||c==="KeyW"||kc===38||kc===87;
     const down = k==="arrowdown"||k==="s"||c==="ArrowDown"||c==="KeyS"||kc===40||kc===83;
-    const space = k===" "||c==="Space"||kc===32;
+    if (k === " " || c === "Space" || kc === 32 || e.key === "Enter") { e.preventDefault(); return; }   // 空格/Enter：不落任何动作、不激活聚焦按钮
     if (up) { e.preventDefault(); keys.up = true; }
     if (down) { e.preventDefault(); keys.down = true; }
-    if (space) {
-      e.preventDefault();
-      if (!introEl.classList.contains("hidden")) startGame();
-      else if (!retryOverlay.classList.contains("hidden")) nextRound();
-    }
   });
   addEventListener("keyup",(e)=>{
     const k=(e.key||"").toLowerCase();

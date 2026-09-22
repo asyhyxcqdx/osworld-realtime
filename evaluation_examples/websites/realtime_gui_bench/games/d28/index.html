@@ -101,14 +101,14 @@
     <div class="intro-box">
       <div class="intro-title">Random Parry 随机弹反</div>
       <div class="intro-rule">In a moonlit bamboo grove, a masked assassin's flying blade rushes at you — <b>but you never know when it will strike</b>. It flies at you at a <b>random moment</b>.<br>Swing your sword to <b>parry it at the exact moment it reaches you</b>.<br>竹林月夜，蒙面刺客的飞剑疾冲而来——<b>但你永远不知道它何时来袭</b>，它在<b>随机时刻</b>飞来。<br>在<b>剑锋劈到身前的瞬间</b>挥刀格挡，把它弹开。<br><br>Space to parry 按空格弹反</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <div class="retryOverlay hidden" id="retryOverlay">
     <div class="retry-box">
       <div class="retry-title" id="retryText">Attempt 2 / 3 第 2 / 3 次</div>
       <div class="retry-sub">Parry at the hit moment 命中瞬间弹反</div>
-      <button class="next-btn" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="next-btn" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
 
@@ -471,12 +471,24 @@
     })(t0);
   }
 
+  // P1 补漏（2026-09-22）：Enter 与 Space 都是浏览器的默认「按钮激活键」——聚焦中的 <button>
+  //（开始/下一轮按钮）会被它们直接激活，从而绕过「开始/重开只允许鼠标点击」。此处对整页显式
+  // 阻止这两类键的默认行为；preventDefault 只拦浏览器默认动作，不影响游戏自身的按键逻辑
+  //（jump / parry / execute / fire / grab / throw / hit / roll / shoot 仍由下面的处理函数触发）。
+  window.addEventListener("keydown",(e)=>{
+    const kc = e.keyCode || e.which || 0;
+    if (e.key === "Enter" || kc === 13 || e.code === "Space" || e.key === " " || kc === 32) {
+      const t = e.target, tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;   // 输入控件不拦（本类游戏无输入控件，保险起见）
+      e.preventDefault();
+    }
+  });
   addEventListener("keydown",(e)=>{
     if (e.code === "Space" || e.key === " " || e.keyCode === 32) {
       const introShown = !introEl.classList.contains("hidden");
       const retryShown = !retryOverlay.classList.contains("hidden");
-      if (introShown) { e.preventDefault(); startGame(); return; }
-      if (retryShown && phase === "over") { e.preventDefault(); nextRound(); return; }
+      if (introShown) { e.preventDefault(); return; }   // P1：空格不再开局（只允许点按钮）
+      if (retryShown && phase === "over") { e.preventDefault(); return; }   // P1：重试页同上
     }
     const k=(e.key||"").toLowerCase();
     const c=e.code||"";

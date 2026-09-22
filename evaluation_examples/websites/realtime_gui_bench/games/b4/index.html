@@ -186,7 +186,7 @@
 
   <div class="period-note">秒针 6 秒一圈（60°/秒），点 Start 后从 3 点开始走 &middot; hand sweeps <b>6s per revolution</b> (60&deg;/s) after you press Start &mdash; 指向金色 12 点时点击 (&plusmn;10&deg;) / click at the <b>GOLD 12</b> (&plusmn;10&deg;)</div>
 
-  <button class="btn" id="startBtn">Start 开始<span class="btn-sub">(Space)</span></button>
+  <button class="btn" id="startBtn">Start 开始</button>
   <div class="hint" id="hint">Attempt 1 / 3 &middot; 尝试 1 / 3</div>
 
   <div class="toast" id="toast"></div>
@@ -207,14 +207,14 @@
   <div class="overlay" id="retryOverlay">
     <div class="celeb-box">
       <div class="celeb-title" id="retryText">Attempt 2 / 3 &middot; 尝试 2 / 3</div>
-      <button class="intro-start" id="nextBtn">Next 下一轮 (Space)</button>
+      <button class="intro-start" id="nextBtn">Next 下一轮</button>
     </div>
   </div>
   <div class="intro" id="intro">
     <div class="intro-box">
       <div class="intro-title">正午鸣钟 Clock Tower</div>
       <div class="intro-rule">你是钟楼管理员，每天正午 12 点整要为全镇敲响大钟。<br>You are the bell keeper: every day at noon you must ring the bell the instant the second hand strikes <b>12</b>.<br><br>秒针静止在 3 点位置。<b>点 Start 后秒针才开始走</b>，以恒定速度转动 <b>6 秒一圈</b>（60°/秒）。表盘有四个刻度：<b>12 点是金色</b>（目标），3 / 6 / 9 点是灰色（干扰）。<br>The hand rests at 3 o'clock. <b>It starts moving only after you press Start</b>, sweeping at <b>6s per revolution</b> (60&deg;/s). Four ticks: <b>12 is GOLD</b> (target), 3/6/9 are gray (distractors).<br><br>当秒针指向金色 12 点时点击表盘敲钟——须在到达 12 点<b>前后 167ms</b> 内（&plusmn;10&deg;）。早了晚了都不算正点。<br>Click the dial when the hand points at the <b>GOLD 12</b> — within <b>167ms before or after</b> it reaches 12 (&plusmn;10&deg;).</div>
-      <button class="intro-start" id="introStart">Start 开始 (Space)</button>
+      <button class="intro-start" id="introStart">Start 开始</button>
     </div>
   </div>
   <canvas id="confetti"></canvas>
@@ -364,17 +364,7 @@
     })(t0);
   }
 
-  // 空格触发 Start/Next（phase 隔离）
-  function onSpaceKey(){
-    const introEl=document.getElementById("intro");
-    const retryEl=document.getElementById("retryOverlay");
-    if(introEl && !introEl.classList.contains("hidden")){ document.getElementById("introStart").click(); return; }
-    if(retryEl.classList.contains("show")){ document.getElementById("nextBtn").click(); return; }
-    if(phase==="idle"){ startBtn.click(); return; }
-  }
-  document.addEventListener("keydown",(e)=>{
-    if(e.code==="Space" || e.key===" "){ e.preventDefault(); onSpaceKey(); }
-  });
+  // 开始/重开只允许点击按钮（P1：不接受空格开始/下一轮；本作空格不承担游戏内动作）
 
   startBtn.addEventListener("click",()=>{ if(phase==="idle") arm(); });
   dial.addEventListener("click",onDial);
@@ -387,6 +377,14 @@
     if (BENCH.status === "passed" || BENCH.status === "failed") return;   // 终态冻结：无第四次入口
     document.getElementById("retryOverlay").classList.remove("show");
     resetToIdle(); showToast("Attempt "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS+" · 尝试 "+(BENCH.attempts_completed+1)+" / "+MAX_ATTEMPTS);
+  });
+
+  // 空格 / Enter 守卫（P1 配套）：按钮聚焦时 Space 与 Enter 都是浏览器默认激活键（等价于点击该按钮），
+  // 删掉 keydown 开始分支后已无 preventDefault —— 必须显式阻止默认行为，
+  // 否则「聚焦按钮 + 空格/Enter」仍会开局/下一轮（Enter 在 keydown 触发、Space 在 keyup 触发）。
+  // 本作两者均不承担「开始/重开」；即便空格是游戏内动作键（b37/b39），preventDefault 也只阻断浏览器默认行为，不影响自身 JS。
+  window.addEventListener("keydown",(e)=>{
+    if(e.code==="Space" || e.key===" " || e.keyCode===32 || e.key==="Enter" || e.keyCode===13) e.preventDefault();
   });
 
   window.__dbg = function(){
