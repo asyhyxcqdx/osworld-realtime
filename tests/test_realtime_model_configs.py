@@ -311,6 +311,17 @@ BEHAVIOUR_COMMAND_LINES = (
     'take the time that has passed into account before you act',
     'Use computer_wait whenever you need a known amount of time to pass',
 )
+# Replaced "review the earlier attempts to work out how they failed", which the model
+# satisfied by narrating the past. C-class traces: the earlier attempts are mentioned
+# in 49/49 tasks but never turned into a number; 62 of 63 task instances opened with a
+# lone start click (0 opened with a sequence) and 357 of 610 model rounds were
+# observation only, so attempts were spent reading instead of acting; every attempt
+# guessed a fresh delay (c36: WAIT(0.35) then WAIT(0.20), window 0.429 +-0.1 s). The
+# line has to say what to read off the failed attempt and that it decides the next one.
+ATTEMPT_REVIEW_LINES = (
+    'work out what happened: what you did, how long after the start you did it',
+    "Let that decide the next attempt's timing",
+)
 
 
 def test_every_agent_config_carries_its_variant_user_prompt():
@@ -342,6 +353,8 @@ def test_every_agent_config_carries_its_variant_user_prompt():
             assert dropped not in prompt, path.name
         for command in BEHAVIOUR_COMMAND_LINES:
             assert command in prompt, path.name
+        for review in ATTEMPT_REVIEW_LINES:
+            assert review in prompt, path.name
 
 
 def test_every_agent_prompt_is_only_the_anti_cheating_rules():

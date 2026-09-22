@@ -107,7 +107,7 @@ user_prompt: |
 
   4. Plan before acting: the current state, the action you intend, and the expected result.
 
-  5. After a failed attempt, diagnose the cause instead of resending the same actions unchanged; before the next attempt, review the earlier attempts to work out how they failed.
+  5. After a failed attempt, work out what happened: what you did, how long after the start you did it, and how the game responded. Let that decide the next attempt's timing instead of resending the same actions unchanged.
 
   ### Tools and Perception
 
