@@ -77,8 +77,9 @@ system_prompt: |
   - A valid action must be a real registered GUI action.
   - If you cannot complete the task through the GUI, you must not complete it by cheating.
   - The benchmark determines success from the environment state, not from your claims.
-  - When the game shows success or no attempts remain, call computer_done with `{}`
-    as the final tool call.
+  - When the game shows success or no attempts remain, the page freezes: there is no
+    hidden restart and nothing left to discover. Call computer_done with `{}` as the
+    final tool call.
   - If an attempt fails and another attempt is available, continue with the next attempt.
 
   ## Violations
@@ -91,9 +92,9 @@ user_prompt: |
 
   ### Real-Time Constraints
 
-  The screenshot that follows your actions is captured the moment they finish, without waiting for the screen to redraw, so it may not yet show the state they produced. An unchanged screenshot does not mean the action had no effect.
+  The screenshot that follows your actions is captured the moment they finish, without waiting for the screen to redraw, so it may not yet show the state they produced. An unchanged screenshot does not mean the action had no effect. Before doing the same action a second time, confirm that it really had no effect.
 
-  The world keeps advancing while you think and reply.
+  The world keeps advancing while you think and reply: take the time that has passed into account before you act.
 
   ### Success-Oriented Execution Policy
 
@@ -112,6 +113,8 @@ user_prompt: |
   You may call `get_frames` multiple times to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
 
   Submit one action per response.
+
+  Use computer_wait whenever you need a known amount of time to pass.
 
   Never mix `get_frames` with action tools in one response. Submit frame queries alone, wait for their results, then submit actions in a separate response.
 

@@ -301,6 +301,16 @@ DROPPED_USER_PROMPT_LINES = (
     'Only use registered tools.',
     'no hidden delay is inserted between actions',
 )
+# The three commands that had to come back. Cutting them as "redundant" cost
+# class-C tasks: without them the model stopped inserting waits, stopped
+# re-checking before repeating an action and stopped budgeting for elapsed time
+# (ds_c_trim_20260922 fell from 10/17 to 6/17). They assign timing and
+# re-checking to the model, so every variant must keep them.
+BEHAVIOUR_COMMAND_LINES = (
+    'confirm that it really had no effect',
+    'take the time that has passed into account before you act',
+    'Use computer_wait whenever you need a known amount of time to pass',
+)
 
 
 def test_every_agent_config_carries_its_variant_user_prompt():
@@ -313,7 +323,7 @@ def test_every_agent_config_carries_its_variant_user_prompt():
                 'them all in one response.')
     frames = 'You may call `get_frames` multiple times to inspect historical video frames'
     no_mix = 'Never mix `get_frames` with action tools in one response.'
-    lines = {'vanilla': 33, 'anticipatory': 33, 'video': 37, 'combine': 37}
+    lines = {'vanilla': 35, 'anticipatory': 35, 'video': 39, 'combine': 39}
     root = Path(__file__).resolve().parents[1] / 'configs' / 'realtime_agents'
     variants = {agent_id: variant for variant, agent_id in VARIANT_TO_AGENT_ID.items()}
     for path in sorted(root.glob('*.yaml')):
@@ -330,6 +340,8 @@ def test_every_agent_config_carries_its_variant_user_prompt():
         assert len(prompt.splitlines()) == lines[agent_id], path.name
         for dropped in DROPPED_USER_PROMPT_LINES:
             assert dropped not in prompt, path.name
+        for command in BEHAVIOUR_COMMAND_LINES:
+            assert command in prompt, path.name
 
 
 def test_every_agent_prompt_is_only_the_anti_cheating_rules():
@@ -360,7 +372,7 @@ def test_every_agent_prompt_is_only_the_anti_cheating_rules():
         assert (ANTI_CHEAT_FRAME_LINE in prompt) == (agent_id in {'video', 'combine'})
         assert (ANTI_CHEAT_NO_FRAME_LINE in prompt) == (agent_id in {'vanilla', 'anticipatory'})
         assert ('screenshots/frames' in prompt) == (agent_id in {'video', 'combine'})
-        assert len(lines) == (47 if agent_id in {'video', 'combine'} else 45)
+        assert len(lines) == (48 if agent_id in {'video', 'combine'} else 46)
         for retired in RETIRED_PROMPT_LINES:
             assert retired not in prompt
         for dropped in DROPPED_RULE_LINES:
