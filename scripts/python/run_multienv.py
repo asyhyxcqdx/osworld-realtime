@@ -111,6 +111,13 @@ def config() -> argparse.Namespace:
     # logging related
     parser.add_argument("--result_dir", type=str, default="./results")
     parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to run in parallel")  
+    # Realtime VM boot is the IO/CPU spike of a batch: starting 16 of them at once
+    # makes some answer /realtime/start before their screen is 1920x1080. Spawning
+    # them a few seconds apart costs seconds and removes that race.
+    parser.add_argument(
+        "--env_start_stagger_s", type=float, default=2.0,
+        help="Seconds to wait between starting each environment process (0 disables)",
+    )
     parser.add_argument("--log_level", type=str, choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], 
                        default='INFO', help="Set the logging level")
     # aws config
@@ -532,6 +539,8 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             p.daemon = True
             p.start()
             processes.append(p)
+            if args.env_start_stagger_s and i + 1 < num_envs:
+                time.sleep(args.env_start_stagger_s)
             logger.info(f"Started process {p.name} with PID {p.pid}")
         try:
             while True:

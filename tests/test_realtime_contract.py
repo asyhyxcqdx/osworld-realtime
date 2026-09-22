@@ -85,3 +85,58 @@ def test_split_shortcut_is_rejected_across_atomic_decisions():
     controller.execute_sequence([{'action_type': 'KEY_UP', 'parameters': {'key': 'ctrl'}}])
     controller.execute_sequence([{'action_type': 'PRESS', 'parameters': {'key': 'r'}}])
     assert controller._realtime_request.call_count == 3
+
+
+def _controller_for_start():
+    controller = PythonController('127.0.0.1', 1234)
+    capabilities = Mock(status_code=200)
+    return controller, capabilities
+
+
+def test_start_retries_a_busy_vm_until_it_answers(monkeypatch):
+    import desktop_env.controllers.python as python_module
+
+    controller, capabilities = _controller_for_start()
+    monkeypatch.setattr(python_module.requests, 'get', Mock(return_value=capabilities))
+    # start_realtime_recording imports it locally from the contract module
+    monkeypatch.setattr('desktop_env.realtime_contract.verify_server_source', lambda *_: 'sha')
+    monkeypatch.setattr(python_module, 'START_RETRY_DELAYS', (0.0, 0.0))  # no sleeping
+    busy = RuntimeError(
+        'Realtime endpoint /start failed (400): Set the VM screen to 1920x1080 before starting the experiment'
+    )
+    controller._realtime_request = Mock(side_effect=[busy, busy, {'session_id': 's-1'}])
+
+    data = controller.start_realtime_recording(fragment_ms=100)
+
+    assert data['session_id'] == 's-1' and data['server_source_sha256'] == 'sha'
+    assert controller.realtime_session == 's-1'
+    assert controller._realtime_request.call_count == 3
+
+
+def test_start_gives_up_after_the_retry_budget(monkeypatch):
+    import desktop_env.controllers.python as python_module
+
+    controller, capabilities = _controller_for_start()
+    monkeypatch.setattr(python_module.requests, 'get', Mock(return_value=capabilities))
+    # start_realtime_recording imports it locally from the contract module
+    monkeypatch.setattr('desktop_env.realtime_contract.verify_server_source', lambda *_: 'sha')
+    monkeypatch.setattr(python_module, 'START_RETRY_DELAYS', (0.0, 0.0))
+    timed_out = RuntimeError(
+        'Realtime endpoint /start failed (409): Timed out waiting for the first complete fragment'
+    )
+    controller._realtime_request = Mock(side_effect=timed_out)
+
+    with pytest.raises(RuntimeError, match='realtime recording failed after 3 attempts'):
+        controller.start_realtime_recording()
+    assert controller._realtime_request.call_count == 3
+
+
+def test_start_does_not_retry_a_missing_extension(monkeypatch):
+    import desktop_env.controllers.python as python_module
+
+    controller = PythonController('127.0.0.1', 1234)
+    monkeypatch.setattr(python_module.requests, 'get', Mock(return_value=Mock(status_code=404)))
+    controller._realtime_request = Mock()
+    with pytest.raises(RuntimeError, match='needs the realtime extension'):
+        controller.start_realtime_recording()
+    assert controller._realtime_request.call_count == 0

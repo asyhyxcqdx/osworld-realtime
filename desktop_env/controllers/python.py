@@ -45,6 +45,12 @@ PYAUTOGUI_PKGS_PREFIX = (
     "{command}"
 )
 
+# Retry schedule for POST /realtime/start. High --num_envs runs lose a task now and
+# then because the VM answers the first start before its screen is 1920x1080 (400)
+# or before ffmpeg produced the first fragment within its 15 s deadline (409); both
+# clear on their own, so wait a little and ask again (5 retries, about 67 s total).
+START_RETRY_DELAYS = (2.0, 5.0, 10.0, 20.0, 30.0)
+
 
 def _inject_pyautogui_input_patch(script: str) -> str:
     if "pyautogui" not in script:
@@ -520,10 +526,37 @@ class PythonController:
         server_source = verify_server_source(self.http_server)
         self.realtime_session = None
         self._realtime_held_keys = set()
-        data = self._realtime_request("POST", "/start", {"fragment_ms": fragment_ms})
-        self.realtime_session = data["session_id"]
-        data["server_source_sha256"] = server_source
-        return data
+        # A booted-but-busy VM can answer the first /start too early: the screen is
+        # not 1920x1080 yet (400) or ffmpeg misses the 15 s deadline for the first
+        # fragment (409). Both happen only at high --num_envs and both go away on
+        # their own, so retry instead of losing the task. The retry is safe because
+        # the VM's Recorder.start() stops itself before re-raising, so a failed
+        # attempt leaves no ffmpeg process and no half-open session, and the whole
+        # call is idempotent. Configuration errors are not retried.
+        last_error = None
+        for attempt, delay in enumerate((0.0,) + START_RETRY_DELAYS, start=1):
+            if delay:
+                time.sleep(delay)
+            try:
+                data = self._realtime_request("POST", "/start", {"fragment_ms": fragment_ms}, timeout=120)
+            except Exception as exc:
+                message = str(exc)
+                if "needs the realtime extension" in message:
+                    raise
+                last_error = exc
+                logger.warning(
+                    "start_realtime_recording attempt %d/%d failed, retrying in %.0fs: %s",
+                    attempt, len(START_RETRY_DELAYS) + 1,
+                    START_RETRY_DELAYS[attempt - 1] if attempt <= len(START_RETRY_DELAYS) else 0.0,
+                    message[:200],
+                )
+                continue
+            self.realtime_session = data["session_id"]
+            data["server_source_sha256"] = server_source
+            return data
+        raise RuntimeError(
+            f"realtime recording failed after {len(START_RETRY_DELAYS) + 1} attempts: {last_error}"
+        )
 
     def get_frames(self, times_s):
         return self._realtime_request("POST", "/frames", {"times_s": times_s}, timeout=180)

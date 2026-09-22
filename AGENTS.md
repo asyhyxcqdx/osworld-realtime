@@ -113,11 +113,13 @@ python scripts/python/run_realtime_batch.py \
   --run_id packy_v11_batch01 \
   --result_dir results_realtime_batches \
   --cost_dir /path/outside/repo/optional \
-  --num_envs 4 \          # 每个 env 一台 VM；默认 1，批量建议 4–8（按 CPU/内存与网关限流定）
+  --num_envs 4 \          # 每个 env 一台 VM；默认 1。高并发见下面两条说明
   --keep-going \          # 单个模型失败不中断整批
   --exclusive-keys-confirmed
 ```
 
+- **并发数怎么定**：`--num_envs` 决定吞吐，**但它同时是"宿主机负载"变量**——16 台 VM 并发时每台的帧率/延迟比 6 台时差，**实时类游戏的成绩可能因此变化**。所以**做 prompt/配置的分数 A/B 时固定同一个 `--num_envs`**（我们的 C 类对照一律用 6），只有追吞吐时才开大。
+- **高并发（≥10）会偶发 `/realtime/start` 失败**（`400 Set the VM screen to 1920x1080…` 或 `409 Timed out waiting for the first complete fragment`；实测 `num_envs=6` → 0/17 失败、`10` → 3/17、`18` → 7/17）：刚开机又赶上负载高峰的 VM 回答过早。现在宿主侧**自动重试 5 次**（等 2/5/10/20/30 秒，共约 67 秒，日志里会打 `start_realtime_recording attempt i/n failed: …`），另外 `--env_start_stagger_s`（默认 2 秒）把各台 VM 错开开机。重试是幂等的：VM 侧 `Recorder.start()` 出错时会自己 `stop()`，不留 ffmpeg、不留半开会话。**遇到失败仍先续跑补齐**（无成绩的任务会被清目录重跑）。
 - 不传 `--task/--meta` 时默认跑全部 69 个任务。
 - 结果：`<result_dir>/<model>/<run_id>/<agent>/<action_space>/<observation_type>/<domain>/<uuid>/`
 - 账单与汇总：`--cost_dir`（默认 `<result_dir>/_cost/<run_id>`），含 `cost_report.json`、`<model>_summary.json`、账单快照与网关明细。
