@@ -66,6 +66,33 @@ def test_action_tools_are_generated_from_pydantic_models():
     assert " " not in key_enum
 
 
+def test_only_wait_gets_a_realtime_specific_note_and_the_shared_note_is_untouched():
+    from desktop_env.actions import ACTION_DEFINITION_BY_TYPE
+
+    from mm_agents.realtime_protocol import REALTIME_ACTION_NOTES
+
+    # The shared note says nothing about what a wait is for in a live game, so this
+    # benchmark replaces it: the point is that a wait does not pause anything, it
+    # spends the requested time while the world keeps running.
+    assert set(REALTIME_ACTION_NOTES) == {"WAIT"}
+    wait = next(tool for tool in ACTION_TOOLS if tool["name"] == "computer_wait")
+    assert wait["description"] == REALTIME_ACTION_NOTES["WAIT"]
+    assert "does not pause" in wait["description"]
+    # It must not imply a sequence or a "next action": vanilla/video submit exactly
+    # one action per response.
+    lowered = wait["description"].lower()
+    assert "sequence" not in lowered and "next action" not in lowered
+    # Every other tool keeps the shared note, and the shared definitions stay as they
+    # are for the other agents that use desktop_env.
+    assert ACTION_DEFINITION_BY_TYPE["WAIT"].note == "wait for the specified duration"
+    for tool in ACTION_TOOLS:
+        action_type = tool["name"].replace("computer_", "").upper()
+        if action_type == "WAIT":
+            continue
+        if action_type in ACTION_DEFINITION_BY_TYPE:
+            assert tool["description"] == ACTION_DEFINITION_BY_TYPE[action_type].note
+
+
 @pytest.mark.parametrize(
     "value", [[-1], [float("nan")], [float("inf")], [], [1] * 9, [True], ["1"]]
 )

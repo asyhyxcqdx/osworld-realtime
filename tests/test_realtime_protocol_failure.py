@@ -17,6 +17,7 @@ from mm_agents.realtime_agent import ModelWire, RealtimeAgent
 from mm_agents.realtime_protocol import (
     AgentProtocolError,
     ForbiddenShortcutError,
+    validate_action,
 )
 
 TEST_SYSTEM_PROMPT = "Test-only realtime agent system prompt."
@@ -99,6 +100,32 @@ def test_protocol_violation_without_a_readable_page_leaves_no_score(tmp_path, mo
 def test_forbidden_shortcut_is_a_protocol_violation():
     assert issubclass(ForbiddenShortcutError, AgentProtocolError)
     assert issubclass(AgentProtocolError, ValueError)
+
+
+@pytest.mark.parametrize('key', ['tab', 'enter', 'return', 'esc', 'escape'])
+def test_focus_keys_are_blocked_with_a_correction_that_names_the_mistake(key):
+    # No game maps these keys, but they move focus out of the page; Enter on the
+    # address bar then reloads the page and voids the run (C39, C30 both died that
+    # way). The message the model reads must describe that, not "refreshing".
+    with pytest.raises(ForbiddenShortcutError) as error:
+        validate_action({'action_type': 'PRESS', 'parameters': {'key': key}})
+    assert 'move keyboard focus out of the game page' in str(error.value)
+    with pytest.raises(ForbiddenShortcutError):
+        validate_action({'action_type': 'HOTKEY', 'parameters': {'keys': ['ctrl', 'tab']}})
+
+
+@pytest.mark.parametrize('key', ['Tab', 'Escape'])
+def test_capitalised_focus_keys_are_rejected_by_the_schema(key):
+    # The key enum is lowercase, so these never reach the blocked-key check; they
+    # are recorded here so the two rejection paths stay distinguishable.
+    with pytest.raises(ValueError) as error:
+        validate_action({'action_type': 'PRESS', 'parameters': {'key': key}})
+    assert not isinstance(error.value, ForbiddenShortcutError)
+
+
+@pytest.mark.parametrize('key', ['space', 'r', 'e', 'j', 'd', 'f', 'k', 'up', 'down', 'left', 'right'])
+def test_keys_the_games_actually_use_stay_allowed(key):
+    assert validate_action({'action_type': 'PRESS', 'parameters': {'key': key}})
 
 
 def test_three_text_only_replies_raise_a_protocol_error():

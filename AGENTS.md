@@ -197,6 +197,7 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 | 飞书行数翻倍 | `export_realtime_results.py` 写入是**新增记录**，不是覆盖；同一次 run 只导一次，重导前先在飞书删旧行 |
 | 轨迹里的 token 比网关少 | 流中断/未完成的请求没有 `model_response` 事件，token 统计不到；金额仍以网关值为准（`--charges`） |
 | 换网关后脚本报账单接口错误 | 账单接口是 Packy 专用的；非 packyapi.ai 会自动跳过，也可显式加 `--skip-billing` |
+| 某个任务突然"无成绩"，`agent_metrics.json` 里是 `run_error: Realtime page was reloaded, navigated, or replaced` | **模型自己把页面弄重载了**：三次机会用完后它想找"隐藏的重开按钮"，就用键盘遍历焦点（`PRESS(tab)` 把焦点送出页面 → `PRESS(enter)` 在地址栏等于重新导航）。没有 `result.txt` 就不算分、还会被续跑（等于白拿一次重掷）。两道防线已加：`tab`/`enter`/`return`/`esc`/`escape` 被宿主侧禁用并给出说明性纠正（69 个游戏用 `e.key`/`e.code`/`keyCode` 三种写法都不使用这三个键，禁用不影响玩法），system prompt 的 Evidence 段写明"成功或没有剩余尝试后页面冻结、没有隐藏重开入口、也没有可发现的东西"。历史实例：trim 批 C39（续跑后从 0 变 1）、contract 批 C30（作废） |
 
 ---
 

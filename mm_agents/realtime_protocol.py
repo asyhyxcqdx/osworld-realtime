@@ -65,6 +65,22 @@ def _provider_parameters_schema(model):
     return clean(schema)
 
 
+# Notes that only this benchmark's agents see. The shared ACTION_DEFINITIONS in
+# desktop_env/actions.py stay untouched, because other agents (and the VM side) use
+# them too. WAIT is the only action whose shared note says nothing about what it is
+# for in a live game: it does not pause anything, it spends the requested time while
+# the world keeps running, which is what makes it the way to control timing. The
+# sentence deliberately says nothing about "the next action" or "a sequence":
+# vanilla/video submit exactly one action per response and have no sequence at all,
+# and the prompt already owns how actions are laid out (single action vs one batch).
+REALTIME_ACTION_NOTES = {
+    "WAIT": (
+        "wait for the specified duration. It does not pause the game: the world keeps running "
+        "while it spends exactly that much time, so use it to make a known amount of time pass."
+    ),
+}
+
+
 def _build_action_tools():
     tools = []
     names = {}
@@ -76,7 +92,7 @@ def _build_action_tools():
         tools.append(
             {
                 "name": tool_name,
-                "description": definition.note,
+                "description": REALTIME_ACTION_NOTES.get(action_type, definition.note),
                 "parameters": parameters,
             }
         )
@@ -106,7 +122,19 @@ _BLOCKED_SINGLE_KEYS = {
     "browserback",
     "browserforward",
     "browserhome",
+    # Focus and confirmation keys. No game maps them in any encoding (0/69 by
+    # e.key, e.code or keyCode), but they walk focus out of the page into the
+    # browser chrome, where Enter on the address bar reloads the page and voids
+    # the run. Blocking them turns an accidental reload into a correctable error.
+    "tab",
+    "enter",
+    "return",
+    "esc",
+    "escape",
 }
+# Subset that is blocked for a different reason, so the correction the model
+# reads names the actual mistake instead of talking about refreshing.
+_FOCUS_KEYS = {"tab", "enter", "return", "esc", "escape"}
 _BLOCKED_COMBINATIONS = {
     frozenset({"ctrl", "r"}),
     frozenset({"ctrl", "shift", "r"}),
@@ -146,6 +174,18 @@ def _is_blocked_key_sequence(keys):
     )
 
 
+def _blocked_key_message(keys):
+    """Say what actually went wrong, so the correction the model reads is useful."""
+    normalised = {_normalise_key(key) for key in keys}
+    if normalised & _FOCUS_KEYS:
+        return (
+            "Tab, Enter and Escape are not game controls: they move keyboard focus out of the "
+            "game page, and Enter there reloads it, which invalidates the run. Use the game's "
+            "visible controls instead."
+        )
+    return "Refreshing or navigating away from the game page is forbidden."
+
+
 def validate_action(action):
     if not isinstance(action, dict) or set(action) - {"action_type", "parameters"}:
         raise ValueError("An action has action_type and optional parameters only.")
@@ -163,10 +203,10 @@ def validate_action(action):
     except ValidationError as exc:
         raise ValueError(str(exc)) from exc
     if action_type == "PRESS" and _is_blocked_key_sequence([params["key"]]):
-        raise ForbiddenShortcutError("Refreshing or navigating away from the game page is forbidden.")
+        raise ForbiddenShortcutError(_blocked_key_message([params["key"]]))
     if action_type == "HOTKEY":
         if _is_blocked_key_sequence(params.get("keys", [])):
-            raise ForbiddenShortcutError("Refreshing or navigating away from the game page is forbidden.")
+            raise ForbiddenShortcutError(_blocked_key_message(params.get("keys", [])))
     return action
 
 
