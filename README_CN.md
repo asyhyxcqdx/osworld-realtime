@@ -1,6 +1,6 @@
 # Realtime GUI 项目入口
 
-基于 OSWorld 的实时 GUI Agent 基准：**69 个网页游戏 × 4 组 Agent × 多模型**，游戏接口协议 `realtime-gui-bench/1.1`，最终环境 RealtimeGame v1.1(3)。
+基于 OSWorld 的实时 GUI Agent 基准：**69 个网页游戏 × 4 组 Agent × 多模型**，游戏接口协议 `realtime-gui-bench/1.1`，最终环境 RealtimeGame v1.1(5)。
 
 - 要**跑批量实验**（69 任务 × 多模型、写飞书总表）→ [执行同学作业单](HANDOFF_CN.md)（外部同学跑 5 个模型，`claude-sonnet-5` / `gpt-5.6-sol` / `gemini-3.8-flash` 由我们跑）
 - 是 **AI 助手**，或要改代码 → [AGENTS.md](AGENTS.md)（操作规程：仓库地图、硬性约定、已知坑）

@@ -1,6 +1,6 @@
 # 实时 GUI Agent：项目与实验设计
 
-环境是 RealtimeGame v1.1(3) 的 69 道网页游戏与最终 realtime VM 镜像。游戏接口字段、状态机与验收标准见 [BENCH 协议](REALTIME_GUI_BENCH_PROTOCOL.md)，模型与坐标协议见 [模型配置表](configs/realtime_agents/README.md)，YAML 字段与运行流程见 [Agent 配置与运行](REALTIME_AGENT_GUIDE.md)。
+环境是 RealtimeGame v1.1(5) 的 69 道网页游戏与最终 realtime VM 镜像。游戏接口字段、状态机与验收标准见 [BENCH 协议](REALTIME_GUI_BENCH_PROTOCOL.md)，模型与坐标协议见 [模型配置表](configs/realtime_agents/README.md)，YAML 字段与运行流程见 [Agent 配置与运行](REALTIME_AGENT_GUIDE.md)。
 
 截图与 VM 执行坐标统一为原生 1920×1080，图片不预缩放；Gemini、MiniMax 的模型层按各自配置输出相对坐标、由代码固定转换，其余模型保持原生坐标。
 

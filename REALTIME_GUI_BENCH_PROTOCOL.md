@@ -2,7 +2,7 @@
 
 版本：`realtime-gui-bench/1.1`
 
-本文是 69 道 Realtime GUI Bench 游戏网页的正式接口规范。每个网页必须在浏览器全局对象中暴露统一的 `window.BENCH` 状态，OSWorld checker 只读取这个状态中的正式字段评分。游戏内部可以有任意玩法和内部状态，但不能改变本协议规定的字段语义。协议版本 `realtime-gui-bench/1.1` 与基准包版本 `RealtimeGame v1.1(3)` 是两个不同的编号。
+本文是 69 道 Realtime GUI Bench 游戏网页的正式接口规范。每个网页必须在浏览器全局对象中暴露统一的 `window.BENCH` 状态，OSWorld checker 只读取这个状态中的正式字段评分。游戏内部可以有任意玩法和内部状态，但不能改变本协议规定的字段语义。协议版本 `realtime-gui-bench/1.1` 与基准包版本 `RealtimeGame v1.1(5)` 是两个不同的编号。
 
 ## 1. 适用范围
 
