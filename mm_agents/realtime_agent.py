@@ -11,6 +11,7 @@ import os
 import time
 
 import requests
+from pydantic import ValidationError
 
 from mm_agents.realtime_config import validate_key_env, validate_thinking
 from mm_agents.realtime_coordinates import CoordinateAdapter
@@ -895,6 +896,8 @@ class RealtimeAgent:
                 if not self.frames:
                     raise AgentProtocolError("This agent group has no frame query tool.")
                 results = []
+                rejected_arguments = False
+                too_many_arguments = False
                 for call in frame_calls:
                     self.counters["tool_calls"] += 1
                     started = time.monotonic()
@@ -908,15 +911,46 @@ class RealtimeAgent:
                             raise AgentProtocolError(
                                 "Unknown tool; only get_frames is available."
                             )
-                        args = (
-                            GetFramesArgs.model_validate_json(call["arguments"])
-                            if isinstance(call["arguments"], str)
-                            else GetFramesArgs.model_validate(call["arguments"])
-                        )
-                        if self.frame_query is None:
-                            raise RuntimeError("Frame query callback is not connected.")
-                        self.counters["frame_queries"] += 1
-                        result = self.frame_query(args.times_s)
+                        try:
+                            args = (
+                                GetFramesArgs.model_validate_json(call["arguments"])
+                                if isinstance(call["arguments"], str)
+                                else GetFramesArgs.model_validate(call["arguments"])
+                            )
+                        except ValidationError:
+                            # Malformed frame arguments are the model's own mistake, not a
+                            # recording failure. Say what to fix, and count it once per reply
+                            # against the same per-decision correction budget as an action
+                            # error; a reply that keeps breaking the budget ends the decision.
+                            if not rejected_arguments:
+                                rejected_arguments = True
+                                errors += 1
+                                self.emit(
+                                    {
+                                        "event": "format_error",
+                                        "request_id": request_id,
+                                        "message": (
+                                            "get_frames takes times_s as a list of 1-8 "
+                                            "task-relative seconds, for example [8.0]."
+                                        ),
+                                        "correction": errors,
+                                        "will_retry": errors <= 2,
+                                    }
+                                )
+                                too_many_arguments = errors > 2
+                            result = {
+                                "status": "invalid_arguments",
+                                "message": (
+                                    "times_s must be a list of 1-8 task-relative seconds, for "
+                                    "example [8.0]. Nothing was executed."
+                                ),
+                                "frames": [],
+                            }
+                        else:
+                            if self.frame_query is None:
+                                raise RuntimeError("Frame query callback is not connected.")
+                            self.counters["frame_queries"] += 1
+                            result = self.frame_query(args.times_s)
                     except (ValueError, RuntimeError, requests.RequestException) as exc:
                         result = {"status": "error", "message": str(exc)}
                     self.counters["images_returned"] += sum(
@@ -938,6 +972,12 @@ class RealtimeAgent:
                         }
                     )
                     results.append((call, result))
+                # Raised outside the loop's try: AgentProtocolError subclasses ValueError and
+                # would otherwise be swallowed into another tool result.
+                if too_many_arguments:
+                    raise AgentProtocolError(
+                        "Too many invalid tool arguments in one decision."
+                    )
                 round_messages.extend(self.wire.tool_results(results))
                 continue
             errors += 1

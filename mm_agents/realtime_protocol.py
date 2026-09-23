@@ -24,14 +24,18 @@ FRAME_TOOL = {
     "description": (
         "Read historical screen images at 1-8 task-relative times in seconds. "
         "Results come back in the same order as the times you send, so the first "
-        "result answers your first time. Each result has actual_time_s and status, "
-        "where actual_time_s is the timestamp of the frame actually returned: the "
-        "nearest recorded frame to the time you asked for (the recording runs at "
-        "about 30 frames per second). Use actual_time_s, not the time you "
-        "requested, for every comparison between frames. "
-        "ok includes an image; not_ready means that time is not yet readable "
-        "and includes available_until_s; error means decoding failed. "
-        "No keyboard or mouse action is executed. You may query again before acting."
+        "result answers your first time. Each returned frame has its own status: "
+        "ok includes an image; not_ready means that time is not yet readable and "
+        "includes available_until_s; error means that frame could not be decoded. "
+        "actual_time_s is the timestamp of the frame actually returned: the nearest "
+        "recorded frame to the time you asked for (the recording runs at about 30 "
+        "frames per second). Use actual_time_s, not the time you requested, for "
+        "every comparison between frames. If the request itself is rejected, no "
+        "frames come back and the result carries its own status instead: "
+        "invalid_arguments means your arguments were rejected and nothing ran - fix "
+        "them and send the same query again (times_s is a list of 1-8 task-relative "
+        "seconds, for example [8.0]). No keyboard or mouse action is executed. You "
+        "may query again before acting."
     ),
     "parameters": GetFramesArgs.model_json_schema(),
 }

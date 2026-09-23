@@ -7,6 +7,7 @@ import pytest
 import requests
 
 from mm_agents.realtime_agent import ModelWire, RealtimeAgent, response_reasoning
+from mm_agents.realtime_protocol import AgentProtocolError
 from mm_agents.realtime_stream import collect_stream
 
 
@@ -246,6 +247,24 @@ def anthropic_tool_events(name, arguments, *, stop_reason='tool_use'):
     ]
 
 
+def anthropic_parallel_tool_events(calls, *, stop_reason='tool_use'):
+    """One finished anthropic message carrying several raw tool_use blocks."""
+    events = [
+        {'type': 'message_start', 'message': {'id': 'm1', 'role': 'assistant', 'content': [], 'usage': {'input_tokens': 1, 'output_tokens': 1}}},
+    ]
+    for index, (name, arguments) in enumerate(calls):
+        events += [
+            {'type': 'content_block_start', 'index': index, 'content_block': {'type': 'tool_use', 'id': f'a{index}', 'name': name, 'input': {}}},
+            {'type': 'content_block_delta', 'index': index, 'delta': {'type': 'input_json_delta', 'partial_json': arguments}},
+            {'type': 'content_block_stop', 'index': index},
+        ]
+    events += [
+        {'type': 'message_delta', 'delta': {'stop_reason': stop_reason}, 'usage': {'output_tokens': 5}},
+        {'type': 'message_stop'},
+    ]
+    return events
+
+
 def test_messages_unparsable_arguments_are_kept_verbatim_for_the_log():
     # Seen in the wild: deepseek-flash drops the array brackets of the only
     # array-typed parameter ({"times_s": 6.0, 6.5, 7.0} instead of [6.0, 6.5, 7.0]).
@@ -268,7 +287,7 @@ def test_messages_unparsable_action_arguments_are_corrected_not_fatal(monkeypatc
     assert agent.pending_action_calls
 
 
-def test_messages_unparsable_frame_arguments_return_an_error_result(monkeypatch):
+def test_messages_unparsable_frame_arguments_are_corrected_not_an_error_result(monkeypatch):
     bad = sse(anthropic_tool_events('get_frames', '{"times_s": 6.0, 6.5, 7.0}'))
     good = sse(tool_events('anthropic_messages', key='space'))
     agent = agent_with_http(monkeypatch, 'anthropic_messages', [bad, good])
@@ -278,8 +297,43 @@ def test_messages_unparsable_frame_arguments_return_an_error_result(monkeypatch)
         {'action_type': 'PRESS', 'parameters': {'key': 'space'}}]
     query.assert_not_called()  # nothing was executed, the model just re-asks
     result = next(e for e in agent.last_events if e['event'] == 'tool_result')
-    assert result['result']['status'] == 'error'
+    # Bad frame arguments are the model's mistake, not a recording failure: the
+    # result says so instead of reporting "error", and the correction is counted.
+    assert result['result']['status'] == 'invalid_arguments'
+    assert 'times_s' in result['result']['message']
+    correction = next(e for e in agent.last_events if e['event'] == 'format_error')
+    assert correction['correction'] == 1 and correction['will_retry'] is True
+    assert 'times_s' in correction['message']
     assert agent.wire.session.post.call_count == 2
+
+
+def test_three_bad_frame_argument_replies_in_one_decision_are_fatal(monkeypatch):
+    bad = [sse(anthropic_tool_events('get_frames', '{"times_s": 6.0, 6.5, 7.0}')) for _ in range(3)]
+    agent = agent_with_http(monkeypatch, 'anthropic_messages', bad)
+    agent.bind_frame_query(Mock())
+    with pytest.raises(AgentProtocolError):
+        agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
+    corrections = [e for e in agent.last_events if e['event'] == 'format_error']
+    assert [e['correction'] for e in corrections] == [1, 2, 3]
+    assert [e['will_retry'] for e in corrections] == [True, True, False]
+    assert agent.wire.session.post.call_count == 3  # same decision, three replies
+
+
+def test_three_bad_frame_requests_in_one_reply_count_as_one_correction(monkeypatch):
+    # Seen in the wild (C39): one reply splits a single query into three scalar calls.
+    # That is one mistake, so it must cost one correction, not the whole budget.
+    bad = sse(anthropic_parallel_tool_events([('get_frames', '{"times_s": 8.0}')] * 3))
+    good = sse(tool_events('anthropic_messages', key='space'))
+    agent = agent_with_http(monkeypatch, 'anthropic_messages', [bad, good])
+    query = Mock()
+    agent.bind_frame_query(query)
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1] == [
+        {'action_type': 'PRESS', 'parameters': {'key': 'space'}}]
+    query.assert_not_called()
+    results = [e for e in agent.last_events if e['event'] == 'tool_result']
+    assert [e['result']['status'] for e in results] == ['invalid_arguments'] * 3
+    corrections = [e for e in agent.last_events if e['event'] == 'format_error']
+    assert [e['correction'] for e in corrections] == [1]  # once per reply, not per call
 
 
 def test_gateway_reused_indices_with_distinct_ids_remain_separate(monkeypatch):

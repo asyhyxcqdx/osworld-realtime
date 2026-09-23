@@ -1,6 +1,6 @@
 # AGENTS.md — 给 AI 编码助手的操作手册
 
-这个仓库是 **OSWorld 的实时 GUI Agent 基准**（RealtimeGame v1.1(3)：69 个网页游戏 × 四类 Agent × 多模型）。
+这个仓库是 **OSWorld 的实时 GUI Agent 基准**（RealtimeGame v1.1(5)：69 个网页游戏 × 四类 Agent × 多模型）。
 本文件是给 AI 助手（Codex / Claude Code / Cursor / DSH 等）看的**唯一操作规程**：接手时先读完本文件，再动手。
 面向人的项目介绍见 [`README_CN.md`](README_CN.md)。
 
