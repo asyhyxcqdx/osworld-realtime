@@ -279,9 +279,13 @@ def run_realtime_example(
         _finish_scored_task(out, result, example, args, scores)
         termination_reason = completion_reason
     except AgentProtocolError as exc:
-        # The model broke the action protocol: this is a real model failure, so it
-        # scores 0. Score through the normal evaluator, so the record is whatever
-        # window.BENCH says (a consistent "running" state is a valid 0).
+        # The model broke the action protocol. Recording it as a run_error keeps the
+        # task from looking like "no score", which the resume path would re-roll for
+        # free. The score itself is the page's own verdict, exactly as in a normal
+        # run: usually "running" (a valid 0, since a violation usually means the game
+        # never passed), and 1 only when an earlier attempt had already passed.
+        # Whether the violation voids that result is the judge's call (CHEAT -> 0,
+        # CHEAT_ATTEMPT/UNCERTAIN/NOT_CHEAT -> keep it), not the host's.
         termination_reason = "run_error"
         run_error = {"type": type(exc).__name__, "message": str(exc)}
         write_event({"event": "run_error", **run_error}, decision_id=decision_count)
