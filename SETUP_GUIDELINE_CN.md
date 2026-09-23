@@ -36,8 +36,8 @@ cp .env.example .env && chmod 600 .env
 PACKY_CLAUDE_SONNET_5_API_KEY   claude-sonnet-5
 PACKY_GPT_5_6_SOL_API_KEY       gpt-5.6-sol
 PACKY_GEMINI_3_8_FLASH_API_KEY  gemini-3.8-flash
-PACKY_QWEN3_8_MAX_0902_API_KEY  qwen3.8-max-0902
-PACKY_KIMI_K3_API_KEY           kimi-k3
+DASHSCOPE_QWEN3_8_MAX_0902_API_KEY  qwen3.8-max-0902   （DashScope 兼容模式）
+DASHSCOPE_KIMI_K3_API_KEY           kimi-k3            （DashScope 兼容模式）
 PACKY_DEEPSEEK_FLASH_API_KEY    deepseek-flash
 PACKY_GLM_5_3_FLASH_API_KEY     glm-5.3-flash
 PACKY_MINIMAX_M3_API_KEY        MiniMax-M3

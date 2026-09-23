@@ -698,6 +698,41 @@ def test_absent_or_opaque_reasoning_is_not_invented():
     }
 
 
+def test_responses_reasoning_text_survives_every_gateway_shape():
+    """DashScope returns the chain in content[], OpenAI in summary[]; keep both.
+
+    The compatible-mode gateway used for qwen3.8-max-0902 / kimi-k3 answers with
+    ``summary: []`` and ``content: [{"type": "reasoning_text", ...}]``. Reading only
+    ``summary`` logged an empty reasoning field for every such turn even though the
+    provider had returned the text.
+    """
+    assert response_reasoning({"output": [{"type": "reasoning", "summary": [], "content": [
+        {"type": "reasoning_text", "text": "先看画面"},
+        {"type": "reasoning_text", "text": "再点击"},
+    ]}]}, "openai_responses") == {
+        "reasoning": ["先看画面", "再点击"], "reasoning_status": "returned",
+    }
+    assert response_reasoning({"output": [{"type": "reasoning", "summary": [
+        {"type": "summary_text", "text": "摘要"},
+    ]}]}, "openai_responses") == {
+        "reasoning": ["摘要"], "reasoning_status": "returned",
+    }
+    # The detailed chain wins when a gateway sends both, so nothing is duplicated.
+    assert response_reasoning({"output": [{"type": "reasoning", "summary": [
+        {"type": "summary_text", "text": "摘要"},
+    ], "content": [{"type": "reasoning_text", "text": "全文"}]}]}, "openai_responses") == {
+        "reasoning": ["全文"], "reasoning_status": "returned",
+    }
+    assert response_reasoning({"output": [{"type": "reasoning", "summary": [], "content": []}]}, "openai_responses") == {
+        "reasoning": [], "reasoning_status": "not_returned",
+    }
+    assert response_reasoning({"output": [
+        {"type": "reasoning", "summary": [], "encrypted_content": "opaque"},
+    ]}, "openai_responses") == {
+        "reasoning": [], "reasoning_status": "opaque",
+    }
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_anthropic_thinking_summary_payload_is_explicit(monkeypatch, enabled):
     monkeypatch.setenv("PACKY_API_KEY", "test-key")

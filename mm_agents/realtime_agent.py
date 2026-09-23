@@ -93,7 +93,14 @@ def response_reasoning(response, protocol):
     elif protocol == "openai_responses":
         for item in response.get("output", []):
             if item.get("type") == "reasoning":
-                texts.extend(b["text"] for b in item.get("summary", []) if b.get("text"))
+                # Gateways disagree on where the readable chain goes. OpenAI leaves
+                # ``summary`` populated and keeps the raw chain encrypted, while
+                # DashScope's compatible mode returns ``summary: []`` and puts the
+                # text in ``content`` as ``{"type": "reasoning_text", ...}``. Read the
+                # detailed chain when it is there and fall back to the summary, so
+                # neither shape is silently dropped.
+                detail = [b["text"] for b in item.get("content", []) if b.get("text")]
+                texts.extend(detail or [b["text"] for b in item.get("summary", []) if b.get("text")])
                 opaque |= bool(item.get("encrypted_content"))
     else:
         for choice in response.get("choices", []):

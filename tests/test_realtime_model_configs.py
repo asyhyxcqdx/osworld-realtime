@@ -15,14 +15,17 @@ from mm_agents.realtime_config import agent_kwargs, default_config_path, load_re
 
 
 MODELS = {
-    'claude-sonnet-5': ('anthropic_messages', 'PACKY_CLAUDE_SONNET_5_API_KEY', 128000),
-    'gpt-5.6-sol': ('openai_responses', 'PACKY_GPT_5_6_SOL_API_KEY', 128000),
-    'gemini-3.8-flash': ('openai_chat', 'PACKY_GEMINI_3_8_FLASH_API_KEY', 65536),
-    'qwen3.8-max-0902': ('anthropic_messages', 'PACKY_QWEN3_8_MAX_0902_API_KEY', 128000),
-    'kimi-k3': ('anthropic_messages', 'PACKY_KIMI_K3_API_KEY', 128000),
-    'deepseek-flash': ('anthropic_messages', 'PACKY_DEEPSEEK_FLASH_API_KEY', 128000),
-    'glm-5.3-flash': ('anthropic_messages', 'PACKY_GLM_5_3_FLASH_API_KEY', 128000),
-    'MiniMax-M3': ('anthropic_messages', 'PACKY_MINIMAX_M3_API_KEY', 128000),
+    # model: (protocol, key environment variable, output limit, thinking effort)
+    'claude-sonnet-5': ('anthropic_messages', 'PACKY_CLAUDE_SONNET_5_API_KEY', 128000, 'high'),
+    'gpt-5.6-sol': ('openai_responses', 'PACKY_GPT_5_6_SOL_API_KEY', 128000, 'high'),
+    'gemini-3.8-flash': ('openai_chat', 'PACKY_GEMINI_3_8_FLASH_API_KEY', 65536, 'high'),
+    # qwen/kimi run on DashScope's compatible mode, whose Anthropic proxy drops
+    # images, so they use the Responses protocol and its xhigh/max tiers.
+    'qwen3.8-max-0902': ('openai_responses', 'DASHSCOPE_QWEN3_8_MAX_0902_API_KEY', 128000, 'xhigh'),
+    'kimi-k3': ('openai_responses', 'DASHSCOPE_KIMI_K3_API_KEY', 128000, 'max'),
+    'deepseek-flash': ('anthropic_messages', 'PACKY_DEEPSEEK_FLASH_API_KEY', 128000, 'high'),
+    'glm-5.3-flash': ('anthropic_messages', 'PACKY_GLM_5_3_FLASH_API_KEY', 128000, 'high'),
+    'MiniMax-M3': ('anthropic_messages', 'PACKY_MINIMAX_M3_API_KEY', 128000, None),
 }
 COORDS = {'x': 754, 'y': 549}
 NATIVE_FROM_RELATIVE = {'x': 1447, 'y': 592}
@@ -60,7 +63,7 @@ def screenshot():
 @pytest.mark.parametrize('model', MODELS)
 @pytest.mark.parametrize('variant', ['agent1', 'agent2', 'agent3', 'agent4'])
 def test_packy_config_request_and_coordinate_contract(monkeypatch, screenshot, model, variant):
-    protocol, key_env, output_limit = MODELS[model]
+    protocol, key_env, output_limit, effort = MODELS[model]
     monkeypatch.setenv(key_env, 'selected-test-credential')
     monkeypatch.setenv('PACKY_API_KEY', 'wrong-other-model-credential')
     config = load_realtime_config(default_config_path(variant, model), variant=variant)
@@ -123,14 +126,14 @@ def test_packy_config_request_and_coordinate_contract(monkeypatch, screenshot, m
             assert 'output_config' not in payload
             assert agent.wire.thinking_effort is None
         else:
-            assert payload['output_config'] == {'effort': 'high'}
+            assert payload['output_config'] == {'effort': effort}
         if not agent.sequence:
             assert payload['tool_choice']['disable_parallel_tool_use'] is True
     elif protocol == 'openai_responses':
-        assert payload['reasoning'] == {'effort': 'high', 'summary': 'auto'}
+        assert payload['reasoning'] == {'effort': effort, 'summary': 'auto'}
         assert payload['parallel_tool_calls'] is agent.sequence
     else:
-        assert payload['extra_body'] == {'google': {'thinking_config': {'thinking_level': 'high', 'include_thoughts': True}}}
+        assert payload['extra_body'] == {'google': {'thinking_config': {'thinking_level': effort, 'include_thoughts': True}}}
         assert 'reasoning_effort' not in payload
         assert payload['parallel_tool_calls'] is agent.sequence
         assert 'temperature' not in payload
@@ -189,11 +192,11 @@ def test_truncated_response_never_dispatches_valid_partial_actions(protocol):
 
 
 def test_missing_dedicated_key_does_not_fall_back(monkeypatch):
-    monkeypatch.delenv('PACKY_KIMI_K3_API_KEY', raising=False)
+    monkeypatch.delenv('REALTIME_TEST_DEDICATED_KEY', raising=False)
     monkeypatch.setenv('PACKY_API_KEY', 'wrong-key')
-    wire = ModelWire('kimi-k3', 'anthropic_messages', api_key_env='PACKY_KIMI_K3_API_KEY')
+    wire = ModelWire('kimi-k3', 'anthropic_messages', api_key_env='REALTIME_TEST_DEDICATED_KEY')
     wire.session.post = Mock()
-    with pytest.raises(RuntimeError, match='PACKY_KIMI_K3_API_KEY'):
+    with pytest.raises(RuntimeError, match='REALTIME_TEST_DEDICATED_KEY'):
         wire.request('s', [], tools_enabled=False, native=True, max_tokens=100, temperature=1)
     wire.session.post.assert_not_called()
 
@@ -229,7 +232,7 @@ def test_gemini_config_rejects_unsupported_settings(tmp_path, patch):
         load_realtime_config(path)
 
 
-EXPECTED_KEY_ENVS = {model: key_env for model, (_, key_env, _) in MODELS.items()}
+EXPECTED_KEY_ENVS = {model: key_env for model, (_, key_env, _, _) in MODELS.items()}
 EXPECTED_KEY_ENVS.update({
     'claude-fable-5': 'PACKY_CLAUDE_FABLE_5_API_KEY',
     'gpt-6-astra': 'PACKY_GPT_6_ASTRA_API_KEY',

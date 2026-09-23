@@ -201,6 +201,7 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 | 轨迹里的 token 比网关少 | 流中断/未完成的请求没有 `model_response` 事件，token 统计不到；金额仍以网关值为准（`--charges`） |
 | 换网关后脚本报账单接口错误 | 账单接口是 Packy 专用的；非 packyapi.ai 会自动跳过，也可显式加 `--skip-billing` |
 | 单任务结果不可复现：同一个任务、同一份配置，换一批 run 过/不过会翻面 | C 类 17 题跑了 7 个批次（4 组配置）实测：**44 次过关里 43 次发生在第 2/3 次尝试**（`pass@1` 在 7 个批次里 6 个是 0），C29 6/7、C27 5/6 属于"会做"，C12/C31/C34/C35 是 0/7"不会做"，中间 7 题只有 1~3/7 —— 翻面全在中间这档。对源码核对：`c36` 要求起跳后 0.429 s **±100 ms** 按 J、`c37` 松键窗口 **±200 ms**、`c3` 闪现 500 ms + 起跑延迟 100 ms，而模型给的等待常数是**猜的**（同一题两批分别猜 `WAIT(0.35)` 和 `WAIT(0.20)`），猜进窗口就过、猜偏就不过。**所以：单任务分数不能用来比较 prompt/并发；要看批次总分（C 类实测在 3~10 之间摆动）或多批平均**；失败后它还会去按 `enter` 找"隐藏重开"（判官记 `CHEAT_ATTEMPT`，分数不受影响） |
+| 轨迹里 `reasoning` 为空、`reasoning_status: not_returned`（但 `provider_response` 里有思考内容） | 网关把思考正文放在了别处：OpenAI 放 `output[].summary[]`，DashScope 兼容模式放 `output[].content[].reasoning_text`（`summary` 是空数组）。`response_reasoning()` 现在两种形状都读；仍为空说明该网关确实只回加密思考（`encrypted_content`）→ `opaque`，属正常 |
 | 某个任务突然"无成绩"，`agent_metrics.json` 里是 `run_error: Realtime page was reloaded, navigated, or replaced` | **模型自己把页面弄重载了**：三次机会用完后它想找"隐藏的重开按钮"，就用键盘遍历焦点（`PRESS(tab)` 把焦点送出页面 → `PRESS(enter)` 在地址栏等于重新导航）。没有 `result.txt` 就不算分、还会被续跑（等于白拿一次重掷）。两道防线已加：`tab`/`enter`/`return`/`esc`/`escape` 被宿主侧禁用并给出说明性纠正（69 个游戏用 `e.key`/`e.code`/`keyCode` 三种写法都不使用这三个键，禁用不影响玩法），system prompt 的 Evidence 段写明"成功或没有剩余尝试后页面冻结、没有隐藏重开入口、也没有可发现的东西"。历史实例：trim 批 C39（续跑后从 0 变 1）、contract 批 C30（作废） |
 
 ---

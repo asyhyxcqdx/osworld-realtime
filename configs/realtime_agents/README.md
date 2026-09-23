@@ -9,13 +9,15 @@
 | `claude-sonnet-5` | anthropic_messages | 1000000 | 128000 | high | `PACKY_CLAUDE_SONNET_5_API_KEY` |
 | `gpt-5.6-sol` | openai_responses | 1000000 | 128000 | high | `PACKY_GPT_5_6_SOL_API_KEY` |
 | `gemini-3.8-flash` | openai_chat | 1000000 | **65536** | high | `PACKY_GEMINI_3_8_FLASH_API_KEY` |
-| `qwen3.8-max-0902` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_QWEN3_8_MAX_0902_API_KEY` |
-| `kimi-k3` | anthropic_messages | 1000000 | 128000 | high | `PACKY_KIMI_K3_API_KEY` |
+| `qwen3.8-max-0902` | openai_responses | 1000000 | 128000 | **xhigh** | `DASHSCOPE_QWEN3_8_MAX_0902_API_KEY` |
+| `kimi-k3` | openai_responses | 1000000 | 128000 | **max** | `DASHSCOPE_KIMI_K3_API_KEY` |
 | `deepseek-flash` | anthropic_messages | 1000000 | 128000 | high | `PACKY_DEEPSEEK_FLASH_API_KEY` |
 | `glm-5.3-flash` | anthropic_messages | 1000000 | 128000 | high 兼容请求 | `PACKY_GLM_5_3_FLASH_API_KEY` |
 | `MiniMax-M3` | anthropic_messages | 1000000 | 128000 | **adaptive，无 effort 档位** | `PACKY_MINIMAX_M3_API_KEY` |
 | `claude-fable-5` | anthropic_messages | 1000000 | 128000 | high | `PACKY_CLAUDE_FABLE_5_API_KEY` |
 | `gpt-6-astra` | openai_responses | 1000000 | 128000 | high | `PACKY_GPT_6_ASTRA_API_KEY` |
+
+2026-09-23 `qwen3.8-max-0902` / `kimi-k3` 从 Packy 的 Anthropic 入口切到 **DashScope（阿里云百炼）兼容模式**（四份 YAML 各自同步：协议 `anthropic_messages` → `openai_responses`，`key_env` → `DASHSCOPE_*`，`thinking.effort` 写成各自最高档 `xhigh` / `max`）。依据是同一把 key 上的实测：该网关的 **Anthropic 代理会丢图**（同一请求 `prompt_tokens=18`，模型答"看不到图"），而 `/compatible-mode/v1/responses` 的图片、原生 tools、SSE、usage 全通（1920×1080 图 `image_tokens` 2042 / 2696；`function_call` 带 `call_id`/`name`/`arguments`，`unpack()` 直接可用；第二轮命中 `cached_tokens`），`reasoning.effort` 在 Responses 上真生效（qwen `xhigh`→2469 思考 token、`low`→303；kimi `max`→104、`low`→15），`max_output_tokens: 128000` 也被接受。两个模型**必须单独成批**、命令行显式给 `--api_base_url https://dashscope.aliyuncs.com/compatible-mode/v1`（批量脚本一次只认一个网关；这个地址以 `/v1` 结尾，脚本在其后自己拼 `/responses`）。网关不是 packyapi.ai 时会自动跳过 Packy 账单接口并打印 `GATEWAY_BILLING_SKIPPED`，成本改用 `--prices`；判官不受影响，仍走 `REALTIME_JUDGE_BASE_URL` / `ANTHROPIC_BASE_URL` 的 Packy 入口。**注意**：兼容模式把思考正文放在 `reasoning` 条目的 `content: [{"type": "reasoning_text", ...}]` 里、`summary` 为空数组（OpenAI 正版相反），`response_reasoning()` 现在两种形状都读，读不到才记 `not_returned`。
 
 `Claude-sonnet-5.0` 不是此处的 API ID。GLM 5.3（非 Flash）只有文本输入、Seed 2.1 Turbo 未确认可用，均未加入截图 Agent 配置。
 
@@ -86,8 +88,8 @@ Gemini 和 MiniMax 的四组 YAML 均显式选择对应协议；两者输出范�
 read -r -s -p 'claude-sonnet-5 key: ' PACKY_CLAUDE_SONNET_5_API_KEY; export PACKY_CLAUDE_SONNET_5_API_KEY
 read -r -s -p 'gpt-5.6-sol key: ' PACKY_GPT_5_6_SOL_API_KEY; export PACKY_GPT_5_6_SOL_API_KEY
 read -r -s -p 'gemini-3.8-flash key: ' PACKY_GEMINI_3_8_FLASH_API_KEY; export PACKY_GEMINI_3_8_FLASH_API_KEY
-read -r -s -p 'qwen3.8-max-0902 key: ' PACKY_QWEN3_8_MAX_0902_API_KEY; export PACKY_QWEN3_8_MAX_0902_API_KEY
-read -r -s -p 'kimi-k3 key: ' PACKY_KIMI_K3_API_KEY; export PACKY_KIMI_K3_API_KEY
+read -r -s -p 'qwen3.8-max-0902 key: ' DASHSCOPE_QWEN3_8_MAX_0902_API_KEY; export DASHSCOPE_QWEN3_8_MAX_0902_API_KEY
+read -r -s -p 'kimi-k3 key: ' DASHSCOPE_KIMI_K3_API_KEY; export DASHSCOPE_KIMI_K3_API_KEY
 read -r -s -p 'deepseek-flash key: ' PACKY_DEEPSEEK_FLASH_API_KEY; export PACKY_DEEPSEEK_FLASH_API_KEY
 read -r -s -p 'glm-5.3-flash key: ' PACKY_GLM_5_3_FLASH_API_KEY; export PACKY_GLM_5_3_FLASH_API_KEY
 read -r -s -p 'MiniMax-M3 key: ' PACKY_MINIMAX_M3_API_KEY; export PACKY_MINIMAX_M3_API_KEY

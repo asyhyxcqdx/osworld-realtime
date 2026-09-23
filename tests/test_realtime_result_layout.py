@@ -26,8 +26,8 @@ def realtime_keys(monkeypatch, tmp_path):
         "PACKY_CLAUDE_SONNET_5_API_KEY",
         "PACKY_GPT_5_6_SOL_API_KEY",
         "PACKY_GEMINI_3_8_FLASH_API_KEY",
-        "PACKY_QWEN3_8_MAX_0902_API_KEY",
-        "PACKY_KIMI_K3_API_KEY",
+        "DASHSCOPE_QWEN3_8_MAX_0902_API_KEY",
+        "DASHSCOPE_KIMI_K3_API_KEY",
         "PACKY_DEEPSEEK_FLASH_API_KEY",
         "PACKY_GLM_5_3_FLASH_API_KEY",
         "PACKY_MINIMAX_M3_API_KEY",
@@ -225,20 +225,21 @@ def test_shared_batch_keeps_distinct_agent_and_resume_start_times(tmp_path, monk
     assert args_json["agent_started_at"] == launches[2][1]
 
 
-@pytest.mark.parametrize('model,key_env,limit', [
-    ('claude-sonnet-5', 'PACKY_CLAUDE_SONNET_5_API_KEY', 128000),
-    ('gpt-5.6-sol', 'PACKY_GPT_5_6_SOL_API_KEY', 128000),
-    ('gemini-3.8-flash', 'PACKY_GEMINI_3_8_FLASH_API_KEY', 65536),
-    ('qwen3.8-max-0902', 'PACKY_QWEN3_8_MAX_0902_API_KEY', 128000),
-    ('kimi-k3', 'PACKY_KIMI_K3_API_KEY', 128000),
-    ('deepseek-flash', 'PACKY_DEEPSEEK_FLASH_API_KEY', 128000),
-    ('glm-5.3-flash', 'PACKY_GLM_5_3_FLASH_API_KEY', 128000),
-    ('MiniMax-M3', 'PACKY_MINIMAX_M3_API_KEY', 128000),
+@pytest.mark.parametrize('model,key_env,limit,effort', [
+    ('claude-sonnet-5', 'PACKY_CLAUDE_SONNET_5_API_KEY', 128000, 'high'),
+    ('gpt-5.6-sol', 'PACKY_GPT_5_6_SOL_API_KEY', 128000, 'high'),
+    ('gemini-3.8-flash', 'PACKY_GEMINI_3_8_FLASH_API_KEY', 65536, 'high'),
+    # qwen/kimi run on DashScope's compatible mode at their own top tiers.
+    ('qwen3.8-max-0902', 'DASHSCOPE_QWEN3_8_MAX_0902_API_KEY', 128000, 'xhigh'),
+    ('kimi-k3', 'DASHSCOPE_KIMI_K3_API_KEY', 128000, 'max'),
+    ('deepseek-flash', 'PACKY_DEEPSEEK_FLASH_API_KEY', 128000, 'high'),
+    ('glm-5.3-flash', 'PACKY_GLM_5_3_FLASH_API_KEY', 128000, 'high'),
+    ('MiniMax-M3', 'PACKY_MINIMAX_M3_API_KEY', 128000, None),
     # Every model names its own variable, so no two accounts share one credential.
-    ('claude-fable-5', 'PACKY_CLAUDE_FABLE_5_API_KEY', 128000),
-    ('gpt-6-astra', 'PACKY_GPT_6_ASTRA_API_KEY', 128000),
+    ('claude-fable-5', 'PACKY_CLAUDE_FABLE_5_API_KEY', 128000, 'high'),
+    ('gpt-6-astra', 'PACKY_GPT_6_ASTRA_API_KEY', 128000, 'high'),
 ])
-def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, monkeypatch, runner, model, key_env, limit):
+def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, monkeypatch, runner, model, key_env, limit, effort):
     monkeypatch.delenv(key_env, raising=False)
     monkeypatch.setenv('PACKY_API_KEY', 'unrelated-provider-key')
     with pytest.raises(SystemExit):
@@ -247,7 +248,8 @@ def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, mon
     args = configure(runner, monkeypatch, tmp_path, model, 'agent3')
     assert args.max_tokens == limit
     assert args.realtime_config['api']['key_env'] == key_env
-    assert args.thinking_effort == (None if model == 'MiniMax-M3' else 'high')
+    assert args.thinking_effort == effort
     api_format = {'gemini-3.8-flash': 'openai_chat', 'gpt-5.6-sol': 'openai_responses',
-                  'gpt-6-astra': 'openai_responses'}.get(model, 'anthropic_messages')
+                  'gpt-6-astra': 'openai_responses', 'qwen3.8-max-0902': 'openai_responses',
+                  'kimi-k3': 'openai_responses'}.get(model, 'anthropic_messages')
     assert args.api_format == api_format
