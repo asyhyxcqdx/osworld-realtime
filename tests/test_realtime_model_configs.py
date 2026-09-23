@@ -19,8 +19,9 @@ MODELS = {
     'claude-sonnet-5': ('anthropic_messages', 'PACKY_CLAUDE_SONNET_5_API_KEY', 128000, 'high'),
     'gpt-5.6-sol': ('openai_responses', 'PACKY_GPT_5_6_SOL_API_KEY', 128000, 'high'),
     'gemini-3.8-flash': ('openai_chat', 'PACKY_GEMINI_3_8_FLASH_API_KEY', 65536, 'high'),
-    # qwen/kimi run on DashScope's compatible mode, whose Anthropic proxy drops
-    # images, so they use the Responses protocol and its xhigh/max tiers.
+    # qwen/kimi run on DashScope's compatible mode: Packy rejects kimi-k3 on the
+    # messages protocol outright, and DashScope's /responses carries the
+    # screenshots, so they use the Responses protocol and its xhigh/max tiers.
     'qwen3.8-max-0902': ('openai_responses', 'DASHSCOPE_QWEN3_8_MAX_0902_API_KEY', 128000, 'xhigh'),
     'kimi-k3': ('openai_responses', 'DASHSCOPE_KIMI_K3_API_KEY', 128000, 'max'),
     'deepseek-flash': ('anthropic_messages', 'PACKY_DEEPSEEK_FLASH_API_KEY', 128000, 'high'),
