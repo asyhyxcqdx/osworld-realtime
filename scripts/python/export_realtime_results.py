@@ -25,9 +25,13 @@ Examples:
     python scripts/python/export_realtime_results.py \
         --charges <cost_dir>/<model>_per_task_charge.json
 
-    # push the rows into the Feishu table (one lark-cli call per 200 rows)
+    # push the rows into the Feishu table (one lark-cli call per 200 rows).
+    # Two tables live in one base and share the same 18 columns, so only the
+    # table id changes:
+    #   tblCmj1K4kAqlmWb  新版(v1.1(5)) — current v1.1(5) scores
+    #   tblhBdTpZMEqX5Qh  旧版(v1.1(3)) — historical v1.1(3) scores, read-only
     python scripts/python/export_realtime_results.py \
-        --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf --lark-table-id tblhBdTpZMEqX5Qh
+        --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf --lark-table-id tblCmj1K4kAqlmWb
 
 Add ``--lark-dry-run`` to print the request without sending it. Rows are never
 rewritten: re-importing a task that is already in the table creates a second

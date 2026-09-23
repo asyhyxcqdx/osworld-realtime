@@ -133,8 +133,10 @@ python scripts/python/run_realtime_batch.py \
 python scripts/python/export_realtime_results.py \
   --result_dir results_realtime_batches --run_id <run_id> --prices prices.json \
   --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf \
-  --lark-table-id tblhBdTpZMEqX5Qh [--lark-dry-run]
+  --lark-table-id tblCmj1K4kAqlmWb [--lark-dry-run]
 ```
+
+同一 base 下两张表、18 列口径相同：`tblCmj1K4kAqlmWb` = **新版(v1.1(5))**（现在跑的成绩）、`tblhBdTpZMEqX5Qh` = **旧版(v1.1(3))**（历史成绩，只读）。写哪张只换 table id。
 
 - 输出 `<result_dir>/export_<run_id>.csv`（utf-8-sig，Excel 可直接开）与 `.json`；加 `--lark-*` 后用 `lark-cli base +record-batch-create` 每 200 行一批写入。表格链接与 18 列口径见 [`HANDOFF_CN.md`](HANDOFF_CN.md) 第 9 节。
 - 写入前需要 `npm install -g @larksuite/cli` + `lark-cli auth login`（需要 `base:record:create`、`base:record:read`、`wiki:node:retrieve` 权限）；不想用 CLI 就只产 CSV，用飞书表自带的「导入」。

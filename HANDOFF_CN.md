@@ -28,7 +28,7 @@ qwen3.8-max-0902, deepseek-flash, kimi-k3, glm-5.3-flash, MiniMax-M3
 |---|---|
 | 代码 | GitHub 公开仓库 `https://github.com/asyhyxcqdx/osworld-realtime`（`git clone` 即可，无需权限） |
 | 虚拟机镜像（22.8 GiB） | `hf download bright-star123/osworld-realtime-vm --repo-type dataset Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 --local-dir docker_vm_data`（公开 dataset 仓库） |
-| 结果总表 | 飞书多维表格：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>（**18 列已建好，不要改列名**）；表格标识：base `DVwrbns4LaLi8oswq9XcTdlHnGf`、table `tblhBdTpZMEqX5Qh` |
+| 结果总表 | 飞书多维表格：base `DVwrbns4LaLi8oswq9XcTdlHnGf`，同一份文档下**两张表、18 列口径完全相同**，按成绩属于哪个版本选一张——**新版(v1.1(5))** table `tblCmj1K4kAqlmWb`（现在跑的成绩写这张）、**旧版(v1.1(3))** table `tblhBdTpZMEqX5Qh`（v1.1(3) 时期的历史成绩，只读不改）；**列名不要改**，链接与写法见 §9 |
 | 模型密钥 | 你们公司网关自己的 key，不用给别人 |
 | 你要跑的模型 | 只跑 `qwen3.8-max-0902`、`deepseek-flash`、`kimi-k3`、`glm-5.3-flash`、`MiniMax-M3` 这 5 个；其余模型我们来 |
 
@@ -247,19 +247,30 @@ lark-cli auth status         # 确认 user 身份为 valid
 
 ### 再导出并写入
 
-结果总表：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>
+结果总表在同一份飞书文档下，**两张表的 18 列口径完全相同**，只有 table id 不同，按成绩属于哪个版本选一张：
+
+| 表 | 内容 | table id |
+|---|---|---|
+| **新版(v1.1(5))** | 现在跑的成绩（游戏 HTML 已更新到 v1.1(5)，与旧成绩不可比） | `tblCmj1K4kAqlmWb` |
+| **旧版(v1.1(3))** | v1.1(3) 时期的历史成绩，只读不改 | `tblhBdTpZMEqX5Qh` |
+
+- 新版：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblCmj1K4kAqlmWb>
+- 旧版：<https://ycnp9ghuv61a.feishu.cn/wiki/IxhzwkR3cih15Dk86sJcx74ln7f?table=tblhBdTpZMEqX5Qh&view=vew5MRmeHl>
 
 ```bash
+# 写哪张表：新版(v1.1(5)) 用这个；写旧版就把 id 换成 tblhBdTpZMEqX5Qh
+TABLE=tblCmj1K4kAqlmWb
+
 # 先干跑，确认要写进去的内容
 python scripts/python/export_realtime_results.py \
   --result_dir results_realtime_batches --run_id batch01 --prices prices.json \
-  --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf --lark-table-id tblhBdTpZMEqX5Qh \
+  --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf --lark-table-id "$TABLE" \
   --lark-dry-run
 
 # 确认无误后去掉 --lark-dry-run 真正写入
 python scripts/python/export_realtime_results.py \
   --result_dir results_realtime_batches --run_id batch01 --prices prices.json \
-  --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf --lark-table-id tblhBdTpZMEqX5Qh
+  --lark-base-token DVwrbns4LaLi8oswq9XcTdlHnGf --lark-table-id "$TABLE"
 ```
 
 不想用 CLI 也可以：去掉 `--lark-*` 只生成 CSV，在飞书表里用「导入」把 CSV 贴进去——
