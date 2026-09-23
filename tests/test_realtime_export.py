@@ -21,6 +21,9 @@ def write_task(task_dir, *, scored=True, termination='done'):
             'benchmark_id': 'C1', 'result': 1.0, 'pass_at_1': 0.0, 'pass_at_3': 1.0,
             'attempts_completed': 2, 'termination_reason': termination,
         }), encoding='utf-8')
+        # result.txt is the scalar the design trusts; result.json on its own is a
+        # diagnostic left behind by an audit that could not reach a verdict.
+        (task_dir / 'result.txt').write_text('1.0\n', encoding='utf-8')
     events = [
         {'event': 'model_response', 'calls': [{'name': 'computer_left_click'}] * 4,
          'usage': {'prompt_tokens': 1000, 'completion_tokens': 100,
@@ -78,16 +81,28 @@ def test_judge_verdict_and_cost_come_from_the_result_block(tmp_path):
     assert row['判官成本'] == '0.003034'
 
 
-def test_a_failed_audit_shows_as_an_error_row(tmp_path):
+def test_a_failed_audit_shows_as_an_error_row_without_a_score(tmp_path):
+    """A task whose audit never finished must not reach the sheet as a result.
+
+    The runner deletes result.txt and keeps result.json (with judge.error) so the
+    task gets re-run; the page's numbers are still in that file. The row keeps the
+    ERROR verdict as a diagnostic, but its score and cost cells stay empty.
+    """
     task_dir = tmp_path / 'task'
     write_task(task_dir, scored=False)
     (task_dir / 'result.json').write_text(json.dumps({
-        'benchmark_id': 'C1', 'judge': {'error': 'judge reply is not valid JSON'}}),
-        encoding='utf-8')
+        'benchmark_id': 'C1', 'result': 1.0, 'pass_at_1': 0.0, 'pass_at_3': 1.0,
+        'attempts_completed': 3, 'status': 'passed',
+        'judge': {'error': 'judge reply is not valid JSON'}}), encoding='utf-8')
 
-    row = collect_row(task_dir, 'deepseek-flash', 'agent4', {}, {}, {})
+    row = collect_row(task_dir, 'deepseek-flash', 'agent4', {}, {}, {},
+                      per_task={'task': 0.5})
 
     assert row['判官结论'] == 'ERROR' and row['判官成本'] is None
+    assert row['result'] == '' and row['pass@1'] is None and row['pass@3'] is None
+    assert row['attempts_completed'] is None and row['成本'] is None
+    # 结束状态 describes the run, not the score, so it stays as a diagnostic.
+    assert row['结束状态'] == '正常结束'
 
 
 def test_unscored_task_keeps_scores_blank(tmp_path):

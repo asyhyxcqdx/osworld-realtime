@@ -337,6 +337,7 @@ def test_record_per_task_charge_walks_from_result_dirs_to_the_file(tmp_path):
                                            ('task-b', 200, 20, 1001)):
         task_dir = tasks / name
         task_dir.mkdir(parents=True)
+        (task_dir / 'result.txt').write_text('1.0\n', encoding='utf-8')
         (task_dir / 'trajectory.jsonl').write_text(json.dumps({
             'event': 'model_response',
             'wall_time': datetime.datetime.fromtimestamp(when, datetime.timezone.utc).isoformat(),
@@ -355,3 +356,59 @@ def test_record_per_task_charge_walks_from_result_dirs_to_the_file(tmp_path):
     assert attribution['matched_rows'] == 2 and attribution['unmatched_rows'] == 1
     saved = json.loads((tmp_path / 'm_per_task_charge.json').read_text())
     assert saved['per_task'] == {'task-a': 1.0, 'task-b': 1.0}
+
+
+def test_result_json_without_result_txt_is_not_a_score_and_owns_no_charge(tmp_path):
+    """An unfinished audit leaves result.json behind: it must not count as scored.
+
+    ``_finish_scored_task`` deletes result.txt when the audit cannot reach a verdict
+    and keeps result.json for diagnosis. That task is unfinished, so its game numbers
+    stay diagnostics, it is not counted in tasks_scored, and its spend is not
+    attributed to it (a re-run will clear the directory anyway).
+    """
+    from scripts.python.run_realtime_batch import (aggregate_model_row,
+                                                   record_per_task_charge, summarize)
+
+    tasks = tmp_path / 'tasks'
+    for name in ('scored-a', 'scored-b', 'audit-failed'):
+        (tasks / name).mkdir(parents=True)
+        (tasks / name / 'trajectory.jsonl').write_text('', encoding='utf-8')
+
+    for name in ('scored-a', 'scored-b'):
+        (tasks / name / 'result.txt').write_text('1.0\n', encoding='utf-8')
+        (tasks / name / 'result.json').write_text(json.dumps(
+            {'result': 1.0, 'pass_at_1': 1.0, 'pass_at_3': 1.0, 'status': 'passed',
+             'attempts_completed': 1, 'judge': {'label': 'NOT_CHEAT'}}), encoding='utf-8')
+
+    # The judge never finished: no result.txt, but the page's numbers are on disk.
+    (tasks / 'audit-failed' / 'result.json').write_text(json.dumps(
+        {'result': 1.0, 'pass_at_1': 0.0, 'pass_at_3': 1.0, 'status': 'passed',
+         'attempts_completed': 3, 'judge': {'label': 'ERROR', 'error': 'judge timed out'}}),
+        encoding='utf-8')
+
+    rows = [summarize(tasks / name) for name in ('scored-a', 'scored-b', 'audit-failed')]
+    failed = rows[2]
+    assert (failed['status'], failed['pass_at_1'], failed['pass_at_3'],
+            failed.get('attempts')) == (None, None, None, None)
+    assert failed['judge']['label'] == 'ERROR'
+    assert failed['unscored_result']['pass_at_3'] == 1.0  # kept for diagnosis only
+
+    model_row = aggregate_model_row(rows, model='m', key_env='K', run_id='r',
+                                    return_code=0, elapsed_s=1.0)
+    assert model_row['tasks_total'] == 3 and model_row['tasks_scored'] == 2
+    assert model_row['pass_at_3'] == round(2 / 3, 4)
+
+    # Its requests exist in the ledger window but must not be charged to a task row.
+    (tasks / 'audit-failed' / 'trajectory.jsonl').write_text(json.dumps({
+        'event': 'model_response',
+        'wall_time': datetime.datetime.fromtimestamp(1002, datetime.timezone.utc).isoformat(),
+        'usage': {'prompt_tokens': 300, 'completion_tokens': 30},
+    }) + '\n', encoding='utf-8')
+    payload, _ = record_per_task_charge(
+        tmp_path, 'm', [str(tasks / name) for name in
+                        ('scored-a', 'scored-b', 'audit-failed')],
+        [ledger_row(1002, 300, 30)], run_id='run1')
+
+    assert payload['per_task'] == {}
+    assert payload['unattributed_usd'] == 1.0
+    assert payload['windows'][0]['tasks_run'] == 3

@@ -424,8 +424,17 @@ def summarize(task_dir):
     scored = task_dir / 'result.json'
     if scored.exists():
         payload = json.loads(scored.read_text(encoding='utf-8'))
-        result.update(pass_at_1=payload.get('pass_at_1'), pass_at_3=payload.get('pass_at_3'),
-                      status=payload.get('status'), attempts=payload.get('attempts_completed'))
+        if payload.get('judge') is not None:
+            result['judge'] = payload['judge']
+        # result.txt is the only scalar the design trusts. The audit removes it when
+        # it cannot reach a verdict (leaving result.json for diagnosis), so a task
+        # without it is unfinished: not scored, and re-run by the resume path.
+        if (task_dir / 'result.txt').exists():
+            result.update(pass_at_1=payload.get('pass_at_1'), pass_at_3=payload.get('pass_at_3'),
+                          status=payload.get('status'), attempts=payload.get('attempts_completed'))
+        else:
+            result['unscored_result'] = {field: payload.get(field) for field in (
+                'result', 'pass_at_1', 'pass_at_3', 'status', 'attempts_completed')}
     return result
 
 
@@ -587,11 +596,18 @@ def record_per_task_charge(cost_dir, model, task_dirs, ledger_rows, *, run_id,
     Returns ``(payload, attribution)``; the caller only has to map them onto the
     model row. Kept separate from the run loop so the whole path from result
     directories to ``<model>_per_task_charge.json`` can be exercised in a test.
+
+    Only tasks that kept ``result.txt`` own their spend: a task without it has no
+    valid score (an unfinished audit, or a directory the resume path will clear),
+    so its requests stay in ``unattributed_usd`` instead of being charged to a row
+    the sheet reports as having no result.
     """
-    tasks = {Path(task_dir).name: task_request_records(task_dir) for task_dir in task_dirs}
+    task_dirs = [Path(task_dir) for task_dir in task_dirs]
+    tasks = {task_dir.name: task_request_records(task_dir)
+             for task_dir in task_dirs if (task_dir / 'result.txt').exists()}
     per_task, attribution = attribute_gateway_charge(tasks, ledger_rows)
     payload = append_per_task_charge(cost_dir, model, per_task, attribution, run_id=run_id,
-                                     tasks_run=len(tasks), billing_error=billing_error,
+                                     tasks_run=len(task_dirs), billing_error=billing_error,
                                      secrets=secrets)
     return payload, attribution
 

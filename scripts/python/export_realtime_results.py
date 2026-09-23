@@ -233,19 +233,26 @@ def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids, 
     tokens = summarize_trajectory(task_dir)
     effort, _ = effort_for(agent_variant, model)
 
-    score = (scored or {}).get('result')
+    # result.txt is the only thing that means "this task has a score". The audit
+    # deletes it when it cannot reach a verdict, leaving result.json behind for
+    # diagnosis; that task is unfinished and must be re-run, so its game numbers
+    # and its spend stay out of the sheet.
+    final = (task_dir / 'result.txt').exists()
+    score = (scored or {}).get('result') if final else None
     if score is None:
         result_cell = ''
     else:
         result_cell = 'yes' if float(score) == 1 else 'no'
-    charge = (per_task or {}).get(task_dir.name)
-    source = 'per_task' if charge is not None else None
-    if charge is None:
-        charge = charges.get(model)
-        source = 'model' if charge is not None else None
-    if charge is None:
-        charge = compute_charge(tokens, price_of(prices, model))
-        source = 'prices' if charge is not None else None
+    charge, source = None, None
+    if final:
+        charge = (per_task or {}).get(task_dir.name)
+        source = 'per_task' if charge is not None else None
+        if charge is None:
+            charge = charges.get(model)
+            source = 'model' if charge is not None else None
+        if charge is None:
+            charge = compute_charge(tokens, price_of(prices, model))
+            source = 'prices' if charge is not None else None
 
     judge = (scored or {}).get('judge') or {}
     judge_usage = judge.get('usage') or {}
@@ -262,9 +269,9 @@ def collect_row(task_dir, model, agent_variant, prices, charges, benchmark_ids, 
         '执行动作数': (metrics or {}).get('executed_actions'),
         '工具调用数': tokens['tool_calls'],
         'result': result_cell,
-        'attempts_completed': (scored or {}).get('attempts_completed'),
-        'pass@1': (scored or {}).get('pass_at_1'),
-        'pass@3': (scored or {}).get('pass_at_3'),
+        'attempts_completed': (scored or {}).get('attempts_completed') if final else None,
+        'pass@1': (scored or {}).get('pass_at_1') if final else None,
+        'pass@3': (scored or {}).get('pass_at_3') if final else None,
         '结束状态': termination_label(metrics, scored),
         '成本': None if charge is None else f'{charge:.6f}',
         '输入Token数量': str(tokens['input_tokens']) if tokens['input_tokens'] else None,
