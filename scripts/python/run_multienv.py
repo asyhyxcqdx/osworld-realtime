@@ -154,7 +154,7 @@ def config() -> argparse.Namespace:
 
         requested_model = args.model
         config_path = args.agent_config or default_config_path(
-            args.agent_variant, requested_model or "claude-fable-5"
+            args.agent_variant, requested_model or "claude-fable-5-1"
         )
         try:
             realtime_config = load_realtime_config(config_path, variant=args.agent_variant)

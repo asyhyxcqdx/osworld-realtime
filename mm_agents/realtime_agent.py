@@ -17,7 +17,11 @@ from pydantic import ValidationError
 
 from mm_agents.realtime_config import validate_key_env, validate_thinking
 from mm_agents.realtime_coordinates import CoordinateAdapter
-from mm_agents.realtime_stream import IncompleteStreamError, collect_stream
+from mm_agents.realtime_stream import (
+    IncompleteStreamError,
+    RateLimitedStreamError,
+    collect_stream,
+)
 
 from mm_agents.realtime_protocol import (
     ACTION_TOOLS,
@@ -47,6 +51,15 @@ CHANNEL_BALANCE_ATTEMPTS = 5
 NETWORK_RETRY_BACKOFF_S = (3.0, 6.0, 12.0, 24.0)
 SERVER_RETRY_BACKOFF_S = (1.0, 2.0, 4.0, 8.0)
 NETWORK_RETRY_JITTER = 0.3
+# Some gateways answer HTTP 200 and only report a quota refusal inside the stream
+# (OpenAI-shaped ``error``/``response.failed`` events, see realtime_stream). The request
+# never reached the model, so it is safe to resend, but the provider's limit is usually a
+# rolling window of a minute or more: quick retries just burn attempts, so these pauses
+# step past a full window. Five retries on top of the first try, with jitter so the
+# concurrent workers of one batch do not come back in lockstep.
+RATE_LIMIT_RETRIES = 5
+RATE_LIMIT_RETRY_BACKOFF_S = (10.0, 20.0, 30.0, 45.0, 60.0)
+RATE_LIMIT_RETRY_JITTER = 0.25
 
 
 def text_block(text):
@@ -404,10 +417,12 @@ class ModelWire:
         last_error = None
         attempt = 0
         attempts_allowed = RETRY_ATTEMPTS
+        rate_limit_retries = 0
         while True:
             response = None
             status_code = None
             network_error = False
+            rate_limit_error = False
             try:
                 response = self.session.post(
                     url, headers=headers, json=payload, timeout=self.timeout,
@@ -433,12 +448,31 @@ class ModelWire:
                     raise last_error
                 if status_code == CHANNEL_BALANCE_STATUS:
                     attempts_allowed = max(attempts_allowed, CHANNEL_BALANCE_ATTEMPTS)
+            except RateLimitedStreamError as exc:
+                last_error = exc
+                rate_limit_error = True
             except (requests.RequestException, IncompleteStreamError) as exc:
                 last_error = exc
                 network_error = True
             finally:
                 if response is not None and callable(getattr(response, "close", None)):
                     response.close()
+            if rate_limit_error:
+                # A quota refusal never reached the model, so it gets its own budget
+                # instead of eating the ordinary retry attempts.
+                rate_limit_retries += 1
+                if rate_limit_retries > RATE_LIMIT_RETRIES:
+                    break
+                base = RATE_LIMIT_RETRY_BACKOFF_S[
+                    min(rate_limit_retries - 1, len(RATE_LIMIT_RETRY_BACKOFF_S) - 1)
+                ]
+                delay = base * (1 + random.uniform(-RATE_LIMIT_RETRY_JITTER, RATE_LIMIT_RETRY_JITTER))
+                logger.warning(
+                    "Model rate limited %d/%d, retrying in %.1fs: %s",
+                    rate_limit_retries, RATE_LIMIT_RETRIES, delay, last_error,
+                )
+                time.sleep(delay)
+                continue
             attempt += 1
             if attempt >= attempts_allowed:
                 break
@@ -558,7 +592,7 @@ class RealtimeAgent:
         variant="agent1",
         sequence=None,
         frames=None,
-        model="claude-fable-5",
+        model="claude-fable-5-1",
         api_format="auto",
         api_base_url=None,
         api_key_env=None,

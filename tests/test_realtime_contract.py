@@ -16,7 +16,7 @@ from mm_agents.realtime_config import agent_kwargs, default_config_path, load_re
 from mm_agents.realtime_protocol import ForbiddenShortcutError
 
 
-@pytest.mark.parametrize('model', ['claude-fable-5', 'gpt-6-astra'])
+@pytest.mark.parametrize('model', ['claude-fable-5-1', 'gpt-6-astra'])
 @pytest.mark.parametrize('variant', ['agent1', 'agent2', 'agent3', 'agent4'])
 def test_actual_configs_preserve_image_bytes_and_action_coordinates(model, variant):
     config = load_realtime_config(default_config_path(variant, model), variant=variant)
@@ -48,7 +48,7 @@ def test_actual_configs_preserve_image_bytes_and_action_coordinates(model, varia
 ])
 def test_config_rejects_capability_or_constraint_drift(tmp_path, patch):
     import yaml
-    config = load_realtime_config(default_config_path('agent4', 'claude-fable-5'))
+    config = load_realtime_config(default_config_path('agent4', 'claude-fable-5-1'))
     config.update(patch)
     p = tmp_path / 'config.yaml'
     p.write_text(yaml.safe_dump(config))

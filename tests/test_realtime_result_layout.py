@@ -66,7 +66,7 @@ def configure(runner, monkeypatch, root, model, agent=None, run_id="20260910T173
 
 def test_resume_and_scores_do_not_cross_models_or_agents(tmp_path, monkeypatch, runner):
     runs = []
-    for model in ("claude-fable-5", "gpt-6-astra"):
+    for model in ("claude-fable-5-1", "gpt-6-astra"):
         for i in range(1, 5):
             variant = f"agent{i}"
             args = configure(runner, monkeypatch, tmp_path, model, variant)
@@ -112,7 +112,7 @@ def test_missing_model_config_cannot_silently_fall_back(tmp_path, monkeypatch, r
 
 
 def test_cli_cannot_override_config_with_another_provider_model(monkeypatch, runner):
-    path = Path(__file__).resolve().parents[1] / "configs/realtime_agents/combine-claude-fable-5.yaml"
+    path = Path(__file__).resolve().parents[1] / "configs/realtime_agents/combine-claude-fable-5-1.yaml"
     monkeypatch.setattr(sys, "argv", ["run_multienv.py", "--agent_variant", "agent4",
         "--action_space", "computer_13", "--agent_config", str(path), "--model", "gpt-6-astra"])
     with pytest.raises(SystemExit):
@@ -141,7 +141,7 @@ def test_query_limit_is_optional_and_defaults_to_unlimited(monkeypatch, runner, 
 
 def test_task_results_stay_with_each_model_and_agent_without_category_summary(tmp_path, monkeypatch, runner):
     runs = []
-    for model in ("claude-fable-5", "gpt-6-astra"):
+    for model in ("claude-fable-5-1", "gpt-6-astra"):
         for i in range(1, 5):
             args = configure(runner, monkeypatch, tmp_path, model, f"agent{i}")
             root = Path(args.result_dir)
@@ -168,16 +168,16 @@ def test_task_results_stay_with_each_model_and_agent_without_category_summary(tm
         assert {p.name for p in (root / "summary").iterdir()} == {"results.json"}
         assert len(results) == 1 and results[0]["score"] == score
     assert not (tmp_path / "summary").exists()
-    assert not (tmp_path / "claude-fable-5/summary").exists()
+    assert not (tmp_path / "claude-fable-5-1/summary").exists()
     assert not (tmp_path / "gpt-6-astra/summary").exists()
 
 
 def test_new_experiment_does_not_resume_an_older_batch(tmp_path, monkeypatch, runner):
-    old = configure(runner, monkeypatch, tmp_path, "claude-fable-5", "agent1", "previous-batch")
+    old = configure(runner, monkeypatch, tmp_path, "claude-fable-5-1", "agent1", "previous-batch")
     old_task = Path(old.result_dir) / "computer_13/screenshot/domain/task"
     old_task.mkdir(parents=True)
     (old_task / "result.txt").write_text("1")
-    fresh = configure(runner, monkeypatch, tmp_path, "claude-fable-5", "agent1", None)
+    fresh = configure(runner, monkeypatch, tmp_path, "claude-fable-5-1", "agent1", None)
     assert fresh.run_id != old.run_id
     timestamp = datetime.datetime.strptime(fresh.run_id, "%Y%m%dT%H%M%S.%f%z")
     assert timestamp == datetime.datetime.fromisoformat(fresh.agent_started_at)
@@ -185,7 +185,7 @@ def test_new_experiment_does_not_resume_an_older_batch(tmp_path, monkeypatch, ru
         fresh.action_space, fresh.model, fresh.observation_type, fresh.result_dir,
         {"domain": ["task"]}, fresh.agent_variant,
     ) == {"domain": ["task"]}
-    resumed = configure(runner, monkeypatch, tmp_path, "claude-fable-5", "agent1", old.run_id)
+    resumed = configure(runner, monkeypatch, tmp_path, "claude-fable-5-1", "agent1", old.run_id)
     assert runner["get_unfinished"](
         resumed.action_space, resumed.model, resumed.observation_type, resumed.result_dir,
         {"domain": ["task"]}, resumed.agent_variant,
@@ -196,7 +196,7 @@ def test_new_experiment_does_not_resume_an_older_batch(tmp_path, monkeypatch, ru
 @pytest.mark.parametrize("run_id", ["", ".", "..", "../escape", "a/b", "a\\b"])
 def test_run_id_cannot_escape_its_experiment_directory(tmp_path, monkeypatch, runner, run_id):
     with pytest.raises(SystemExit):
-        configure(runner, monkeypatch, tmp_path, "claude-fable-5", "agent1", run_id)
+        configure(runner, monkeypatch, tmp_path, "claude-fable-5-1", "agent1", run_id)
 
 
 def test_shared_batch_keeps_distinct_agent_and_resume_start_times(tmp_path, monkeypatch, runner):
@@ -207,10 +207,10 @@ def test_shared_batch_keeps_distinct_agent_and_resume_start_times(tmp_path, monk
     ]
     batch = "20260910T173000+0800"
     for variant, actual_start in launches:
-        args = configure(runner, monkeypatch, tmp_path, "claude-fable-5", variant, batch)
+        args = configure(runner, monkeypatch, tmp_path, "claude-fable-5-1", variant, batch)
         args.agent_started_at = actual_start
         runner["write_run_configuration"](args)
-    root = tmp_path / "claude-fable-5" / batch
+    root = tmp_path / "claude-fable-5-1" / batch
     records = [json.loads(line) for line in (root / "agent1/launches.jsonl").read_text().splitlines()]
     assert [record["agent_started_at"] for record in records] == [launches[0][1], launches[2][1]]
     other = json.loads((root / "agent2/launches.jsonl").read_text())
@@ -236,7 +236,7 @@ def test_shared_batch_keeps_distinct_agent_and_resume_start_times(tmp_path, monk
     ('glm-5.3-flash', 'PACKY_GLM_5_3_FLASH_API_KEY', 128000, 'high'),
     ('MiniMax-M3', 'PACKY_MINIMAX_M3_API_KEY', 128000, None),
     # Every model names its own variable, so no two accounts share one credential.
-    ('claude-fable-5', 'PACKY_CLAUDE_FABLE_5_API_KEY', 128000, 'high'),
+    ('claude-fable-5-1', 'PACKY_CLAUDE_FABLE_5_API_KEY', 128000, 'high'),
     ('gpt-6-astra', 'PACKY_GPT_6_ASTRA_API_KEY', 128000, 'high'),
 ])
 def test_packy_model_cli_uses_config_and_requires_the_selected_key(tmp_path, monkeypatch, runner, model, key_env, limit, effort):

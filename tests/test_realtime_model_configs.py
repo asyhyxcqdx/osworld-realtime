@@ -235,7 +235,7 @@ def test_gemini_config_rejects_unsupported_settings(tmp_path, patch):
 
 EXPECTED_KEY_ENVS = {model: key_env for model, (_, key_env, _, _) in MODELS.items()}
 EXPECTED_KEY_ENVS.update({
-    'claude-fable-5': 'PACKY_CLAUDE_FABLE_5_API_KEY',
+    'claude-fable-5-1': 'PACKY_CLAUDE_FABLE_5_API_KEY',
     'gpt-6-astra': 'PACKY_GPT_6_ASTRA_API_KEY',
 })
 

@@ -31,7 +31,7 @@ def main():
         )
         page_config = task['evaluator']['result']
         identity = realtime_page_identity(env, page_config)
-        for model in ('claude-fable-5', 'gpt-6-astra'):
+        for model in ('claude-fable-5-1', 'gpt-6-astra'):
             for variant in ('agent1', 'agent2', 'agent3', 'agent4'):
                 out = args.artifacts / model / variant
                 out.mkdir(parents=True, exist_ok=True)

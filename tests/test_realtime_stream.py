@@ -8,7 +8,7 @@ import requests
 
 from mm_agents.realtime_agent import ModelWire, RealtimeAgent, response_reasoning
 from mm_agents.realtime_protocol import AgentProtocolError
-from mm_agents.realtime_stream import collect_stream
+from mm_agents.realtime_stream import RateLimitedStreamError, collect_stream
 
 
 PROTOCOLS = ['anthropic_messages', 'openai_chat', 'openai_responses']
@@ -154,6 +154,71 @@ def test_plain_server_errors_still_stop_after_five_attempts(monkeypatch):
     with pytest.raises(RuntimeError, match='HTTP 503'):
         agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
     assert agent.wire.session.post.call_count == 5
+
+
+def _rate_limit_stream(protocol):
+    """HTTP 200 whose stream reports the provider's quota refusal in each protocol's shape."""
+    if protocol == 'anthropic_messages':
+        events = [{'type': 'error', 'error': {'type': 'rate_limit_error', 'message': 'Number of request tokens has exceeded your rate limit.'}}]
+    elif protocol == 'openai_chat':
+        events = [{'error': {'message': 'Your requests have exceeded token rate limit.', 'code': 'rate_limit_exceeded'}}]
+    else:
+        events = [{'type': 'error', 'error': {'type': 'too_many_requests', 'code': 'rate_limit_exceeded',
+                                              'message': 'Your requests to test-model have exceeded token rate limit.'}}]
+    return sse(events)
+
+
+@pytest.mark.parametrize('protocol', PROTOCOLS)
+def test_rate_limited_stream_is_retried_without_dispatching_actions(monkeypatch, protocol):
+    limited = _rate_limit_stream(protocol)
+    agent = agent_with_http(monkeypatch, protocol, [limited, sse(tool_events(protocol))])
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1] == [
+        {'action_type': 'PRESS', 'parameters': {'key': 'space'}}]
+    assert agent.wire.session.post.call_count == 2
+    assert agent.pending_action_calls
+    limited.close.assert_called_once()
+
+
+def test_rate_limit_gets_five_spaced_retries_then_succeeds(monkeypatch):
+    monkeypatch.setattr('mm_agents.realtime_agent.random', SimpleNamespace(uniform=lambda a, b: 0.0))
+    responses = [_rate_limit_stream('openai_responses') for _ in range(5)] + [sse(tool_events('openai_responses'))]
+    agent = agent_with_http(monkeypatch, 'openai_responses', responses)
+    sleep = time.sleep
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1]
+    assert agent.wire.session.post.call_count == 6
+    assert [call.args[0] for call in sleep.call_args_list] == [10, 20, 30, 45, 60]
+    for response in responses:
+        response.close.assert_called_once()
+
+
+def test_rate_limit_gives_up_after_five_retries(monkeypatch):
+    responses = [_rate_limit_stream('openai_responses') for _ in range(6)]
+    agent = agent_with_http(monkeypatch, 'openai_responses', responses)
+    with pytest.raises(RateLimitedStreamError, match='rate_limit_exceeded'):
+        agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
+    assert agent.wire.session.post.call_count == 6
+    assert agent.pending_action_calls is None
+    for response in responses:
+        response.close.assert_called_once()
+
+
+def test_non_quota_stream_failure_is_not_retried(monkeypatch):
+    failed = sse([{'type': 'response.failed', 'response': {
+        'status': 'failed', 'error': {'code': 'server_error', 'message': 'the model refused this request'}}}])
+    agent = agent_with_http(monkeypatch, 'openai_responses', [failed, sse(tool_events('openai_responses'))])
+    with pytest.raises(RuntimeError) as raised:
+        agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
+    assert not isinstance(raised.value, RateLimitedStreamError)
+    assert agent.wire.session.post.call_count == 1
+    failed.close.assert_called_once()
+
+
+def test_quota_refusal_reported_as_response_failed_is_retried(monkeypatch):
+    failed = sse([{'type': 'response.failed', 'response': {
+        'status': 'failed', 'error': {'code': 'rate_limit_exceeded', 'message': 'exceeded token rate limit'}}}])
+    agent = agent_with_http(monkeypatch, 'openai_responses', [failed, sse(tool_events('openai_responses'))])
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1]
+    assert agent.wire.session.post.call_count == 2
 
 
 def test_messages_keep_thinking_signatures_redaction_and_cumulative_usage():

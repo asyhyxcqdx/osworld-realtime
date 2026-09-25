@@ -7,6 +7,39 @@ class IncompleteStreamError(RuntimeError):
     """The connection ended without the protocol's completion marker."""
 
 
+class RateLimitedStreamError(RuntimeError):
+    """The provider refused the request for quota reasons; the same request may succeed later.
+
+    Distinct from a plain stream error because it says nothing about the model's
+    behaviour: the request never ran, so retrying it cannot double-dispatch actions.
+    """
+
+
+# Markers found in the error object of an otherwise HTTP-200 stream. Gateways differ in
+# shape (OpenAI ``error.code``, Anthropic ``error.type``, a free-text ``message``), so the
+# whole error object is searched; only the error payload is inspected, never the response
+# body, so token counts or ids containing digits cannot be mistaken for a status code.
+_RATE_LIMIT_MARKERS = (
+    "rate_limit",
+    "rate limit",
+    "too_many_requests",
+    "too many requests",
+    "overloaded",
+    "insufficient_quota",
+    "quota exceeded",
+    "429",
+)
+
+
+def is_rate_limited(detail) -> bool:
+    """True when a stream's error payload is a quota/overload refusal."""
+    if detail is None:
+        return False
+    text = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
+    lowered = text.lower()
+    return any(marker in lowered for marker in _RATE_LIMIT_MARKERS)
+
+
 def _events(response):
     data, name = [], None
     for line in response.iter_lines():
@@ -66,8 +99,13 @@ def _responses(response):
         if kind == "response.completed":
             return event["response"]
         if kind in {"response.failed", "response.incomplete", "error"}:
-            detail = event.get("response", {}).get("error") or event.get("message")
-            raise RuntimeError(f"Responses stream {kind}: {str(detail)[:300]}")
+            detail = (
+                event.get("response", {}).get("error")
+                or event.get("error")
+                or event.get("message")
+            )
+            error = RateLimitedStreamError if is_rate_limited(detail) else RuntimeError
+            raise error(f"Responses stream {kind}: {str(detail)[:300]}")
     raise IncompleteStreamError("Responses stream ended before response.completed; no actions dispatched.")
 
 
@@ -78,7 +116,9 @@ def _messages(response):
             break
         kind = event.get("type", name)
         if kind == "error":
-            raise RuntimeError(f"Messages stream error: {str(event.get('error'))[:300]}")
+            detail = event.get("error") or event.get("message")
+            error = RateLimitedStreamError if is_rate_limited(detail) else RuntimeError
+            raise error(f"Messages stream error: {str(detail)[:300]}")
         if kind == "message_start":
             if message is not None:
                 raise RuntimeError("Duplicate message_start; no actions dispatched.")
@@ -207,7 +247,9 @@ def _chat(response):
             result["object"] = "chat.completion"
             return result
         if name == "error" or chunk.get("error"):
-            raise RuntimeError(f"Chat stream error: {str(chunk.get('error', chunk))[:300]}")
+            detail = chunk.get("error", chunk)
+            error = RateLimitedStreamError if is_rate_limited(detail) else RuntimeError
+            raise error(f"Chat stream error: {str(detail)[:300]}")
         for key, value in chunk.items():
             if key != "choices" and value is not None:
                 if key == "usage":

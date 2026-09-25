@@ -1,17 +1,17 @@
 config_version: realtime-agent-config/1.0
-agent_id: combine
-display_name: combine Agent
-description: Current screenshot and historical video queries; a sequence of up to 100 atomic action tool calls per decision.
+agent_id: vanilla
+display_name: Vanilla Agent
+description: Current screenshot only; one atomic action tool call per decision.
 observation:
   current_screenshot: true
   historical_video:
-    enabled: true
+    enabled: false
     tool_name: get_frames
     max_queries_per_turn: 0
     max_times_per_query: 8
 action:
-  mode: sequence
-  max_actions_per_turn: 100
+  mode: atomic
+  max_actions_per_turn: 1
   allow_done: true
   allow_fail: false
   allow_wait: true
@@ -20,7 +20,7 @@ context:
   include_screenshots: true
   on_context_limit: fail_with_explicit_error
 api:
-  model: claude-fable-5
+  model: claude-fable-5-1
   protocol: anthropic_messages
   key_env: PACKY_CLAUDE_FABLE_5_API_KEY
   tool_format: native
@@ -45,10 +45,8 @@ system_prompt: |
 
   ## Allowed Behavior
   - Use only the registered tools and their exact schemas.
-  - Interact with the game only through visible GUI elements: screenshots/frames,
-    mouse movement, clicks, drags, keyboard input, scrolling, waiting, and registered
-    observation tools.
-  - Use get_frames to inspect historical frames when allowed.
+  - Interact with the game only through visible GUI elements: the current screenshot,
+    mouse movement, clicks, drags, keyboard input, scrolling, and waiting.
   - Explore game mechanics by observation and GUI probing.
 
   ## Forbidden Behavior
@@ -110,17 +108,9 @@ user_prompt: |
 
   ### Tools and Perception
 
-  You may call `get_frames` multiple times to inspect historical video frames before acting. Historical-frame queries do not execute actions and do not add decisions.
-
-  When you need to pin down a short moment, ask `get_frames` for frames closer together around it instead of spreading them over the whole attempt.
-
-  The retry dialog ("Attempt N / 3 — Next") means the game is paused, so study the attempts you have already played with `get_frames` before you go on. Clicking Next restarts the clock, and your next response arrives many seconds later, so never send that click on its own: it must be the first action of the response that also contains the `computer_wait` and the key actions. Inside one response the relative timing is exact, so a `computer_wait` placed after the click is the wait the game sees.
-
-  When you already know the whole sequence of actions and its timing, submit them all in one response. The actions in one response are executed one after another with no added delay, while a full round of your thinking and generation passes between two responses.
+  Submit one action per response.
 
   Use computer_wait whenever you need a known amount of time to pass.
-
-  Never mix `get_frames` with action tools in one response. Submit frame queries alone, wait for their results, then submit actions in a separate response.
 
   Use only the registered tools, with their exact schemas.
 

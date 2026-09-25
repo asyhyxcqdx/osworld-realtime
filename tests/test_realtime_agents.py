@@ -774,7 +774,7 @@ def test_anthropic_thinking_effort_is_forwarded(monkeypatch):
         ("agent4", "combine", True, True),
     ],
 )
-@pytest.mark.parametrize("model", ["claude-fable-5", "gpt-6-astra"])
+@pytest.mark.parametrize("model", ["claude-fable-5-1", "gpt-6-astra"])
 def test_checked_in_realtime_configs_map_all_runtime_capabilities(
     variant, agent_id, sequence, frames, model
 ):
@@ -893,7 +893,7 @@ def test_astra_config_preserves_thinking_and_combine_tools(monkeypatch):
 
 
 def test_mixed_frame_and_action_calls_are_rejected_and_retried():
-    wire = ModelWire("claude-fable-5", "anthropic_messages")
+    wire = ModelWire("claude-fable-5-1", "anthropic_messages")
     mixed = {
         "content": [
             {"type": "tool_use", "id": "a0", "name": "computer_click", "input": {"x": 754, "y": 549}},
@@ -1084,12 +1084,12 @@ def test_combine_still_accepts_multiple_frame_queries_in_one_response(protocol):
     assert not any(e['event'] == 'format_error' for e in agent.last_events)
 
 
-@pytest.mark.parametrize('model', ['claude-fable-5', 'gpt-6-astra'])
+@pytest.mark.parametrize('model', ['claude-fable-5-1', 'gpt-6-astra'])
 @pytest.mark.parametrize('variant', ['agent1', 'agent3', 'agent4'])
 def test_atomic_configs_send_single_tool_policy_to_provider(monkeypatch, model, variant):
     from mm_agents.realtime_config import default_config_path
     monkeypatch.setenv(
-        'PACKY_CLAUDE_FABLE_5_API_KEY' if model == 'claude-fable-5' else 'PACKY_GPT_6_ASTRA_API_KEY', 'test-key'
+        'PACKY_CLAUDE_FABLE_5_API_KEY' if model == 'claude-fable-5-1' else 'PACKY_GPT_6_ASTRA_API_KEY', 'test-key'
     )
     config = load_realtime_config(default_config_path(variant, model), variant=variant)
     agent = RealtimeAgent(variant=variant, **agent_kwargs(config))

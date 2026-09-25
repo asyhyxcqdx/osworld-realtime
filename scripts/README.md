@@ -20,7 +20,7 @@ scripts/
 ```bash
 python scripts/python/run_multienv.py \
   --agent_variant agent1 \
-  --model claude-fable-5 \
+  --model claude-fable-5-1 \
   --path_to_vm docker_vm_data/Ubuntu-realtime-gui-fmp4-v1.1-final.qcow2 \
   --api_base_url https://www.packyapi.ai \
   --run_id exp001 \

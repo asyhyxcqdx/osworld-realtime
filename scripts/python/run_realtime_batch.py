@@ -68,7 +68,7 @@ VARIANT_TO_AGENT_ID = {'agent1': 'vanilla', 'agent2': 'anticipatory',
 DEFAULT_MODELS = ['claude-sonnet-5', 'gpt-5.6-sol', 'gemini-3.8-flash',
                   'qwen3.8-max-0902', 'deepseek-flash', 'kimi-k3',
                   'glm-5.3-flash', 'MiniMax-M3',
-                  'claude-fable-5', 'gpt-6-astra']
+                  'claude-fable-5-1', 'gpt-6-astra']
 SUMMARY_FIELDS = ('model', 'key_env', 'run_id', 'return_code', 'elapsed_s', 'requests',
                   'responses', 'decisions', 'frame_queries', 'pass_at_1', 'pass_at_3',
                   'status', 'tasks_total', 'tasks_scored', 'pass_at_3_mean',

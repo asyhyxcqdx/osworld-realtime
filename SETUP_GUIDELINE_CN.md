@@ -41,7 +41,7 @@ DASHSCOPE_KIMI_K3_API_KEY           kimi-k3            （DashScope 兼容模式
 PACKY_DEEPSEEK_FLASH_API_KEY    deepseek-flash
 PACKY_GLM_5_3_FLASH_API_KEY     glm-5.3-flash
 PACKY_MINIMAX_M3_API_KEY        MiniMax-M3
-PACKY_CLAUDE_FABLE_5_API_KEY    claude-fable-5
+PACKY_CLAUDE_FABLE_5_API_KEY    claude-fable-5-1
 PACKY_GPT_6_ASTRA_API_KEY       gpt-6-astra
 ```
 
