@@ -155,14 +155,25 @@ def load_charges(path):
     return {name: float(value) for name, value in payload.items()}, {}
 
 
+DEFAULT_EFFORT_LABEL = 'default'
+
+
 def effort_for(agent_variant, model):
+    """(effort, agent_id) for the sheet's ``effort`` column.
+
+    A model whose config carries no reasoning-effort knob (MiniMax-M3 uses adaptive
+    thinking: ``mm_agents/realtime_config.validate_thinking`` requires ``effort: null``
+    there) is recorded as ``default`` rather than blank, so the sheet still states
+    what was configured instead of leaving a required column empty.
+    """
     try:
         from mm_agents.realtime_config import default_config_path, load_realtime_config
         agent_id = AGENT_IDS.get(agent_variant, agent_variant)
         config = load_realtime_config(default_config_path(agent_variant, model), variant=agent_variant)
-        return str(config['api']['thinking'].get('effort') or ''), config['agent_id']
+        effort = str(config['api']['thinking'].get('effort') or '')
+        return effort or DEFAULT_EFFORT_LABEL, config['agent_id']
     except Exception:
-        return '', AGENT_IDS.get(agent_variant, agent_variant)
+        return DEFAULT_EFFORT_LABEL, AGENT_IDS.get(agent_variant, agent_variant)
 
 
 def summarize_trajectory(task_dir):
