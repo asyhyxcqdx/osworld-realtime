@@ -1,14 +1,10 @@
 {
-  "claude-sonnet-5": {"input_per_mtok": 3.0, "cached_input_per_mtok": 0.3, "output_per_mtok": 15.0},
-  "gpt-5.6-sol": {"input_per_mtok": 1.25, "output_per_mtok": 10.0},
-  "gemini-3.8-flash": {"input_per_mtok": 0.3, "output_per_mtok": 2.5},
-  "qwen3.8-max-0902": {"input_per_mtok": 1.0, "output_per_mtok": 4.0},
-  "deepseek-flash": {"input_per_mtok": 0.27, "output_per_mtok": 1.1},
-  "kimi-k3": {"input_per_mtok": 0.6, "output_per_mtok": 2.5},
-  "glm-5.3-flash": {"input_per_mtok": 0.1, "output_per_mtok": 0.4},
-  "MiniMax-M3": {"input_per_mtok": 0.3, "output_per_mtok": 1.2},
-  "gpt-6-astra": {"input_per_mtok": 10.0, "cached_input_per_mtok": 1.0, "output_per_mtok": 50.0},
-  "claude-fable-5": {"input_per_mtok": 10.0, "cached_input_per_mtok": 1.0, "output_per_mtok": 50.0},
-  "claude-fable-5-1": {"input_per_mtok": 10.0, "cached_input_per_mtok": 0.25, "output_per_mtok": 50.0},
-  "*": {"input_per_mtok": 1.0, "output_per_mtok": 2.0}
+  "gpt-6-astra": {"input_per_mtok": 10.0, "output_per_mtok": 50.0},
+  "claude-fable-5-1": {"input_per_mtok": 10.0, "output_per_mtok": 50.0},
+  "gemini-3.8-flash": {"input_per_mtok": 0.75, "output_per_mtok": 3.75},
+  "glm-5.3-flash": {"input_per_mtok": 0.15, "output_per_mtok": 0.50},
+  "deepseek-flash": {"input_per_mtok": 0.15, "output_per_mtok": 0.60},
+  "MiniMax-M3": {"input_per_mtok": 0.30, "output_per_mtok": 1.20},
+  "qwen3.8-max-0902": {"input_per_mtok": 1.65, "output_per_mtok": 4.951},
+  "kimi-k3": {"input_per_mtok": 2.827, "output_per_mtok": 14.133}
 }
