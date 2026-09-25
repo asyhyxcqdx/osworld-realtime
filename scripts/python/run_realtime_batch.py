@@ -322,7 +322,14 @@ def settle(session, base_url, key, attempts=12, interval=10):
 
 
 def usage_tokens(usage):
-    """Prompt/completion/cached token counts from one recorded model response."""
+    """Prompt/completion/cached counts exactly as the gateway ledger reports them.
+
+    ``input`` here is the ledger's prompt count, which is what
+    ``task_request_records`` has to match against. On the anthropic wire format
+    the gateway bills only the uncached bucket (``input_tokens``) as prompt
+    tokens, so this must NOT add the cache buckets. Use ``context_tokens`` for
+    the number of tokens the model actually read.
+    """
     usage = usage or {}
     prompt = usage.get('prompt_tokens')
     if prompt is None:
@@ -333,6 +340,32 @@ def usage_tokens(usage):
     details = usage.get('prompt_tokens_details') or usage.get('input_tokens_details') or {}
     return {'input': int(prompt or 0), 'output': int(completion or 0),
             'cached_input': int(details.get('cached_tokens') or 0)}
+
+
+def context_tokens(usage):
+    """Input/output tokens the model actually read and wrote, per response.
+
+    Both wire formats describe the same three disjoint buckets, but they report
+    them differently:
+
+    * anthropic: ``input_tokens`` is only the part that was neither served from
+      the cache nor written to it; ``cache_read_input_tokens`` and
+      ``cache_creation_input_tokens`` are separate buckets, so the prompt the
+      model read is their sum.
+    * openai: ``prompt_tokens`` already is that whole prompt and the cached
+      tokens are a subset of it, so the total must not add them a second time.
+
+    Reporting and cost use this; gateway reconciliation uses ``usage_tokens``.
+    """
+    usage = usage or {}
+    if 'cache_read_input_tokens' in usage or 'cache_creation_input_tokens' in usage:
+        total = (int(usage.get('input_tokens') or 0)
+                 + int(usage.get('cache_read_input_tokens') or 0)
+                 + int(usage.get('cache_creation_input_tokens') or 0))
+    else:
+        prompt = usage.get('prompt_tokens')
+        total = int(prompt if prompt is not None else usage.get('input_tokens') or 0)
+    return {'input': total, 'output': usage_tokens(usage)['output']}
 
 
 def load_previous_tasks(cost_dir, model):
@@ -402,10 +435,10 @@ def summarize(task_dir):
                 result['responses'] += 1
                 result['stream_received'].append(event.get('stream_received'))
                 usage = event.get('usage', event.get('provider_response', {}).get('usage', {}))
-                tokens = usage_tokens(usage)
+                tokens = context_tokens(usage)
                 result['input_tokens'] += tokens['input']
                 result['output_tokens'] += tokens['output']
-                result['cached_input_tokens'] += tokens['cached_input']
+                result['cached_input_tokens'] += usage_tokens(usage)['cached_input']
                 result['usage_records'].append({
                     'request_id': event.get('request_id'),
                     'usage': usage,

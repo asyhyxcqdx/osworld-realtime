@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 
 from scripts.python.run_realtime_batch import (DEFAULT_PACKY_BASE_URL, build_report, charge_usd,
-                                               charged_usd, is_packy, keys_from_environment,
-                                               keys_from_payload, load_prices, price_for,
-                                               resolve_gateway, resolve_keys, usage_tokens)
+                                               charged_usd, context_tokens, is_packy,
+                                               keys_from_environment, keys_from_payload,
+                                               load_prices, price_for, resolve_gateway,
+                                               resolve_keys, usage_tokens)
 
 
 def args(**overrides):
@@ -116,6 +117,39 @@ def test_usage_tokens_accepts_both_wire_formats():
     assert usage_tokens({'input_tokens': 7, 'output_tokens': 2}) == {
         'input': 7, 'output': 2, 'cached_input': 0}
     assert usage_tokens(None) == {'input': 0, 'output': 0, 'cached_input': 0}
+
+
+def test_context_tokens_sums_the_three_anthropic_prompt_buckets():
+    """The anthropic prompt is three disjoint buckets; the ledger bills one.
+
+    ``input_tokens`` is only the part that was neither served from the cache nor
+    written to it, so the prompt the model read is the sum of all three. The
+    gateway ledger's prompt count is the uncached bucket alone, which is why
+    ``usage_tokens`` must keep reporting that one for reconciliation.
+    """
+    anthropic = {'input_tokens': 3087, 'cache_read_input_tokens': 23565,
+                 'cache_creation_input_tokens': 0, 'output_tokens': 446}
+
+    assert context_tokens(anthropic) == {'input': 3087 + 23565, 'output': 446}
+    assert usage_tokens(anthropic)['input'] == 3087
+
+    # cache_creation counts too, and its presence alone marks the shape
+    assert context_tokens({'input_tokens': 10, 'cache_creation_input_tokens': 90,
+                           'output_tokens': 1}) == {'input': 100, 'output': 1}
+
+
+def test_context_tokens_does_not_add_an_openai_prompts_cached_subset_again():
+    """prompt_tokens already contains the cached tokens, so adding them double counts."""
+    chat = {'prompt_tokens': 7882, 'completion_tokens': 23,
+            'prompt_tokens_details': {'cached_tokens': 4796, 'cache_write_tokens': 3083}}
+    assert context_tokens(chat) == {'input': 7882, 'output': 23}
+
+    responses = {'input_tokens': 10508, 'output_tokens': 37,
+                 'input_tokens_details': {'cached_tokens': 7879, 'cache_write_tokens': 2626}}
+    assert context_tokens(responses) == {'input': 10508, 'output': 37}
+
+    assert context_tokens(None) == {'input': 0, 'output': 0}
+    assert context_tokens({'input_tokens': 5, 'output_tokens': 1}) == {'input': 5, 'output': 1}
 
 
 def test_price_table_and_charge(tmp_path):

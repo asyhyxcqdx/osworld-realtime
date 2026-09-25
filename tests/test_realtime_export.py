@@ -5,7 +5,31 @@ import pytest
 
 from scripts.python.export_realtime_results import (COLUMNS, collect_row, compute_charge,
                                                     load_charges, load_prices, lark_cell, main,
-                                                    termination_label)
+                                                    summarize_trajectory, termination_label)
+
+
+def test_summarize_trajectory_counts_the_whole_prompt_of_either_wire_format(tmp_path):
+    """A task's token totals are what the model read, not the ledger's prompt count.
+
+    The anthropic wire format reports its prompt as three disjoint buckets, so
+    the total is their sum; an openai-shaped prompt total already contains its
+    cached part and must not have it added again.
+    """
+    task = tmp_path / 'task'
+    task.mkdir()
+    (task / 'trajectory.jsonl').write_text(''.join(json.dumps(event) + '\n' for event in [
+        {'event': 'model_response', 'calls': [{'name': 'computer_click'}],
+         'usage': {'input_tokens': 1000, 'cache_read_input_tokens': 9000,
+                   'cache_creation_input_tokens': 500, 'output_tokens': 40}},
+        {'event': 'model_response',
+         'usage': {'prompt_tokens': 2000, 'completion_tokens': 10,
+                   'prompt_tokens_details': {'cached_tokens': 1500}}},
+        {'event': 'model_request'},
+    ]), encoding='utf-8')
+
+    assert summarize_trajectory(task) == {
+        'tool_calls': 1, 'input_tokens': 10500 + 2000,
+        'output_tokens': 50, 'cached_input_tokens': 9000 + 1500}
 
 
 def write_task(task_dir, *, scored=True, termination='done'):

@@ -177,7 +177,15 @@ def effort_for(agent_variant, model):
 
 
 def summarize_trajectory(task_dir):
-    """Tool calls and token usage recorded in the run's trajectory."""
+    """Tool calls and token usage recorded in the run's trajectory.
+
+    The token counts are the ones the model actually read and wrote. The
+    anthropic wire format splits its prompt into three disjoint buckets and
+    ``context_tokens`` sums them; an openai-shaped prompt total already contains
+    its cached part, so that one must not be added up again.
+    """
+    from scripts.python.run_realtime_batch import context_tokens
+
     calls = input_tokens = output_tokens = cached_input = 0
     trajectory = task_dir / 'trajectory.jsonl'
     if trajectory.exists():
@@ -192,12 +200,10 @@ def summarize_trajectory(task_dir):
             if isinstance(raw_calls, list):
                 calls += len(raw_calls)
             usage = event.get('usage') or event.get('provider_response', {}).get('usage') or {}
-            prompt = usage.get('prompt_tokens')
-            completion = usage.get('completion_tokens')
+            tokens = context_tokens(usage)
+            input_tokens += tokens['input']
+            output_tokens += tokens['output']
             details = usage.get('prompt_tokens_details') or usage.get('input_tokens_details') or {}
-            input_tokens += int(prompt if prompt is not None else usage.get('input_tokens') or 0)
-            output_tokens += int(completion if completion is not None
-                                 else usage.get('output_tokens') or 0)
             cached_input += int(details.get('cached_tokens')
                                 or usage.get('cache_read_input_tokens') or 0)
     return {'tool_calls': calls, 'input_tokens': input_tokens, 'output_tokens': output_tokens,
