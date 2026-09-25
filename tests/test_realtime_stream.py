@@ -77,14 +77,14 @@ def test_complete_stream_decodes_action_and_records_actual_transport(monkeypatch
 
 @pytest.mark.parametrize('protocol', PROTOCOLS)
 def test_complete_tool_json_without_stream_termination_never_dispatches(monkeypatch, protocol):
-    responses = [sse(tool_events(protocol, complete=False)) for _ in range(3)]
+    responses = [sse(tool_events(protocol, complete=False)) for _ in range(5)]
     agent = agent_with_http(monkeypatch, protocol, responses)
     query = Mock(); agent.bind_frame_query(query)
     with pytest.raises(RuntimeError, match='no actions dispatched'):
         agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
     assert agent.pending_action_calls is None
     query.assert_not_called()
-    assert agent.wire.session.post.call_count == 3
+    assert agent.wire.session.post.call_count == 5
     for response in responses:
         response.close.assert_called_once()
 
@@ -97,18 +97,18 @@ def test_read_timeout_retries_whole_stream_without_reusing_partial_actions(monke
     assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1] == [
         {'action_type': 'PRESS', 'parameters': {'key': 'w'}}]
     assert agent.wire.session.post.call_count == 2
-    assert all(call.kwargs['timeout'] == 120 for call in agent.wire.session.post.call_args_list)
+    assert all(call.kwargs['timeout'] == 240 for call in agent.wire.session.post.call_args_list)
     assert all(call.kwargs['stream'] is True for call in agent.wire.session.post.call_args_list)
     partial.close.assert_called_once(); complete.close.assert_called_once()
 
 
 @pytest.mark.parametrize('protocol', PROTOCOLS)
-def test_stream_read_timeouts_stop_after_three_attempts(monkeypatch, protocol):
-    responses = [sse(tool_events(protocol, complete=False), fail_after=True) for _ in range(3)]
+def test_stream_read_timeouts_stop_after_five_attempts(monkeypatch, protocol):
+    responses = [sse(tool_events(protocol, complete=False), fail_after=True) for _ in range(5)]
     agent = agent_with_http(monkeypatch, protocol, responses)
     with pytest.raises(requests.ReadTimeout):
         agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
-    assert agent.wire.session.post.call_count == 3
+    assert agent.wire.session.post.call_count == 5
     assert agent.pending_action_calls is None
     for response in responses:
         response.close.assert_called_once()
@@ -148,12 +148,12 @@ def test_upstream_balance_402_gives_up_after_five_attempts(monkeypatch):
         response.close.assert_called_once()
 
 
-def test_plain_server_errors_still_stop_after_three_attempts(monkeypatch):
-    responses = [_http_error(503) for _ in range(3)]
+def test_plain_server_errors_still_stop_after_five_attempts(monkeypatch):
+    responses = [_http_error(503) for _ in range(5)]
     agent = agent_with_http(monkeypatch, 'openai_chat', responses)
     with pytest.raises(RuntimeError, match='HTTP 503'):
         agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
-    assert agent.wire.session.post.call_count == 3
+    assert agent.wire.session.post.call_count == 5
 
 
 def test_messages_keep_thinking_signatures_redaction_and_cumulative_usage():

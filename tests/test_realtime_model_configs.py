@@ -105,7 +105,7 @@ def test_packy_config_request_and_coordinate_contract(monkeypatch, screenshot, m
         assert 'Always submit x/y action parameters in native screen pixels' in agent.system
     assert payload['stream'] is True
     assert kw['stream'] is True
-    assert kw['timeout'] == 120
+    assert kw['timeout'] == 240
     assert agent.wire.protocol == protocol
     assert payload.get('max_tokens', payload.get('max_output_tokens')) == output_limit
     assert 'selected-test-credential' in list(kw['headers'].values()) or kw['headers'].get('Authorization') == 'Bearer selected-test-credential'

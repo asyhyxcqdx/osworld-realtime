@@ -7,7 +7,9 @@ import base64
 import copy
 import hashlib
 import json
+import logging
 import os
+import random
 import time
 
 import requests
@@ -27,14 +29,24 @@ from mm_agents.realtime_protocol import (
     validate_action,
 )
 
+logger = logging.getLogger(__name__)
+
 
 RETRY_STATUS = {402, 429, 500, 502, 503, 504}
-RETRY_ATTEMPTS = 3
+RETRY_ATTEMPTS = 5
 # 402 is the gateway's upstream channel temporarily having no balance. The gateway
 # balances across channels, so a retry often lands on a healthy one; give it more
 # attempts than a plain server error, with the same exponential backoff.
 CHANNEL_BALANCE_STATUS = 402
 CHANNEL_BALANCE_ATTEMPTS = 5
+# A read timeout, a dropped TLS connection or a truncated stream means this request
+# landed on a slow or dead upstream channel (the gateway distributes per request, so
+# the next one may be healthy). Space those retries out -- with jitter, so parallel
+# workers do not retry in lockstep -- while server-side status codes only need a
+# short pause. The last value is reused for any further attempts.
+NETWORK_RETRY_BACKOFF_S = (3.0, 6.0, 12.0, 24.0)
+SERVER_RETRY_BACKOFF_S = (1.0, 2.0, 4.0, 8.0)
+NETWORK_RETRY_JITTER = 0.3
 
 
 def text_block(text):
@@ -172,7 +184,7 @@ class ModelWire:
         model,
         api_format="auto",
         base_url=None,
-        timeout=120,
+        timeout=240,
         thinking_summary=False,
         thinking_enabled=None,
         thinking_effort=None,
@@ -395,6 +407,7 @@ class ModelWire:
         while True:
             response = None
             status_code = None
+            network_error = False
             try:
                 response = self.session.post(
                     url, headers=headers, json=payload, timeout=self.timeout,
@@ -422,13 +435,23 @@ class ModelWire:
                     attempts_allowed = max(attempts_allowed, CHANNEL_BALANCE_ATTEMPTS)
             except (requests.RequestException, IncompleteStreamError) as exc:
                 last_error = exc
+                network_error = True
             finally:
                 if response is not None and callable(getattr(response, "close", None)):
                     response.close()
             attempt += 1
             if attempt >= attempts_allowed:
                 break
-            time.sleep(2 ** (attempt - 1))
+            if network_error:
+                base = NETWORK_RETRY_BACKOFF_S[min(attempt - 1, len(NETWORK_RETRY_BACKOFF_S) - 1)]
+                delay = base * (1 + random.uniform(-NETWORK_RETRY_JITTER, NETWORK_RETRY_JITTER))
+            else:
+                delay = SERVER_RETRY_BACKOFF_S[min(attempt - 1, len(SERVER_RETRY_BACKOFF_S) - 1)]
+            logger.warning(
+                "Model API retry %d/%d in %.1fs after %s: %s",
+                attempt, attempts_allowed, delay, type(last_error).__name__, last_error,
+            )
+            time.sleep(delay)
         raise last_error
 
     def unpack(self, response):
