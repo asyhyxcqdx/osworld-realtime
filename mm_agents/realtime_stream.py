@@ -15,6 +15,15 @@ class RateLimitedStreamError(RuntimeError):
     """
 
 
+class TransientStreamError(RuntimeError):
+    """The upstream failed or stalled inside an HTTP 200 stream.
+
+    Same safety argument as a quota refusal -- no complete reply was assembled, so no
+    action was dispatched and resending cannot repeat one -- but these clear quickly,
+    so the caller retries them on the shorter network backoff rather than the quota one.
+    """
+
+
 # Markers found in the error object of an otherwise HTTP-200 stream. Gateways differ in
 # shape (OpenAI ``error.code``, Anthropic ``error.type``, a free-text ``message``), so the
 # whole error object is searched; only the error payload is inspected, never the response
@@ -38,6 +47,42 @@ def is_rate_limited(detail) -> bool:
     text = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
     lowered = text.lower()
     return any(marker in lowered for marker in _RATE_LIMIT_MARKERS)
+
+
+# An HTTP 200 whose stream reports an upstream hiccup -- a failed server, a stalled
+# passthrough, a momentarily unavailable backend. The request never produced a usable
+# reply, so it is safe to resend, but unlike a quota refusal these clear in seconds, so
+# they ride the shorter network backoff. Keep this list narrow and explicit: a plain
+# "error" substring would also match genuine model-side failures.
+_TRANSIENT_MARKERS = (
+    "server_error",
+    "server had an error",
+    "internal_error",
+    "internal server error",
+    "api_error",
+    "idle timeout",
+    "timed out",
+    "timeout",
+    "unavailable",
+)
+
+
+def is_transient_error(detail) -> bool:
+    """True when a stream's error payload is a transient upstream failure."""
+    if detail is None:
+        return False
+    text = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
+    lowered = text.lower()
+    return any(marker in lowered for marker in _TRANSIENT_MARKERS)
+
+
+def _stream_error_class(detail):
+    """Retryable class for a stream error payload, or RuntimeError when it is fatal."""
+    if is_rate_limited(detail):
+        return RateLimitedStreamError
+    if is_transient_error(detail):
+        return TransientStreamError
+    return RuntimeError
 
 
 def _events(response):
@@ -104,8 +149,7 @@ def _responses(response):
                 or event.get("error")
                 or event.get("message")
             )
-            error = RateLimitedStreamError if is_rate_limited(detail) else RuntimeError
-            raise error(f"Responses stream {kind}: {str(detail)[:300]}")
+            raise _stream_error_class(detail)(f"Responses stream {kind}: {str(detail)[:300]}")
     raise IncompleteStreamError("Responses stream ended before response.completed; no actions dispatched.")
 
 
@@ -117,8 +161,7 @@ def _messages(response):
         kind = event.get("type", name)
         if kind == "error":
             detail = event.get("error") or event.get("message")
-            error = RateLimitedStreamError if is_rate_limited(detail) else RuntimeError
-            raise error(f"Messages stream error: {str(detail)[:300]}")
+            raise _stream_error_class(detail)(f"Messages stream error: {str(detail)[:300]}")
         if kind == "message_start":
             if message is not None:
                 raise RuntimeError("Duplicate message_start; no actions dispatched.")
@@ -248,8 +291,7 @@ def _chat(response):
             return result
         if name == "error" or chunk.get("error"):
             detail = chunk.get("error", chunk)
-            error = RateLimitedStreamError if is_rate_limited(detail) else RuntimeError
-            raise error(f"Chat stream error: {str(detail)[:300]}")
+            raise _stream_error_class(detail)(f"Chat stream error: {str(detail)[:300]}")
         for key, value in chunk.items():
             if key != "choices" and value is not None:
                 if key == "usage":

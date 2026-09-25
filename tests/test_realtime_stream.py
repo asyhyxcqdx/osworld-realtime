@@ -8,7 +8,11 @@ import requests
 
 from mm_agents.realtime_agent import ModelWire, RealtimeAgent, response_reasoning
 from mm_agents.realtime_protocol import AgentProtocolError
-from mm_agents.realtime_stream import RateLimitedStreamError, collect_stream
+from mm_agents.realtime_stream import (
+    RateLimitedStreamError,
+    TransientStreamError,
+    collect_stream,
+)
 
 
 PROTOCOLS = ['anthropic_messages', 'openai_chat', 'openai_responses']
@@ -203,12 +207,14 @@ def test_rate_limit_gives_up_after_five_retries(monkeypatch):
 
 
 def test_non_quota_stream_failure_is_not_retried(monkeypatch):
+    # A model-side refusal is neither a quota refusal nor an upstream hiccup: it is the
+    # model's own answer, so it must fail immediately instead of being resent.
     failed = sse([{'type': 'response.failed', 'response': {
-        'status': 'failed', 'error': {'code': 'server_error', 'message': 'the model refused this request'}}}])
+        'status': 'failed', 'error': {'code': 'invalid_request_error', 'message': 'the model refused this request'}}}])
     agent = agent_with_http(monkeypatch, 'openai_responses', [failed, sse(tool_events('openai_responses'))])
     with pytest.raises(RuntimeError) as raised:
         agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
-    assert not isinstance(raised.value, RateLimitedStreamError)
+    assert not isinstance(raised.value, (RateLimitedStreamError, TransientStreamError))
     assert agent.wire.session.post.call_count == 1
     failed.close.assert_called_once()
 
@@ -439,3 +445,60 @@ def test_reused_index_fragment_can_complete_the_only_unfinished_call():
     assert [call['id'] for call in calls] == ['a', 'b']
     assert [json.loads(call['function']['arguments']) for call in calls] == [
         {'x': 995, 'y': 724}, {'duration_s': 0.1}]
+
+
+def _transient_stream(protocol):
+    """HTTP 200 whose stream reports an upstream hiccup in each protocol's shape."""
+    if protocol == 'anthropic_messages':
+        events = [{'type': 'error', 'error': {'type': 'api_error', 'message': 'Upstream service unavailable, please retry.'}}]
+    elif protocol == 'openai_chat':
+        events = [{'error': {'type': 'server_error', 'message': 'The server had an error processing your request.'}}]
+    else:
+        events = [{'type': 'error', 'error': {'type': 'server_error', 'code': 'server_error',
+                                              'message': 'The server had an error processing your request. Sorry about that!'}}]
+    return sse(events)
+
+
+@pytest.mark.parametrize('protocol', PROTOCOLS)
+def test_transient_stream_error_is_retried_without_dispatching_actions(monkeypatch, protocol):
+    broken = _transient_stream(protocol)
+    agent = agent_with_http(monkeypatch, protocol, [broken, sse(tool_events(protocol))])
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1] == [
+        {'action_type': 'PRESS', 'parameters': {'key': 'space'}}]
+    assert agent.wire.session.post.call_count == 2
+    assert agent.pending_action_calls
+    broken.close.assert_called_once()
+
+
+def test_gateway_passthrough_idle_timeout_is_retried(monkeypatch):
+    # Verbatim shape seen from the llm-center gateway: an api_error about a stalled
+    # passthrough stream. It cost whole tasks before this class was retryable.
+    stalled = sse([{'type': 'error', 'error': {
+        'type': 'api_error',
+        'message': 'passthrough stream idle timeout after 120s waiting for next chunk'}}])
+    agent = agent_with_http(monkeypatch, 'anthropic_messages', [stalled, sse(tool_events('anthropic_messages'))])
+    assert agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})[1]
+    assert agent.wire.session.post.call_count == 2
+    stalled.close.assert_called_once()
+
+
+def test_transient_stream_gives_up_after_the_network_attempt_budget(monkeypatch):
+    responses = [_transient_stream('openai_responses') for _ in range(5)]
+    agent = agent_with_http(monkeypatch, 'openai_responses', responses)
+    with pytest.raises(TransientStreamError, match='server_error'):
+        agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
+    assert agent.wire.session.post.call_count == 5
+    assert agent.pending_action_calls is None
+    for response in responses:
+        response.close.assert_called_once()
+
+
+def test_content_filter_is_not_treated_as_transient(monkeypatch):
+    filtered = sse([{'type': 'response.incomplete', 'response': {
+        'status': 'incomplete', 'incomplete_details': {'reason': 'content_filter'}, 'output': []}}])
+    agent = agent_with_http(monkeypatch, 'openai_responses', [filtered, sse(tool_events('openai_responses'))])
+    with pytest.raises(RuntimeError) as raised:
+        agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
+    assert not isinstance(raised.value, (TransientStreamError, RateLimitedStreamError))
+    assert agent.wire.session.post.call_count == 1
+    filtered.close.assert_called_once()

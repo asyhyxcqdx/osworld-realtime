@@ -20,6 +20,7 @@ from mm_agents.realtime_coordinates import CoordinateAdapter
 from mm_agents.realtime_stream import (
     IncompleteStreamError,
     RateLimitedStreamError,
+    TransientStreamError,
     collect_stream,
 )
 
@@ -451,7 +452,10 @@ class ModelWire:
             except RateLimitedStreamError as exc:
                 last_error = exc
                 rate_limit_error = True
-            except (requests.RequestException, IncompleteStreamError) as exc:
+            except (requests.RequestException, IncompleteStreamError, TransientStreamError) as exc:
+                # A transient upstream failure inside a 200 stream: no complete reply was
+                # assembled, so nothing was dispatched and resending is safe. It clears in
+                # seconds, so it rides the network backoff instead of the quota one.
                 last_error = exc
                 network_error = True
             finally:
