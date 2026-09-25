@@ -194,11 +194,12 @@ def summarize_trajectory(task_dir):
             usage = event.get('usage') or event.get('provider_response', {}).get('usage') or {}
             prompt = usage.get('prompt_tokens')
             completion = usage.get('completion_tokens')
-            details = usage.get('prompt_tokens_details') or {}
+            details = usage.get('prompt_tokens_details') or usage.get('input_tokens_details') or {}
             input_tokens += int(prompt if prompt is not None else usage.get('input_tokens') or 0)
             output_tokens += int(completion if completion is not None
                                  else usage.get('output_tokens') or 0)
-            cached_input += int(details.get('cached_tokens') or 0)
+            cached_input += int(details.get('cached_tokens')
+                                or usage.get('cache_read_input_tokens') or 0)
     return {'tool_calls': calls, 'input_tokens': input_tokens, 'output_tokens': output_tokens,
             'cached_input_tokens': cached_input}
 
