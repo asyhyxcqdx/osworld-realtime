@@ -35,7 +35,8 @@ results tree; pass an absolute path to keep them outside the repository).
 
 Resume is built into the runner: rerun the same command with the same
 --result_dir/--run_id and run_multienv skips every task that already has
-result.txt and clears the ones that do not.
+result.txt. Completed games awaiting audit keep their original trajectory;
+resume retries only the audit. Tasks without a saved game outcome are replayed.
 
 Accounting rules used by the earlier combine cost runs:
   * actual charge is the gateway ledger, filtered by exact model_name and by the
@@ -459,9 +460,8 @@ def summarize(task_dir):
         payload = json.loads(scored.read_text(encoding='utf-8'))
         if payload.get('judge') is not None:
             result['judge'] = payload['judge']
-        # result.txt is the only scalar the design trusts. The audit removes it when
-        # it cannot reach a verdict (leaving result.json for diagnosis), so a task
-        # without it is unfinished: not scored, and re-run by the resume path.
+        # A saved game without result.txt awaits its audit. Resume uses the same
+        # game outcome and trajectory before publishing the final score.
         if (task_dir / 'result.txt').exists():
             result.update(pass_at_1=payload.get('pass_at_1'), pass_at_3=payload.get('pass_at_3'),
                           status=payload.get('status'), attempts=payload.get('attempts_completed'))
@@ -597,23 +597,43 @@ def load_per_task_charge(cost_dir, model):
 
 
 def append_per_task_charge(cost_dir, model, per_task, stats, *, run_id, tasks_run,
-                           billing_error=None, secrets=()):
+                           billing_error=None, secrets=(), pending_per_task=None,
+                           completed_task_ids=()):
     """Add one invocation's per-task amounts to ``<model>_per_task_charge.json``.
 
     Same reasoning as the charge ledger: a subset re-run only sees its own
     window, so the per-task amounts accumulate instead of replacing each other.
     """
     totals, windows = load_per_task_charge(cost_dir, model)
+    path = Path(cost_dir) / f'{model}_per_task_charge.json'
+    try:
+        previous = json.loads(path.read_text())
+    except (OSError, ValueError):
+        previous = {}
+    pending = dict(previous.get('pending_per_task') or {}) if isinstance(previous, dict) else {}
+    for task_id, usd in (pending_per_task or {}).items():
+        pending[task_id] = round(pending.get(task_id, 0.0) + usd, 6)
+    promoted = {task_id: pending.pop(task_id) for task_id in completed_task_ids
+                if task_id in pending}
+    for task_id, usd in promoted.items():
+        totals[task_id] = round(totals.get(task_id, 0.0) + usd, 6)
     for task_id, usd in per_task.items():
         totals[task_id] = round(totals.get(task_id, 0.0) + usd, 6)
     windows.append({'window': len(windows) + 1, 'run_id': run_id, 'tasks_run': tasks_run,
-                    'billing_error': billing_error, **stats})
+                    'billing_error': billing_error, **stats,
+                    'pending_usd': round(sum((pending_per_task or {}).values()), 6),
+                    'audit_completed_usd': round(sum(promoted.values()), 6)})
     payload = {
         'model': model,
         'run_id': run_id,
         'per_task': {key: totals[key] for key in sorted(totals)},
         'total_usd': round(sum(totals.values()), 6),
-        'unattributed_usd': round(sum(row.get('unmatched_usd') or 0 for row in windows), 6),
+        'unattributed_usd': round(sum((row.get('unmatched_usd') or 0)
+                                      + (row.get('pending_usd') or 0)
+                                      - (row.get('audit_completed_usd') or 0)
+                                      for row in windows), 6),
+        'pending_per_task': pending,
+        'pending_usd': round(sum(pending.values()), 6),
         'windows': windows,
         'attribution': 'per request: matching token pair first, closest timestamp second',
         'currency_note': 'Gateway ledger charge in USD, quota/500000.',
@@ -630,18 +650,24 @@ def record_per_task_charge(cost_dir, model, task_dirs, ledger_rows, *, run_id,
     model row. Kept separate from the run loop so the whole path from result
     directories to ``<model>_per_task_charge.json`` can be exercised in a test.
 
-    Only tasks that kept ``result.txt`` own their spend: a task without it has no
-    valid score (an unfinished audit, or a directory the resume path will clear),
-    so its requests stay in ``unattributed_usd`` instead of being charged to a row
-    the sheet reports as having no result.
+    Completed games awaiting audit retain their matched spend in
+    ``pending_per_task`` (included in ``unattributed_usd`` until scored).
+    An audit-only resume transfers it to ``per_task`` without another game request.
     """
     task_dirs = [Path(task_dir) for task_dir in task_dirs]
+    from mm_agents.realtime_auditor import load_game_result
+
+    completed = {task_dir.name for task_dir in task_dirs if (task_dir / 'result.txt').exists()}
     tasks = {task_dir.name: task_request_records(task_dir)
-             for task_dir in task_dirs if (task_dir / 'result.txt').exists()}
+             for task_dir in task_dirs if task_dir.name in completed
+             or load_game_result(task_dir) is not None}
     per_task, attribution = attribute_gateway_charge(tasks, ledger_rows)
+    pending = {task_id: usd for task_id, usd in per_task.items() if task_id not in completed}
+    per_task = {task_id: usd for task_id, usd in per_task.items() if task_id in completed}
     payload = append_per_task_charge(cost_dir, model, per_task, attribution, run_id=run_id,
                                      tasks_run=len(task_dirs), billing_error=billing_error,
-                                     secrets=secrets)
+                                     secrets=secrets, pending_per_task=pending,
+                                     completed_task_ids=completed)
     return payload, attribution
 
 

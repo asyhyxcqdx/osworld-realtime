@@ -36,14 +36,14 @@
 
 批量入口是 `scripts/python/run_realtime_batch.py`（逐模型记账、可续跑），它按模型顺序调用 `scripts/python/run_multienv.py`。
 
-1. `run_multienv.py` 按模型和变体加载 YAML，校验 ID、感知与动作能力，再用统一 `agent_kwargs()` 创建 Agent；`system_prompt` 缺失或为空直接报错。
+1. `run_multienv.py` 先检查任务是否已有最终分或已保存游戏结果：前者跳过，后者只补审计；需要玩游戏时才创建 VM 和 Agent。按模型和变体加载 YAML，校验 ID、感知与动作能力，再用统一 `agent_kwargs()` 创建 Agent；`system_prompt` 缺失或为空直接报错。
 2. `run_realtime_example()` 执行任务 reset；必要时安装服务；核对 VM 两份 realtime 源码哈希，开始 30 FPS 目标录像。
 3. 对话开头固定一条任务 user 消息，文字来自 YAML 的 `user_prompt`（每个变体一套：角色、实时约束、执行策略、工具与感知、规则与收尾；`video`/`combine` 才有 `get_frames` 相关段落）。每个决策轮只追加截图时间和当前原始 1920×1080 截图；每次请求包含任务说明、完整历史回复及工具结果和本轮观测，单次请求内任务说明只有一份。
 4. 如模型调用 `get_frames`，VM 按所给秒数读取已完成片段并返回图片与实际时间，宿主保存查询图片并回填 API；可重复，不增加决策数。
 5. 如模型提交动作，先确认回复未因输出上限截断，再由 Agent1/3 校验恰好一个、Agent2/4 校验 1–100 个；注册键名、参数范围和 DONE 位置都要合法。
 6. VM 按顺序执行整段动作，之后只返回一个当前截图；KEY_DOWN 持续到 KEY_UP，WAIT 的 `duration_s` 在 VM 内睡眠，普通动作没有隐含 pause。
 7. 完整 VM 参数、实际开始/结束/耗时及截图写入 `trajectory.jsonl`。按相同调用 ID 回传模型时，每个动作只保留自己的动作类型与状态字段（`executed`/`reward`/`done`/`last_in_decision`），**不带任何时间、不回显 VM 坐标、不重复附带整段执行流水**：`started_s` 标的是宿主注入事件的时刻，不是世界收到它的时刻，把它和帧时间戳相减会把不可测的 δ 算进去。
-8. 模型调用 `computer_done({})`，运行时转换为内部 DONE 并结束循环，读取 BENCH、保存 `result.json`/`result.txt`；**落分之前还会调一次轨迹判官**（`mm_agents/realtime_auditor.py`，见 [`AGENTS.md`](AGENTS.md) 第 4 节）：判为 `CHEAT` 就把最终分写成 0，判官没跑成功则不写 `result.txt`（那条任务重跑）；`result.json` 里的 `pass_at_1`/`pass_at_3` 始终是游戏原值，另加一个 `judge` 块记判官结论；录制在 finally 中停止，下载 MP4、索引和日志，然后自动生成只读 `trajectory.html`（失败的运行也展示已有事件，导出失败不改变实验结果）。
+8. 模型调用 `computer_done({})` 或达到决策上限后，读取 BENCH，将原局结果保存到 `game_result.json`。先停止录像、下载 MP4、索引和日志，保存指标并生成 `trajectory.html`，再调用轨迹判官。审计成功后在 `result.json` 写入 `judge` 和 `audit_status: completed`，并用 `result.txt` 发布最终分：`CHEAT` 为 0，其余保留原分。审计失败时标记 `audit_status: pending`，保留原局结果与证据；续跑只补审计，不创建 VM、不再次操作游戏。
 
 正式游戏在 reset 后记录页面身份，并在每次动作后与评分前比较标签页、URL（不含 hash）和加载时间：重载、换页或复制页面时写 `run_error` 并保持未评分。该检查在环境侧，不提供给模型，也不读 `__dbg`。
 

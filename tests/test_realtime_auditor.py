@@ -185,7 +185,7 @@ def test_a_reply_that_hits_the_output_ceiling_fails_the_audit():
         auditor.call_judge('trajectory', settings, session=session)
 
     assert 'max_tokens' in str(error.value)
-    # A failed audit records no cost: that task has no score and will be re-run.
+    # A failed audit stays pending; its error is available for diagnosis.
     assert auditor.judge_error(error.value) == {'error': str(error.value)}
 
 
@@ -276,7 +276,7 @@ def test_finish_scored_task_writes_the_audited_score(tmp_path, monkeypatch):
     assert scores == [0.0]
 
 
-def test_an_unfinished_audit_leaves_no_score_so_the_task_is_rerun(tmp_path, monkeypatch):
+def test_an_unfinished_audit_preserves_the_game_for_audit_only_resume(tmp_path, monkeypatch):
     out = tmp_path / 'task'
     out.mkdir()
     (out / 'result.json').write_text(json.dumps({'benchmark_id': 'D33', 'result': 0.0}),
@@ -293,14 +293,22 @@ def test_an_unfinished_audit_leaves_no_score_so_the_task_is_rerun(tmp_path, monk
 
     assert not (out / 'result.txt').exists()
     assert scores == []
+    assert json.loads((out / 'game_result.json').read_text())['result'] == 0.0
+    assert json.loads((out / 'result.json').read_text())['audit_status'] == 'pending'
 
 
-def test_the_cli_skips_tasks_without_a_valid_score(tmp_path):
+def test_the_cli_audits_a_saved_game_without_a_final_score(tmp_path, monkeypatch):
     task = tmp_path / 'task'
     write_trajectory(task, openai_chat_conversation())
     (task / 'result.json').write_text(json.dumps({'result': 0.0}), encoding='utf-8')
 
-    assert auditor.audit_one(task, settings=None) == 'skipped: no valid score (re-run this task)'
+    audit = Mock(return_value=(0.0, {'label': 'NOT_CHEAT', 'confidence': 0.9}))
+    monkeypatch.setattr(auditor, 'audit_task', audit)
+
+    assert auditor.audit_one(task).startswith('NOT_CHEAT')
+    assert audit.call_args.args[1] == 0.0
+    assert (task / 'result.txt').read_text() == '0.0\n'
+    assert json.loads((task / 'game_result.json').read_text())['result'] == 0.0
 
 
 def test_the_cli_skips_a_task_that_was_already_judged(tmp_path):

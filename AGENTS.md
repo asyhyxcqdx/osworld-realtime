@@ -119,7 +119,7 @@ python scripts/python/run_realtime_batch.py \
 ```
 
 - **并发数怎么定**：`--num_envs` 决定吞吐，**但它同时是"宿主机负载"变量**，所以**做 prompt/配置的分数 A/B 时固定同一个 `--num_envs`**（我们的 C 类对照一律用 6），只有追吞吐时才开大。**实测 16 并发并没有把 VM 拖慢**（录像 30.00 fps、动作派发中位 0.216 s、`WAIT` 误差 0.1%、帧时刻偏差中位 6 ms，与 6 并发同量级）——但同一配置换一批 run，C 类过/不过仍能翻 4 题（详见"单任务结果不可复现"那条），所以固定 `--num_envs` 是为了让 A/B 的噪声保持一致，不是因为高并发会系统性压分。
-- **高并发（≥10）会偶发 `/realtime/start` 失败**，两种错误码各有原因，且**大多会自己好**：`409 Timed out waiting for the first complete fragment`（ffmpeg 15 秒内没出首个片段）和 `400 Set the VM screen to 1920x1080 before starting the experiment`（VM 的屏幕还没变成 1920x1080）。宿主侧因此**自动重试 5 次**（等 2/5/10/20/30 秒，共约 67 秒；日志里会打 `start_realtime_recording attempt i/n failed, retrying in Ns: …`）。重试是幂等的：VM 侧 `Recorder.start()` 出错时会自己 `stop()`，不留 ffmpeg、不留半开会话，所以重试成功的那一局是从干净状态起录的。**重试不降低任何标准**：`/start` 自己要求屏幕正好 1920x1080 且已出首个片段，满足才答应，所以"跑起来的局"分辨率和时间轴都是正常的；重试只决定这一局能不能开始。实测 `num_envs=16` 的两批：一批 8/16 台吃 409、重试后全部恢复，0 题作废；另一批 3 台吃 400 且 67 秒内没等到屏幕（同一台 VM 的下一个任务约 2 分钟后正常开始，说明屏幕是自己好的、只是慢）。**等不来的就按既定规矩办：没有 `result.txt` 的任务交回续跑补齐**（脚本会清掉它的目录重跑），不要为了追高并发去加大这个预算。`num_envs=6`（我们的对照规模）实测 0/17 失败。
+- **高并发（≥10）会偶发 `/realtime/start` 失败**，两种错误码各有原因，且**大多会自己好**：`409 Timed out waiting for the first complete fragment`（ffmpeg 15 秒内没出首个片段）和 `400 Set the VM screen to 1920x1080 before starting the experiment`（VM 的屏幕还没变成 1920x1080）。宿主侧因此**自动重试 5 次**（等 2/5/10/20/30 秒，共约 67 秒；日志里会打 `start_realtime_recording attempt i/n failed, retrying in Ns: …`）。重试是幂等的：VM 侧 `Recorder.start()` 出错时会自己 `stop()`，不留 ffmpeg、不留半开会话，所以重试成功的那一局是从干净状态起录的。**重试不降低任何标准**：`/start` 自己要求屏幕正好 1920x1080 且已出首个片段，满足才答应，所以"跑起来的局"分辨率和时间轴都是正常的；重试只决定这一局能不能开始。实测 `num_envs=16` 的两批：一批 8/16 台吃 409、重试后全部恢复，0 题作废；另一批 3 台吃 400 且 67 秒内没等到屏幕（同一台 VM 的下一个任务约 2 分钟后正常开始，说明屏幕是自己好的、只是慢）。**开跑失败且尚未保存游戏结果的任务交回续跑补齐**（脚本会清掉未完成游戏的目录重跑），不要为了追高并发去加大这个预算。`num_envs=6`（我们的对照规模）实测 0/17 失败。
 - **高并发下同一台 VM 的 Chrome 也可能答不动开跑前那次身份探针**：实测 `num_envs=16` 时 17 题里有 **2 题在 `lib_run_realtime.py:82` 的 `realtime_page_identity` 处 `TimeoutError: timed out in 10.0s`**，异常被 worker 兜底吃掉、任务**连目录都没有**（也就没有 `result.txt`，必须续跑）。现在这个**只读**探针也会重试 3 次（等 2/5/10 秒）；"页面丢失/重复"和 JS 报错仍然立刻上报不重试。`num_envs=16` 的现场数据：录像精确 30.00 fps、动作派发中位 0.216 s、`WAIT` 误差 0.1%、帧时刻偏差中位 6 ms —— **16 并发的时序没有可测退化**，同一批分数与 6 并发的差异来自任务本身的随机性（见下面一条）。
 - 不传 `--task/--meta` 时默认跑全部 69 个任务。
 - 结果：`<result_dir>/<model>/<run_id>/<agent>/<action_space>/<observation_type>/<domain>/<uuid>/`
@@ -147,9 +147,9 @@ python scripts/python/export_realtime_results.py \
 每条任务**落分之前**，`lib_run_realtime.py` 会调一次判官（`mm_agents/realtime_auditor.py`；system prompt = `configs/realtime_agents/auditor.txt`；判官模型 = `REALTIME_JUDGE_MODEL`，默认 `deepseek-flash`）：输入就是这条轨迹自己的原始 JSONL —— **从最后一条 `model_request` 那一行到文件末尾**，一行不改、不重排、不改字段名（事件字段、三种协议的消息、工具调用参数、工具结果、思考字段全在里面；图片字节在**写日志时**就已经被换成哈希和长度了）；每次判完都把这份输入原样存到任务目录的 `audit_input.txt`。返回 `NOT_CHEAT` / `CHEAT` / `CHEAT_ATTEMPT` / `UNCERTAIN`。
 
 - `CHEAT` → `result` 和 `result.txt` 写 **0**；`CHEAT_ATTEMPT`、`UNCERTAIN`、`NOT_CHEAT` → **保留原分**；
-- **判官没跑成功 → 不写 `result.txt`**：这条任务算未完成，用同样的命令续跑会重跑它（并重新判）。所以分数**只写一次**，且一定是判过之后的最终分；
+- 游戏结算后先保存 `game_result.json`、轨迹、录像和指标，再调用判官。**审计失败 → `audit_status: pending`，暂不写 `result.txt`**；同命令续跑只审查同一份文字轨迹，游戏不重玩。成功后写入 `audit_status: completed` 和最终分；
 - 缺 `REALTIME_JUDGE_API_KEY` → **开跑前直接报错**（见 `.env.example` 第六节）；
-- 判官花费走它自己那把 key；**建议给判官单独一把 key**，否则它的调用会被算进同款被测模型的账单。
+- 判官成本只取最后一次完整审计保存的 `judge.usage`，之前失败的审计记录不累加。判官花费走它自己那把 key；**建议给判官单独一把 key**，否则它的调用会被算进同款被测模型的账单。
 
 单独（补）判已经跑完的结果目录：
 
@@ -160,12 +160,16 @@ python -m mm_agents.realtime_auditor --result_dir <dir> --force          # 全�
 python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 只写出 audit_input.txt，不调判官（正常判完也会存这份）
 ```
 
-判据是 `result.txt` 存在（有有效成绩才判）。
+已保存 `game_result.json`（或旧版 `result.json`）就可以补审计，无需 `result.txt`，也不需要 `--force`。`--force` 用于重新审查已有判决的任务。
 
 ### 续跑（补齐没成绩的任务）
 
 **同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次即可**，不需要额外参数：
-`run_multienv.py` 会自动跳过已有 `result.txt` 的任务，并**清空**没有 `result.txt` 的目录后重跑（因为 `trajectory.jsonl` 是追加模式，不清会新旧混写）。
+`run_multienv.py` 按保存状态处理：
+
+- 已有 `result.txt`：跳过。
+- 已有 `game_result.json` 或旧版 `result.json`：保留原局，只补审计，不创建 VM。
+- 尚未保存游戏结果：沿用原来的清理重跑逻辑。
 
 ### 看轨迹
 
@@ -180,7 +184,7 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 3. **YAML 是 system prompt 与 user prompt 的唯一来源**：不存在代码内置的默认 prompt；`RealtimeAgent` 缺 `system_prompt_text` 会直接报错，配置里缺 `user_prompt` 会被拒绝。改 prompt 必须**新建 run_id**，不能与旧批次混。
 4. **不要改游戏 HTML 和 VM 服务**：会导致旧成绩不可比；确实要改就得重打镜像并重新验收。
 5. **改了 `desktop_env/` / `lib_run_*.py` 的评分或环境行为**：同步更新文档与测试，并在报告里说明"新旧成绩不可比"。
-6. **分数只在判官跑完之后写一次**：不要手工改 `result.json` / `result.txt`。换判官模型或改了 `configs/realtime_agents/auditor.txt` 之后，用 `python -m mm_agents.realtime_auditor --result_dir <dir> --force` 重判，而不是手改文件。
+6. **最终分数在判官完成后发布**：原局结果保存到 `game_result.json`，审计重试不重玩游戏。不要手工改结果文件。换判官模型或改了 `configs/realtime_agents/auditor.txt` 之后，用 `python -m mm_agents.realtime_auditor --result_dir <dir> --force` 重判，而不是手改文件。
 
 ---
 
@@ -188,8 +192,8 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 
 | 现象 | 原因与对策 |
 |---|---|
-| 同一个任务重跑后 `trajectory.jsonl` 里事件翻倍 | 它是追加模式；必须先清目录（内置续跑会自动清，手工重跑要自己清） |
-| 某个模型"没有成绩" | `result.txt` 不存在 = **无有效成绩**（基础设施故障：API/网络/VM/评分异常，**或判官没跑成功**），**不记 0 分**，重跑补齐；`result.txt=0.0` = **有效 0 分**（可能是游戏没过、模型违反动作协议，或判官判了 `CHEAT`）。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）会记 `termination_reason: run_error`（`result.json` 字段与正常局完全一致，具体原因在 `trajectory.jsonl` 的 `run_error` 事件里）—— **这样它就不会被当成"无成绩"**（无成绩会被续跑重跑，等于白拿一次重掷）；**分数照页面原值写**（违规时页面通常还没通关，所以实际多是 0；若之前那次尝试已经通关，页面给的就是 1），**要不要因为违规把这次成绩作废由判官判**（`CHEAT` → 0，`CHEAT_ATTEMPT`/`UNCERTAIN`/`NOT_CHEAT` → 保留页面原值）；但**若违规后连页面都读不到**（评测抛异常），按基础设施故障处理：不写分、续跑重跑（页面里可能已记着通过）。判官判了作弊的，看 `result.json` 的 `judge.label` |
+| 同一个任务重跑后 `trajectory.jsonl` 里事件翻倍 | 它是追加模式；使用内置续跑。已保存游戏结果的目录只补审计，只有尚未保存游戏结果的任务会清理重跑 |
+| 某个模型"没有成绩" | `result.txt` 不存在表示最终成绩尚未发布，**不记 0 分**。已有 `game_result.json` 或旧版 `result.json` 时只补审计；没有游戏结果时才重跑。`result.txt=0.0` = **有效 0 分**（可能是游戏没过、模型违反动作协议，或判官判了 `CHEAT`）。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）会记 `termination_reason: run_error`（`result.json` 字段与正常局完全一致，具体原因在 `trajectory.jsonl` 的 `run_error` 事件里）—— **这样它就不会被当成"无成绩"**（无成绩会被续跑重跑，等于白拿一次重掷）；**分数照页面原值写**（违规时页面通常还没通关，所以实际多是 0；若之前那次尝试已经通关，页面给的就是 1），**要不要因为违规把这次成绩作废由判官判**（`CHEAT` → 0，`CHEAT_ATTEMPT`/`UNCERTAIN`/`NOT_CHEAT` → 保留页面原值）；但**若违规后连页面都读不到**（评测抛异常），按基础设施故障处理：不写分、续跑重跑（页面里可能已记着通过）。判官判了作弊的，看 `result.json` 的 `judge.label` |
 | 某条任务在 `model_error: JSONDecodeError … column N` 处整条作废（`result.txt` 都没有） | **模型把工具参数写成了非法 JSON**：实测 deepseek-flash 会把唯一的数组参数写成 `{"times_s": 6.0, 6.5, 7.0}`（漏掉 `[`），同一条请求重放 **24%** 复现；789 次请求里 1.1%，69 条任务里死 13%。**旧行为**：anthropic 协议在流式收尾处就 `json.loads`、失败即抛裸 `ValueError`，绕过了 `predict()` 里的纠错重试，于是整条任务被当成"基础设施故障"并靠续跑反复重跑（等于重掷骰子抬分）。**现行为**（`mm_agents/realtime_stream.py`）：解析失败时保留原始字符串往下传 —— 动作调用走 `format_error` 纠错（同一决策内 ≤2 次），仍改不掉才记 `run_error` + **有效 0 分**（模型失败）；`get_frames` 调用回一条 `status: invalid_arguments` 的结果（明说"`times_s` 要 1–8 个数字的列表，例如 `[8.0]`"）让模型当场重查，**并同样计入同一决策的纠错额度**（按响应 +1，超 2 次判错）——帧参数写错是模型自己的错，不该被报成"录屏解码失败"，也不该无限重试。真断流（没有 `message_stop`/块没收完）仍抛 `IncompleteStreamError`（照旧无成绩、续跑重试） |
 | 单轮花掉约 $20 | 模型可能退化（重复刷屏）直到撞上 `max_output_tokens`（128k），网关返回 `response.incomplete`。我们的行为是**停止且不执行半段**，但那一轮照样计费。日志显示 `Responses stream response.incomplete: None` 时，去网关明细看该轮的 `completion_tokens` 是否等于上限 |
 | 整批突然中断 | 本机代理瞬断（`ProxyError: Connection refused`）会打断模型请求。批量脚本已把**账单抓取失败**降级为记录 `billing_error` 不中断；模型请求失败仍会让该任务变成"无有效成绩" |
@@ -218,12 +222,16 @@ system_prompt.txt      本次实际发送的 system prompt（YAML 的 system_pro
 experiment.json        协议、坐标协议、模型参数
 trajectory.jsonl       逐事件原始记录（含模型原始回复、动作、执行回执）
 trajectory.html        离线查看器
-result.json/result.txt 评分。`pass_at_1`/`pass_at_3` 是**游戏原值**；`result` 与 `result.txt` 是**最终分**（判官判 `CHEAT` 时为 0，否则等于 `pass_at_3`），`result.json` 另有 `judge` 块（`label`/`confidence`/`evidence`/`reasoning`/`model`/`judged_at`）。模型违反动作协议而中止时照常写分，但写的是**页面原值**（违规时页面通常还没通关，所以一般是 `result.txt=0.0`；若之前那次尝试已经通关，页面给的是 1，是否作废由判官判）：`status`/`attempts_completed`/`raw_bench` 就是页面原样；**页面完全读不到则不写分**（那是基础设施故障，页面里可能已记着前几次 attempt 的通过，伪造 0 会抹掉真实成绩）：只留 `run_error` 事件与 `agent_metrics.json` 作为"模型违规"的证据，这条任务算未完成、续跑重跑。**判官没跑成功反而不写 `result.txt`**（那条任务算未完成，会重跑）。判读：`result.txt=0` + `termination_reason: run_error` = 模型失败；`judge.label` = 判官的结论；无 `result.txt` = 基础设施故障或判官没跑成（都要重跑）
+game_result.json      原局结果，在审计前保存；审计重试不修改
+result.json           游戏详情、judge 判决与 audit_status（pending/completed）
+result.txt            审计后的最终分：CHEAT 为 0，其余保留游戏原分；待审计时暂缺
 agent_metrics.json     请求数、动作决策数、帧查询数、termination_reason
 audit_input.txt        判官这次实际读到的输入（判官跑过才有，便于回看判罚依据）
 initial_state.png / step_*.png / query_*.png
 recording.mp4 + recording_index.json + recording_ffmpeg.log
 ```
+
+游戏未取得结果时续跑重玩；已保存游戏结果但审计失败时只补审计。`pass_at_1` / `pass_at_3` 始终是游戏原值，最终分读 `result.txt`。
 
 **运行级文件**（`<result_dir>/<model>/<run_id>/`）：`experiment_manifest.json`、`.experiment.lock`、`launches.jsonl`（本批启动记录）、`<agent>/launches.jsonl`（启动记录）、`<agent>/summary/results.json`。最后这个是运行器顺带写的扁平汇总（逐任务追加 `task_id`/`score`/`status`），**没有任何下游依赖，判分不要读它**——里面的 `status: "success"` 只表示评估正常跑完，分数仍可能是 0。
 
@@ -231,7 +239,7 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 网关只有"累计计价器"，所以**每次调用只能测出自己那一段的花费**；脚本会把每次调用的金额追加进 `<model>_charges.json`，summary 里的 `actual_charge_usd` / `gateway_log_charge_usd` / `gateway_charge_count` 等就是这些记录的**累加值**，所以同一 `run_id` 下的子集续跑不会把整段金额冲掉。某次调用的账单查询失败（如断网）会记进 `billing_errors` 并且那一段金额缺失，需要用只读的网关明细补算（本轮 Gemini 的第 1 段就是这样补的）。
 金额口径：**以网关消费明细为准**（`gateway_log_charge_usd`），即时账单差额只作交叉核对；两者不一致都记录，不把"即时查询为 0"当免费。
 
-**逐任务金额**：跑完一段会顺手把网关明细按**请求**归到任务上，写进 `<model>_per_task_charge.json`（`per_task` = 每个任务累计金额，`total_usd` = 它们的和，`unattributed_usd` = 没能归到任何任务的部分）。归集方式是逐条对账：先按 token 数配对，再取时间最接近的那条轨迹记录 —— 所以 `--num_envs` 并发跑也不会串。轨迹缺失（被清空重跑）或流中断（没记 usage）的请求**归不进任何任务，就留在 `unattributed_usd` 里，不硬塞给别的任务**。它同样按调用累加，子集续跑不会把已有金额冲掉。**口径**：只有最终留下 `result.txt` 的那条轨迹的花费才计入 `per_task`（飞书 `成本` 列就是它，合计即"有效成绩的花费"）；调试、被清空重跑的请求留在 `unattributed_usd`，**只用于对账，不计入任何统计或汇报**。某一段的账单抓取失败时（如代理瞬断），该段金额不在记账里，要用只读的网关明细（`<model>_gateway_logs.json`）按上面的口径补算。
+**逐任务金额**：跑完一段会顺手把网关明细按**请求**归到任务上，写进 `<model>_per_task_charge.json`（`per_task` = 每个任务累计金额，`total_usd` = 它们的和，`unattributed_usd` = 尚未计入最终成绩的费用，含待审计原局）。归集方式是逐条对账：先按 token 数配对，再取时间最接近的那条轨迹记录 —— 所以 `--num_envs` 并发跑也不会串。轨迹缺失（被清空重跑）或流中断（没记 usage）的请求**归不进任何任务，就留在 `unattributed_usd` 里，不硬塞给别的任务**。它同样按调用累加，子集续跑不会把已有金额冲掉。**口径**：只有最终留下 `result.txt` 的那条轨迹的花费才计入 `per_task`（飞书 `成本` 列就是它，合计即"有效成绩的花费"）。已完成游戏但审计待完成的费用暂存 `pending_per_task`，仍包含在 `unattributed_usd`；批量续跑补审成功后转入原任务，重复续跑不重复计费；调试、被清空重跑的请求留在 `unattributed_usd`，**只用于对账，不计入任何统计或汇报**。某一段的账单抓取失败时（如代理瞬断），该段金额不在记账里，要用只读的网关明细（`<model>_gateway_logs.json`）按上面的口径补算。
 
 模型行的口径：计数（`requests/responses/decisions/frame_queries`）与 token 是**全部任务求和**；`pass_at_1`/`pass_at_3`/`pass_at_3_mean` 是**对全部任务取均值**（`tasks_total` 为分母，无成绩的任务按 0 计入），同时给出 `tasks_scored`。`status` 在模型行恒为 `null`（它只对单个任务有意义）。只补跑一部分任务（`--task`/`--meta`）时，新行会与 `<model>_summary.json` 里已有的逐任务行**按 `task_dir` 合并**（重跑的那条以新值为准），模型行再按合并后的全集重新聚合 —— 所以子集续跑**不会**把整段记账缩小。`<model>_summary.json` 里的 `tasks` 数组始终保留每个任务一行。
 

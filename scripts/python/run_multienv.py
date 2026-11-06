@@ -15,8 +15,6 @@ from multiprocessing import current_process
 # Add project root to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
-import lib_run_single
-from desktop_env.desktop_env import DesktopEnv
 
 # Global variables for signal handling
 active_environments = []
@@ -339,54 +337,6 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
     active_environments = []
     env = None
     try:
-        screen_size = (args.screen_width, args.screen_height)
-        env_kwargs = dict(
-            path_to_vm=args.path_to_vm,
-            action_space=args.action_space,
-            provider_name=args.provider_name,
-            screen_size=screen_size,
-            headless=args.headless,
-            os_type="Ubuntu",
-            require_a11y_tree=args.observation_type in ["a11y_tree", "screenshot_a11y_tree", "som"],
-            enable_proxy=True,
-            client_password=args.client_password,
-            vm_secret_mounts=args.vm_secret_mount,
-        )
-        if args.provider_name == "aws":
-            from desktop_env.providers.aws.manager import IMAGE_ID_MAP
-            REGION = args.region
-            ami_id = IMAGE_ID_MAP[REGION].get(screen_size, IMAGE_ID_MAP[REGION][(1920, 1080)])
-            env_kwargs["region"] = REGION
-            env_kwargs["snapshot_name"] = ami_id
-        elif args.provider_name == "daytona":
-            snapshot_name = os.environ.get("DAYTONA_OSWORLD_SNAPSHOT")
-            if snapshot_name:
-                env_kwargs["snapshot_name"] = snapshot_name
-        env = DesktopEnv(**env_kwargs)
-        active_environments.append(env)
-        if args.agent_variant:
-            from mm_agents.realtime_agent import RealtimeAgent
-            from mm_agents.realtime_config import agent_kwargs
-            agent = RealtimeAgent(
-                **{**agent_kwargs(args.realtime_config),
-                   "max_frame_queries": args.max_frame_queries},
-                variant=args.agent_variant, api_base_url=args.api_base_url,
-            )
-        else:
-            from mm_agents.agent import PromptAgent
-            agent = PromptAgent(
-                model=args.model,
-                max_tokens=args.max_tokens,
-                top_p=args.top_p,
-                temperature=args.temperature,
-                action_space=args.action_space,
-                observation_type=args.observation_type,
-                max_trajectory_length=args.max_trajectory_length,
-                client_password=args.client_password,
-                api_format=args.api_format,
-                api_base_url=args.api_base_url,
-            )
-
         logger.info(f"Process {current_process().name} started.")
         while True:
             try:
@@ -402,15 +352,6 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     example = json.load(f)
                 logger.info(f"[{current_process().name}][Domain]: {domain}")
                 logger.info(f"[{current_process().name}][Example ID]: {example_id}")
-                task_text = getattr(agent, "user_prompt", None)
-                if task_text:
-                    # The task message for this run is the Agent's configured user
-                    # prompt; log its first line instead of all 60+ lines.
-                    logger.info("[%s][Instruction]: %s …(user_prompt, %d lines)",
-                                current_process().name, task_text.splitlines()[0][:100],
-                                len(task_text.splitlines()))
-                else:
-                    logger.info(f"[{current_process().name}][Instruction]: {example.get('instruction')}")
                 example_result_dir = os.path.join(
                     get_result_dir(
                         args.result_dir, args.action_space,
@@ -420,6 +361,72 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     example_id,
                 )
                 os.makedirs(example_result_dir, exist_ok=True)
+                if args.agent_variant:
+                    from lib_run_realtime import resume_completed_task
+                    if resume_completed_task(example_result_dir, example, args, shared_scores):
+                        continue
+                # Audit-only resumes never create a VM or a gameplay agent.
+                if env is None:
+                    import lib_run_single
+                    from desktop_env.desktop_env import DesktopEnv
+
+                    screen_size = (args.screen_width, args.screen_height)
+                    env_kwargs = dict(
+                        path_to_vm=args.path_to_vm,
+                        action_space=args.action_space,
+                        provider_name=args.provider_name,
+                        screen_size=screen_size,
+                        headless=args.headless,
+                        os_type="Ubuntu",
+                        require_a11y_tree=args.observation_type in ["a11y_tree", "screenshot_a11y_tree", "som"],
+                        enable_proxy=True,
+                        client_password=args.client_password,
+                        vm_secret_mounts=args.vm_secret_mount,
+                    )
+                    if args.provider_name == "aws":
+                        from desktop_env.providers.aws.manager import IMAGE_ID_MAP
+                        REGION = args.region
+                        ami_id = IMAGE_ID_MAP[REGION].get(screen_size, IMAGE_ID_MAP[REGION][(1920, 1080)])
+                        env_kwargs["region"] = REGION
+                        env_kwargs["snapshot_name"] = ami_id
+                    elif args.provider_name == "daytona":
+                        snapshot_name = os.environ.get("DAYTONA_OSWORLD_SNAPSHOT")
+                        if snapshot_name:
+                            env_kwargs["snapshot_name"] = snapshot_name
+                    env = DesktopEnv(**env_kwargs)
+                    active_environments.append(env)
+                    if args.agent_variant:
+                        from mm_agents.realtime_agent import RealtimeAgent
+                        from mm_agents.realtime_config import agent_kwargs
+                        agent = RealtimeAgent(
+                            **{**agent_kwargs(args.realtime_config),
+                               "max_frame_queries": args.max_frame_queries},
+                            variant=args.agent_variant, api_base_url=args.api_base_url,
+                        )
+                    else:
+                        from mm_agents.agent import PromptAgent
+                        agent = PromptAgent(
+                            model=args.model,
+                            max_tokens=args.max_tokens,
+                            top_p=args.top_p,
+                            temperature=args.temperature,
+                            action_space=args.action_space,
+                            observation_type=args.observation_type,
+                            max_trajectory_length=args.max_trajectory_length,
+                            client_password=args.client_password,
+                            api_format=args.api_format,
+                            api_base_url=args.api_base_url,
+                        )
+
+                task_text = getattr(agent, "user_prompt", None)
+                if task_text:
+                    # The task message for this run is the Agent's configured user
+                    # prompt; log its first line instead of all 60+ lines.
+                    logger.info("[%s][Instruction]: %s …(user_prompt, %d lines)",
+                                current_process().name, task_text.splitlines()[0][:100],
+                                len(task_text.splitlines()))
+                else:
+                    logger.info(f"[{current_process().name}][Instruction]: {example.get('instruction')}")
                 try:
                     lib_run_single.run_single_example(
                         agent,
@@ -598,7 +605,12 @@ def get_unfinished(
                 example_path = os.path.join(domain_path, example_id)
                 if os.path.isdir(example_path):
                     if "result.txt" not in os.listdir(example_path):
-                        # empty all files under example_id
+                        if agent_variant and any(os.path.exists(os.path.join(example_path, name))
+                                                 for name in ("game_result.json", "result.json")):
+                            # A completed game (including a legacy one) only needs
+                            # its audit. Preserve all evidence for the worker.
+                            continue
+                        # Gameplay was interrupted before an outcome was saved.
                         for file in os.listdir(example_path):
                             os.remove(os.path.join(example_path, file))
                     else:

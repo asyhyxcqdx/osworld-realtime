@@ -62,7 +62,7 @@ PACKY_GPT_6_ASTRA_API_KEY       gpt-6-astra
 - 账单与汇总落在 `--cost_dir`（默认 `<result_dir>/_cost/<run_id>`）：`cost_report.json`、`<model>_summary.json`、`<model>_per_task_charge.json`（逐任务金额）、账单快照与网关明细；成本列由导出脚本计算：`--prices`（token × 单价）或 `--charges`（逐任务金额文件，**逐任务**填；只给模型总额会留空并打印 `CHARGES_TOTAL_ONLY`）。
 - 每个模型顺序执行，单个模型内失败的任务会继续下一个；**跨模型继续需要 `--keep-going`**。
 - `--num_envs N` 每个模型同时开 N 台 VM（默认 1，批量建议 4–8）。
-- 续跑用同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次；改 prompt 或配置时必须换新的 `run_id`。
+- 续跑用同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次：已有最终分的任务跳过，已保存游戏结果的任务只补审计，尚未保存游戏结果的任务重跑。改 prompt 或配置时换新的 `run_id`。
 - 结果导出成飞书总表的 16 列用 `scripts/python/export_realtime_results.py`，字段口径见 [执行同学作业单](HANDOFF_CN.md) 第 9 节。
 
 ## 5. 镜像与服务

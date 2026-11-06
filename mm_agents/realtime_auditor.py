@@ -3,8 +3,9 @@
 The judge reads only the text trajectory. Its verdict is merged into the task's
 ``result.json`` (``judge`` block, and ``result`` forced to 0 on CHEAT) and the
 scalar in ``result.txt`` is the final score. A task whose audit could not be
-completed keeps **no** ``result.txt``, so the normal resume path re-runs it and
-audits it again -- a score is therefore written once, after the audit.
+completed keeps **no** ``result.txt``, but its original game outcome is saved in
+``game_result.json``. Resume audits the same trajectory without replaying the
+game. Only an audited score is published in ``result.txt``.
 
 Run it standalone to audit tasks that are already on disk::
 
@@ -17,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -252,12 +254,7 @@ def judge_record(verdict, settings):
 
 
 def judge_error(exc):
-    """The ``judge`` block for a failed audit.
-
-    Nothing the failed attempt spent is recorded here: that task has no valid
-    score, so it is re-run and its audit runs again -- the cost that counts is
-    the audit that actually produced the score.
-    """
+    """The ``judge`` block for an audit that still needs to be completed."""
     return {'error': str(exc)}
 
 
@@ -282,12 +279,91 @@ def audit_task(task_dir, result, *, settings=None, session=None):
     return result, record
 
 
+def _atomic_write(path, text):
+    path = Path(path)
+    temporary = path.with_name(f'{path.name}.tmp.{os.getpid()}')
+    temporary.write_text(text, encoding='utf-8')
+    temporary.replace(path)
+
+
+def _write_json(path, payload):
+    _atomic_write(path, json.dumps(payload, ensure_ascii=False, indent=2) + '\n')
+
+
+def load_game_result(task_dir):
+    """Read a completed game, including older runs saved only in result.json.
+
+    An unreadable result must raise, not masquerade as a game that needs replay.
+    The old evaluator wrote result.json before calling the judge, so a failed
+    legacy audit can also be resumed without playing again.
+    """
+    task_dir = Path(task_dir)
+    path = task_dir / 'game_result.json'
+    if not path.exists():
+        path = task_dir / 'result.json'
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+        # pass_at_3 stays the original game score even if an old judge changed
+        # result to zero on CHEAT.
+        score = (payload.get('pass_at_3', payload.get('result'))
+                 if path.name == 'result.json' else payload.get('result'))
+        if (isinstance(score, bool) or not isinstance(score, (int, float))
+                or not math.isfinite(score) or not 0 <= score <= 1):
+            raise ValueError('missing or invalid game score')
+    except (OSError, ValueError, AttributeError) as exc:
+        raise AuditError(f'cannot read completed game at {path}: {exc}') from exc
+    return {**{k: v for k, v in payload.items() if k not in ('judge', 'audit_status')},
+            'result': score}
+
+
+def save_game_result(task_dir, result):
+    """Save the original outcome once, before the judge can change any score."""
+    task_dir = Path(task_dir)
+    path = task_dir / 'game_result.json'
+    if path.exists():
+        return load_game_result(task_dir)
+    payload = load_game_result(task_dir) or {'result': result}
+    _write_json(path, payload)
+    return payload
+
+
 def write_result(task_dir, payload, score):
-    """Rewrite ``result.json`` and the scalar ``result.txt`` from the audit."""
+    """Publish an audited result; a missing scalar can be recovered from JSON."""
     path = Path(task_dir)
-    (path / 'result.json').write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    (path / 'result.txt').write_text(f'{score}\n', encoding='utf-8')
+    _write_json(path / 'result.json', payload)
+    _atomic_write(path / 'result.txt', f'{score}\n')
+
+
+def audit_saved_task(task_dir, *, force=False, settings=None, session=None):
+    """Audit the saved game without a VM. Return its final score and verdict."""
+    path = Path(task_dir)
+    game = load_game_result(path)
+    if game is None:
+        raise AuditError(f'no completed game at {path}')
+    game = save_game_result(path, game['result'])
+    result_path = path / 'result.json'
+    payload = json.loads(result_path.read_text(encoding='utf-8')) if result_path.exists() else game
+    previous_judge = payload.get('judge') or {}
+    already_judged = previous_judge.get('label') in LABELS
+    if already_judged and not force:
+        # The process may have stopped between saving the verdict and scalar.
+        final = 0.0 if previous_judge['label'] == 'CHEAT' else game['result']
+        write_result(path, {**payload, 'result': final, 'audit_status': 'completed'}, final)
+        return final, previous_judge
+    if not already_judged:
+        (path / 'result.txt').unlink(missing_ok=True)
+        _write_json(result_path, {**game, 'audit_status': 'pending'})
+    try:
+        final, record = audit_task(path, game['result'], settings=settings, session=session)
+    except AuditError as exc:
+        if not already_judged:
+            _write_json(result_path, {**game, 'audit_status': 'pending', 'judge': judge_error(exc)})
+        # A failed explicit --force re-audit also leaves the earlier verdict intact.
+        raise
+    write_result(path, {**game, 'audit_status': 'completed', 'judge': record, 'result': final}, final)
+    return final, record
 
 
 # --------------------------------------------------------------------------- #
@@ -297,8 +373,8 @@ def write_result(task_dir, payload, score):
 def audit_one(task_dir, *, force=False, settings=None, session=None, dry_run=False):
     """Audit a task directory that is already on disk.
 
-    Returns a short status string. A task without ``result.txt`` has no valid
-    score yet (it is meant to be re-run), so it is skipped.
+    Returns a short status string. A completed game without result.txt needs
+    only an audit; it does not need another game or --force.
     """
     path = Path(task_dir)
     result_path, scalar_path = path / 'result.json', path / 'result.txt'
@@ -307,25 +383,16 @@ def audit_one(task_dir, *, force=False, settings=None, session=None, dry_run=Fal
         target = path / 'audit_input.txt'
         target.write_text(text, encoding='utf-8')
         return f'dry-run wrote {target} ({len(text)} bytes)'
-    if not result_path.exists():
-        return 'skipped: no result.json'
-    payload = json.loads(result_path.read_text(encoding='utf-8'))
-    judge = payload.get('judge') or {}
-    if judge.get('label') and not force:
-        return f'skipped: already judged {judge["label"]}'
-    if not scalar_path.exists() and not force:
-        return 'skipped: no valid score (re-run this task)'
     try:
-        result, record = audit_task(path, payload.get('result') or 0.0,
-                                    settings=settings, session=session)
+        if load_game_result(path) is None:
+            return 'skipped: no completed game'
+        payload = json.loads(result_path.read_text(encoding='utf-8')) if result_path.exists() else {}
+        judge = payload.get('judge') or {}
+        if judge.get('label') in LABELS and scalar_path.exists() and not force:
+            return f'skipped: already judged {judge["label"]}'
+        result, record = audit_saved_task(path, force=force, settings=settings, session=session)
     except AuditError as exc:
-        payload['judge'] = judge_error(exc)
-        result_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n',
-                               encoding='utf-8')
         return f'audit failed: {exc}'
-    payload['judge'] = record
-    payload['result'] = result
-    write_result(path, payload, result)
     return f'{record["label"]} (confidence {record["confidence"]}) result={result}'
 
 
@@ -377,7 +444,7 @@ def main(argv=None):
         judged += 1
         failed += 'audit failed' in status
     print(f'AUDITED {judged} task(s), {failed} failed')
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == '__main__':

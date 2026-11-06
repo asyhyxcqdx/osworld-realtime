@@ -392,13 +392,11 @@ def test_record_per_task_charge_walks_from_result_dirs_to_the_file(tmp_path):
     assert saved['per_task'] == {'task-a': 1.0, 'task-b': 1.0}
 
 
-def test_result_json_without_result_txt_is_not_a_score_and_owns_no_charge(tmp_path):
-    """An unfinished audit leaves result.json behind: it must not count as scored.
+def test_pending_audit_preserves_cost_until_the_same_game_is_scored(tmp_path):
+    """Pending games count neither as scored nor as final per-task cost.
 
-    ``_finish_scored_task`` deletes result.txt when the audit cannot reach a verdict
-    and keeps result.json for diagnosis. That task is unfinished, so its game numbers
-    stay diagnostics, it is not counted in tasks_scored, and its spend is not
-    attributed to it (a re-run will clear the directory anyway).
+    Audit-only resume publishes the original game's stored charge exactly once,
+    including when the resume window has no new gameplay requests.
     """
     from scripts.python.run_realtime_batch import (aggregate_model_row,
                                                    record_per_task_charge, summarize)
@@ -445,4 +443,20 @@ def test_result_json_without_result_txt_is_not_a_score_and_owns_no_charge(tmp_pa
 
     assert payload['per_task'] == {}
     assert payload['unattributed_usd'] == 1.0
+    assert payload['pending_per_task'] == {'audit-failed': 1.0}
     assert payload['windows'][0]['tasks_run'] == 3
+
+    # Another unsuccessful audit adds no gameplay requests and no duplicate cost.
+    payload, _ = record_per_task_charge(
+        tmp_path, 'm', [tasks / 'audit-failed'], [], run_id='run1')
+    assert payload['pending_per_task'] == {'audit-failed': 1.0}
+    assert payload['per_task'] == {}
+
+    (tasks / 'audit-failed' / 'result.txt').write_text('1.0\n')
+    for _ in range(2):
+        payload, _ = record_per_task_charge(
+            tmp_path, 'm', [tasks / 'audit-failed'], [], run_id='run1')
+        assert payload['per_task'] == {'audit-failed': 1.0}
+        assert payload['total_usd'] == 1.0
+        assert payload['unattributed_usd'] == 0.0
+        assert payload['pending_per_task'] == {}

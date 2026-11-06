@@ -23,7 +23,7 @@ python scripts/python/run_realtime_batch.py \
   --exclusive-keys-confirmed
 ```
 
-正式批量去掉 `--task`，加上 `--num_envs 4 --keep-going`；**续跑就是同一条命令、同样的 `--run_id` 再跑一次**（已有成绩的任务自动跳过）。结果用 `scripts/python/export_realtime_results.py` 导出成飞书总表的 16 列。
+正式批量去掉 `--task`，加上 `--num_envs 4 --keep-going`；**续跑就是同一条命令、同样的 `--run_id` 再跑一次**（已有最终成绩的任务自动跳过，已完成游戏但审计失败的任务只补审计）。结果用 `scripts/python/export_realtime_results.py` 导出成飞书总表的 16 列。
 
 ## 当前状态
 
@@ -36,8 +36,8 @@ python scripts/python/run_realtime_batch.py \
 
 - 游戏 HTML、任务配置、VM 服务（`desktop_env/server/realtime*.py`、`fmp4.py`）会影响新旧成绩可比性，改动需重新验收/重打镜像。
 - `system_prompt`（反作弊与评测诚信规则）和 `user_prompt`（每个变体的任务说明，即对话第一条 user 消息）只存在于 `configs/realtime_agents/*.yaml`，代码里没有默认 prompt；任务配置里的 `instruction` 字段只是环境核心要求的占位（运行时会被覆盖成当前变体的 `user_prompt`）；改任一段 prompt 都必须换新的 `run_id`。
-- 评分只取游戏写入的 `pass_at_1` / `pass_at_3`，`result.txt` = `pass_at_3`；未取得有效成绩（接口/执行/评分异常）时留空，**不记 0 分**。
-- **落分前还有一道 LLM 判官**（`mm_agents/realtime_auditor.py`，prompt = `configs/realtime_agents/auditor.txt`）：判 `CHEAT` 就把最终分写成 0，`CHEAT_ATTEMPT`/`UNCERTAIN`/`NOT_CHEAT` 保留原分；判官自己没跑成则不写 `result.txt`（那条任务续跑重跑）。`REALTIME_JUDGE_API_KEY` 必填，缺了开跑前就报错。
+- 游戏原分取自 `pass_at_1` / `pass_at_3`，保存到 `game_result.json`；`result.txt` 在审计完成后保存最终分；未取得有效成绩（接口/执行/评分异常）时留空，**不记 0 分**。
+- **落分前还有一道 LLM 判官**（`mm_agents/realtime_auditor.py`，prompt = `configs/realtime_agents/auditor.txt`）：判 `CHEAT` 就把最终分写成 0，`CHEAT_ATTEMPT`/`UNCERTAIN`/`NOT_CHEAT` 保留原分；判官自己没跑成则保留原局结果、轨迹和录像，标记 `audit_status: pending`，暂不写 `result.txt`；续跑只补审计，游戏不重玩。`REALTIME_JUDGE_API_KEY` 必填，缺了开跑前就报错。
 - 密钥、截图、录像、轨迹、VM 镜像和结果目录都不入库（见 `.gitignore`）。
 
 ## 文档索引

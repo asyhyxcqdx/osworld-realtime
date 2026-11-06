@@ -22,17 +22,26 @@ TEST_USER_PROMPT = "Test-only realtime agent user prompt."
 @pytest.mark.parametrize("variant", list(CAPABILITIES))
 @pytest.mark.parametrize("export_fails", [False, True])
 @pytest.mark.parametrize("limit_reached", [False, True])
+@pytest.mark.parametrize("audit_fails", [False, True])
 def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
-    tmp_path, monkeypatch, variant, export_fails, limit_reached
+    tmp_path, monkeypatch, variant, export_fails, limit_reached, audit_fails
 ):
     monkeypatch.setattr("lib_run_realtime.time.sleep", lambda _: None)
     monkeypatch.setattr("lib_run_single.setup_logger", lambda *args: None)
     evaluate = Mock(return_value=0 if limit_reached else 1)
     monkeypatch.setattr("lib_run_single._evaluate_with_details", evaluate)
     monkeypatch.setattr("lib_run_realtime.log_task_completion", lambda *args: None)
-    # The audit runs before every score is written; keep this runner test offline.
-    monkeypatch.setattr("mm_agents.realtime_auditor.audit_task",
-                        lambda task_dir, result, **kwargs: (result, {"label": "NOT_CHEAT"}))
+    def audit(task_dir, result, **kwargs):
+        # Recording and metrics must be saved before the judge can fail or hang.
+        from mm_agents.realtime_auditor import AuditError
+        controller.end_realtime_recording.assert_called_once()
+        assert (task_dir / "agent_metrics.json").exists()
+        assert json.loads((task_dir / "game_result.json").read_text())["result"] == result
+        if audit_fails:
+            raise AuditError("judge offline")
+        return result, {"label": "NOT_CHEAT"}
+
+    monkeypatch.setattr("mm_agents.realtime_auditor.audit_task", audit)
     if export_fails:
         monkeypatch.setattr("lib_realtime_trajectory.render_trajectory", Mock(side_effect=RuntimeError('HTML export failed')))
     mode = CAPABILITIES[variant]
@@ -84,6 +93,15 @@ def test_runner_counts_rounds_and_actions_separately_and_cleans_recording(
     )
     scores = []
     run_realtime_example(agent, env, {}, 5, "task", args, str(tmp_path), scores)
+    if audit_fails:
+        assert scores == []
+        assert not (tmp_path / "result.txt").exists()
+        original = {name: (tmp_path / name).read_bytes() for name in (
+            "trajectory.jsonl", "agent_metrics.json", "game_result.json")}
+        audit_fails = False
+        run_realtime_example(agent, env, {}, 5, "task", args, str(tmp_path), scores)
+        assert original == {name: (tmp_path / name).read_bytes() for name in original}
+    env.reset.assert_called_once()
     rounds = 5 if limit_reached else 1
     assert scores == [0 if limit_reached else 1]
     assert env.step.call_count == (0 if mode.sequence else rounds)

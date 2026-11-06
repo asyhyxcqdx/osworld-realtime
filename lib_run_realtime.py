@@ -15,53 +15,47 @@ from mm_agents.realtime_protocol import (
 
 
 def _finish_scored_task(out, result, example, args, scores):
-    """Audit the finished task, then persist the score the audit agreed with.
-
-    The audit runs before ``result.txt`` is written, so a task whose audit could
-    not complete keeps no scalar score: the normal resume path re-runs it and
-    audits it again. A judge verdict of CHEAT forces the score to 0.
-    """
-    from mm_agents.realtime_auditor import AuditError, audit_task, judge_error
+    """Audit a saved game; an audit failure must never trigger another game."""
+    from mm_agents.realtime_auditor import AuditError, audit_saved_task, save_game_result
 
     out = Path(out)
-    scalar_path = out / "result.txt"
+    save_game_result(out, result)
     try:
-        final, record = audit_task(out, result)
+        final, _record = audit_saved_task(out)
     except AuditError as exc:
-        scalar_path.unlink(missing_ok=True)
-        try:
-            payload = json.loads((out / "result.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            payload = None
-        if isinstance(payload, dict):
-            payload["judge"] = judge_error(exc)
-            (out / "result.json").write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         logging.getLogger(__name__).warning(
-            "Trajectory audit did not complete for %s (%s); leaving no result.txt so the "
-            "task is re-run and audited again", out, exc)
+            "Trajectory audit did not complete for %s (%s); game result and evidence "
+            "are saved. Resume will retry only the audit.", out, exc)
         return None
-    path = out / "result.json"
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        payload = {}
-    payload["judge"] = record
-    payload["result"] = final
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    scalar_path.write_text(f"{final}\n", encoding="utf-8")
     scores.append(final)
     log_task_completion(example, final, str(out), args)
     return final
 
 
+def resume_completed_task(out, example, args, scores):
+    """Return True when this task needs no gameplay, even if its audit fails."""
+    from mm_agents.realtime_auditor import load_game_result
+
+    out = Path(out)
+    if (out / "result.txt").exists():
+        return True
+    game = load_game_result(out)
+    if game is None:
+        return False
+    _finish_scored_task(out, game["result"], example, args, scores)
+    return True
+
+
 def run_realtime_example(
     agent, env, example, max_steps, instruction, args, example_result_dir, scores
 ):
-    from lib_run_single import _evaluate_with_details, setup_logger
+    from mm_agents.realtime_auditor import save_game_result
 
-    runtime_logger = setup_logger(example, example_result_dir)
     out = Path(example_result_dir)
+    if resume_completed_task(out, example, args, scores):
+        return
+    from lib_run_single import _evaluate_with_details, setup_logger
+    runtime_logger = setup_logger(example, example_result_dir)
     task_started_at = datetime.now(timezone.utc).isoformat()
     # The environment core requires task_config["instruction"] (desktop_env.py
     # _set_task_info). Use the Agent's configured user prompt as that instruction
@@ -129,6 +123,7 @@ def run_realtime_example(
     execution_error = None
     run_error = None
     done = False
+    result = None
     termination_reason = "interrupted"
 
     def write_event(event, decision_id=None):
@@ -267,6 +262,7 @@ def run_realtime_example(
             env, str(out),
             termination_reason=completion_reason,
         )
+        save_game_result(out, result)
         write_event(
             {
                 "event": "evaluation",
@@ -276,7 +272,6 @@ def run_realtime_example(
             },
             decision_id=decision_count,
         )
-        _finish_scored_task(out, result, example, args, scores)
         termination_reason = completion_reason
     except AgentProtocolError as exc:
         # The model broke the action protocol. Recording it as a run_error keeps the
@@ -293,6 +288,7 @@ def run_realtime_example(
             result = _evaluate_with_details(
                 env, str(out), termination_reason=termination_reason
             )
+            save_game_result(out, result)
             write_event(
                 {
                     "event": "evaluation",
@@ -315,7 +311,6 @@ def run_realtime_example(
                 "result.txt so the task is re-run", out, evaluation_error,
             )
             return
-        _finish_scored_task(out, result, example, args, scores)
     except Exception as exc:
         termination_reason = "execution_error" if execution_error is not None else "run_error"
         run_error = {"type": type(exc).__name__, "message": str(exc)}
@@ -352,3 +347,8 @@ def run_realtime_example(
                 render_trajectory(out / "trajectory.jsonl")
             except Exception as exc:
                 logging.getLogger(__name__).warning("Cannot render trajectory HTML in %s: %s", out, exc)
+
+    # Persist the recording and metrics before a potentially slow or failing
+    # judge call. The audit can now also be resumed with no environment at all.
+    if result is not None:
+        _finish_scored_task(out, result, example, args, scores)
