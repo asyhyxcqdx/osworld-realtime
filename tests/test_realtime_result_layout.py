@@ -6,6 +6,7 @@ import datetime
 import fcntl
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 
@@ -48,7 +49,7 @@ def runner():
         body=[n for n in source.body if isinstance(n, ast.FunctionDef) and n.name in selected],
         type_ignores=[],
     )
-    namespace = {"os": os, "argparse": argparse, "datetime": datetime, "json": json, "fcntl": fcntl}
+    namespace = {"os": os, "argparse": argparse, "datetime": datetime, "json": json, "fcntl": fcntl, "shutil": shutil}
     exec(compile(module, str(path), "exec"), namespace)
     return namespace
 
@@ -109,6 +110,60 @@ def test_legacy_result_layout_and_resume_are_preserved(tmp_path, monkeypatch, ru
 def test_missing_model_config_cannot_silently_fall_back(tmp_path, monkeypatch, runner):
     with pytest.raises(SystemExit):
         configure(runner, monkeypatch, tmp_path, "model-that-has-no-config", "agent1")
+
+
+def test_resume_cleans_interrupted_observers_and_preserves_completed_games(tmp_path, monkeypatch, runner):
+    args = configure(runner, monkeypatch, tmp_path, "deepseek-flash", "agent4")
+    base = Path(runner["get_result_dir"](
+        args.result_dir, args.action_space, args.observation_type, args.model, args.agent_variant
+    )) / "domain"
+    original = {}
+    for name in ("interrupted", "pending-audit", "scored"):
+        task = base / name
+        (task / "observers" / "observer-id").mkdir(parents=True)
+        (task / "observers" / "observer-id" / "code.py").write_text("import pyautogui\n")
+        (task / "trajectory.jsonl").write_text('{"event": "observer_started"}\n')
+        if name != "interrupted":
+            (task / "game_result.json").write_text('{"result": 0.0}')
+        if name == "scored":
+            (task / "result.txt").write_text("0.0")
+        original[name] = {str(f.relative_to(task)): f.read_bytes() for f in task.rglob("*") if f.is_file()}
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep")
+    (base / "interrupted" / "linked-directory").symlink_to(outside, target_is_directory=True)
+
+    remaining = runner["get_unfinished"](
+        args.action_space, args.model, args.observation_type, args.result_dir,
+        {"domain": ["interrupted", "pending-audit", "scored", "new"]}, args.agent_variant,
+    )
+
+    assert remaining == {"domain": ["interrupted", "pending-audit", "new"]}
+    assert list((base / "interrupted").iterdir()) == []
+    assert (outside / "keep.txt").read_text() == "keep"
+    for name in ("pending-audit", "scored"):
+        task = base / name
+        assert {str(f.relative_to(task)): f.read_bytes() for f in task.rglob("*") if f.is_file()} == original[name]
+
+
+def test_observer_modes_use_separate_configs_and_cannot_reuse_batch(tmp_path, monkeypatch, runner):
+    monkeypatch.setenv('JEV_API_KEY', 'test-key')
+    base = ['run_multienv.py', '--agent_variant', 'agent4', '--model', 'deepseek-flash',
+            '--action_space', 'computer_13', '--result_dir', str(tmp_path)]
+    for mode in ('jev', 'script'):
+        monkeypatch.setattr(sys, 'argv', base + ['--observer_mode', mode])
+        args = runner['config']()
+        assert args.run_id.startswith('trace_' + mode + '_')
+        assert args.install_realtime_server
+        assert f'/observers/{mode}/' in args.realtime_config_path
+    monkeypatch.setattr(sys, 'argv', base + ['--observer_mode', 'script', '--run_id', 'shared'])
+    args = runner['config']()
+    runner['write_run_configuration'](args)
+    original = (Path(args.result_dir) / 'computer_13/screenshot/args.json').read_text()
+    monkeypatch.setattr(sys, 'argv', base + ['--observer_mode', 'jev', '--run_id', 'shared'])
+    with pytest.raises(ValueError, match='separate run_id'):
+        runner['write_run_configuration'](runner['config']())
+    assert (Path(args.result_dir) / 'computer_13/screenshot/args.json').read_text() == original
 
 
 def test_cli_cannot_override_config_with_another_provider_model(monkeypatch, runner):

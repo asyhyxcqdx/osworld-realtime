@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import signal
+import shutil
 import time
 from typing import List
 from multiprocessing import Process, Manager
@@ -128,6 +129,7 @@ def config() -> argparse.Namespace:
         "--screen_height", type=int, default=1080, help="Screen height"
     )
     parser.add_argument("--agent_variant", choices=["agent1", "agent2", "agent3", "agent4"], default=None)
+    parser.add_argument('--observer_mode', choices=['none', 'jev', 'script'], default=None)
     parser.add_argument(
         "--agent_config",
         type=str,
@@ -152,13 +154,22 @@ def config() -> argparse.Namespace:
 
         requested_model = args.model
         config_path = args.agent_config or default_config_path(
-            args.agent_variant, requested_model or "claude-fable-5-1"
+            args.agent_variant, requested_model or "claude-fable-5-1", observer_mode=args.observer_mode or 'none'
         )
         try:
             realtime_config = load_realtime_config(config_path, variant=args.agent_variant)
         except (OSError, ValueError) as exc:
             parser.error(f"Invalid realtime Agent config {config_path}: {exc}")
         config_values = agent_kwargs(realtime_config)
+        if args.observer_mode is not None and args.observer_mode != config_values['observer_mode']:
+            parser.error('--observer_mode must match the selected YAML')
+        args.observer_mode = config_values['observer_mode']
+        if args.observer_mode != 'none':
+            args.install_realtime_server = True
+        if args.observer_mode == 'jev':
+            observer_key_env = config_values['observer_config'].get('key_env', 'JEV_API_KEY')
+            if not os.environ.get(observer_key_env):
+                parser.error(f'{observer_key_env} is required for the Jev observer')
         key_env = config_values.get("api_key_env")
         if key_env and not os.environ.get(key_env):
             parser.error(f"Set the configured API key environment variable {key_env} before starting a VM")
@@ -189,7 +200,8 @@ def config() -> argparse.Namespace:
         started = datetime.datetime.now().astimezone()
         args.agent_started_at = started.isoformat(timespec="microseconds")
         if args.run_id is None:
-            args.run_id = started.strftime("%Y%m%dT%H%M%S.%f%z")
+            prefix = {'none': '', 'jev': 'trace_jev_', 'script': 'trace_script_'}[args.observer_mode]
+            args.run_id = prefix + started.strftime("%Y%m%dT%H%M%S.%f%z")
         if (not args.run_id or args.run_id in {".", ".."}
                 or any(c in args.run_id for c in "/\\")
                 or any(ord(c) < 32 for c in args.run_id)):
@@ -272,8 +284,6 @@ def write_run_configuration(args):
         args.model, args.agent_variant,
     )
     os.makedirs(target, exist_ok=True)
-    with open(os.path.join(target, "args.json"), "w", encoding="utf-8") as f:
-        json.dump(vars(args), f, indent=4)
     if args.agent_variant:
         # The shared run_id identifies the comparison batch, not a simultaneous
         # start. Append each launch (including resume) instead of overwriting it.
@@ -281,10 +291,9 @@ def write_run_configuration(args):
             "run_id": args.run_id,
             "model": args.model,
             "agent_variant": args.agent_variant,
+            "observer_mode": args.observer_mode,
             "agent_started_at": args.agent_started_at,
         }
-        with open(os.path.join(args.result_dir, "launches.jsonl"), "a", encoding="utf-8") as f:
-            f.write(json.dumps(launch) + "\n")
         batch_root = os.path.dirname(args.result_dir)
         os.makedirs(batch_root, exist_ok=True)
         manifest_path = os.path.join(batch_root, "experiment_manifest.json")
@@ -292,6 +301,11 @@ def write_run_configuration(args):
         # the batch creation time and serialize the shared append log.
         with open(os.path.join(batch_root, ".experiment.lock"), "a", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            if os.path.exists(manifest_path):
+                with open(manifest_path, encoding='utf-8') as f:
+                    previous = json.load(f)
+                if previous.get('observer_mode', 'none') != (args.observer_mode or 'none'):
+                    raise ValueError('Use a separate run_id for each observer_mode')
             if not os.path.exists(manifest_path):
                 manifest = {
                     "run_id": args.run_id,
@@ -299,7 +313,8 @@ def write_run_configuration(args):
                     "created_at": args.agent_started_at,
                     "action_space": args.action_space,
                     "observation_type": args.observation_type,
-                    "agents": ["agent1", "agent2", "agent3", "agent4"],
+                    "observer_mode": args.observer_mode,
+                    "agents": ["agent4"] if args.observer_mode != 'none' else ["agent1", "agent2", "agent3", "agent4"],
                 }
                 temporary = manifest_path + f".tmp.{os.getpid()}"
                 with open(temporary, "w", encoding="utf-8") as f:
@@ -309,6 +324,10 @@ def write_run_configuration(args):
             with open(os.path.join(batch_root, "launches.jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps(launch) + "\n")
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        with open(os.path.join(args.result_dir, "launches.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(launch) + "\n")
+    with open(os.path.join(target, "args.json"), "w", encoding="utf-8") as f:
+        json.dump(vars(args), f, indent=4)
 
 
 def process_signal_handler(signum, frame, env_idx):
@@ -612,7 +631,11 @@ def get_unfinished(
                             continue
                         # Gameplay was interrupted before an outcome was saved.
                         for file in os.listdir(example_path):
-                            os.remove(os.path.join(example_path, file))
+                            path = os.path.join(example_path, file)
+                            if os.path.isdir(path) and not os.path.islink(path):
+                                shutil.rmtree(path)
+                            else:
+                                os.remove(path)
                     else:
                         finished[domain].append(example_id)
 

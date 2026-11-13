@@ -11,6 +11,7 @@ import yaml
 from PIL import Image
 
 from mm_agents.realtime_agent import ModelWire, RealtimeAgent
+from mm_agents.realtime_protocol import ModelOutputLimitError
 from mm_agents.realtime_config import agent_kwargs, default_config_path, load_realtime_config
 
 
@@ -178,6 +179,7 @@ def test_truncated_response_never_dispatches_valid_partial_actions(protocol):
         body['stop_reason'] = 'max_tokens'
     elif protocol == 'openai_responses':
         body['status'] = 'incomplete'
+        body['incomplete_details'] = {'reason': 'max_output_tokens'}
     else:
         body['choices'][0]['finish_reason'] = 'length'
     wire = ModelWire('test-model', protocol)
@@ -185,11 +187,20 @@ def test_truncated_response_never_dispatches_valid_partial_actions(protocol):
     agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT, user_prompt_text=TEST_USER_PROMPT, sequence=True, frames=True, wire=wire)
     query = Mock()
     agent.bind_frame_query(query)
-    with pytest.raises(RuntimeError, match='no actions dispatched'):
+    with pytest.raises(ModelOutputLimitError, match='no actions dispatched'):
         agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
     query.assert_not_called()
     assert agent.pending_action_calls is None
     assert next(e for e in agent.last_events if e['event'] == 'model_response')['provider_response'] == body
+
+
+@pytest.mark.parametrize('reason', [None, 'content_filter', 'unknown'])
+def test_incomplete_response_without_output_limit_is_not_a_model_budget_failure(reason):
+    body = reply('openai_responses')
+    body.update(status='incomplete', incomplete_details={'reason': reason})
+    with pytest.raises(RuntimeError, match='incomplete') as caught:
+        ModelWire('test-model', 'openai_responses').unpack(body)
+    assert not isinstance(caught.value, ModelOutputLimitError)
 
 
 def test_missing_dedicated_key_does_not_fall_back(monkeypatch):
@@ -214,6 +225,71 @@ def test_minimax_may_omit_effort_in_a_custom_config(tmp_path):
     path = tmp_path / 'minimax.yaml'
     path.write_text(yaml.safe_dump(cfg))
     assert agent_kwargs(load_realtime_config(path))['thinking_effort'] is None
+
+
+@pytest.mark.parametrize('behavior', ['error', 'drop_block'])
+def test_claude_binding_controls_preserve_history_and_log_transformations(
+        monkeypatch, tmp_path, screenshot, behavior):
+    config = load_realtime_config(default_config_path('agent4', 'claude-fable-5-1'))
+    config['api']['thinking']['prefix_mismatch_behavior'] = behavior
+    path = tmp_path / 'claude.yaml'
+    path.write_text(yaml.safe_dump(config))
+    monkeypatch.setenv(config['api']['key_env'], 'test-credential')
+    agent = RealtimeAgent(variant='agent4', **agent_kwargs(load_realtime_config(path)))
+    first = reply('anthropic_messages')
+    first['content'].insert(0, {'type': 'thinking', 'thinking': 'Inspect the screenshot.',
+                                'signature': 'opaque-provider-signature'})
+    first['input_transformations'] = []
+    second = reply('anthropic_messages')
+    second['input_transformations'] = [
+        {'type': 'thinking_dropped', 'path': 'messages.2.content.0',
+         'reason': 'prefix_binding_mismatch'}]
+    payloads, events = [], []
+
+    def post(url, **kwargs):
+        assert kwargs['headers']['anthropic-beta'] == 'thinking-binding-controls-2026-08-01'
+        payloads.append(copy.deepcopy(kwargs['json']))
+        return http(copy.deepcopy(first if len(payloads) == 1 else second))
+
+    agent.wire.session.post = post
+    agent.bind_event_sink(events.append)
+    actions = agent.predict('task', {'screenshot': screenshot, 'task_time_s': 0})[1]
+    agent.record_action_result(actions)
+    agent.predict('task', {'screenshot': screenshot, 'task_time_s': 1})
+    assert all(p['thinking']['block_binding'] == {'prefix_mismatch_behavior': behavior} for p in payloads)
+    assert payloads[0]['messages'] == payloads[1]['messages'][:len(payloads[0]['messages'])]
+    assert payloads[1]['messages'][len(payloads[0]['messages'])]['content'] == first['content']
+    assert payloads[0]['system'] == payloads[1]['system']
+    assert payloads[0]['tools'] == payloads[1]['tools']
+    responses = [e for e in events if e['event'] == 'model_response']
+    assert responses[-1]['provider_response']['input_transformations'] == second['input_transformations']
+    requests = [e for e in events if e['event'] == 'model_request']
+    assert all(e['thinking']['prefix_mismatch_behavior'] == behavior for e in requests)
+
+
+@pytest.mark.parametrize('model', ['claude-fable-5-1', 'glm-5.3-flash'])
+def test_binding_controls_are_opt_in(monkeypatch, screenshot, model):
+    config = load_realtime_config(default_config_path('agent4', model))
+    monkeypatch.setenv(config['api']['key_env'], 'test-credential')
+    agent = RealtimeAgent(variant='agent4', **agent_kwargs(config))
+    agent.wire.session.post = Mock(return_value=http(reply('anthropic_messages')))
+    agent.predict('task', {'screenshot': screenshot, 'task_time_s': 0})
+    request = agent.wire.session.post.call_args.kwargs
+    assert 'anthropic-beta' not in request['headers']
+    assert 'block_binding' not in request['json']['thinking']
+
+
+@pytest.mark.parametrize('model,behavior', [
+    ('claude-fable-5-1', 'ignore'), ('claude-fable-5-1', {}),
+    ('glm-5.3-flash', 'drop_block'), ('gpt-6-astra', 'error'),
+])
+def test_binding_controls_reject_invalid_configuration(tmp_path, model, behavior):
+    config = load_realtime_config(default_config_path('agent4', model))
+    config['api']['thinking']['prefix_mismatch_behavior'] = behavior
+    path = tmp_path / 'invalid.yaml'
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(ValueError, match='prefix_mismatch_behavior'):
+        load_realtime_config(path)
 
 
 @pytest.mark.parametrize('patch', [

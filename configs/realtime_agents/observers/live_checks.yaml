@@ -1,0 +1,44 @@
+script: |
+  ### Live observer integration check
+  This is an isolated test window, not a benchmark game. Use the registered tools
+  yourself; write all observer scripts yourself. Complete these stages in order:
+
+  1. Submit a deliberately syntactically invalid Python observer with no GUI actions.
+     Wait for its create_observer error result before proceeding.
+  2. Submit a syntactically valid Python observer that briefly sleeps and then raises
+     a RuntimeError with a message identifying this as an intentional feedback test.
+     Wait until its background error appears in your feedback before proceeding.
+  3. Create a working background observer for the visible signal panel. Read its
+     instructions from the screenshot and implement the visual conditions and
+     actions yourself. Do not perform the panel's clicks directly from the main
+     agent. Keep this observer alive, observing without acting after COMPLETE,
+     until you explicitly stop it with stop_observer.
+  4. Use computer_wait for 32 seconds with the working observer active to check that
+     it can operate in the background beyond 30 seconds. If it fails, inspect the
+     actual feedback and fix your script. Do not invent test results.
+  5. After the panel shows COMPLETE, explicitly call stop_observer for the working
+     observer, inspect the returned status, and finally call computer_done.
+
+  Errors in stages 1 and 2 are requested test cases. No error in the working
+  observer is intended. Only screenshots and GUI interactions may be used to
+  solve the signal-panel task. No fixture files or hidden state may be read.
+
+jev: |
+  ### Live observer integration check
+  This is an isolated test window, not a benchmark game. Use the registered tools
+  yourself and construct all cases and action parameters yourself from the visible
+  signal panel and its instructions.
+
+  Create a Jev observer to operate the signal panel. Do not perform its clicks
+  directly from the main agent. The test runner will inject one explicit test
+  exception after the first real Jev API response, before executing its selected
+  action. This is a planned error-feedback check. Wait until that background error
+  appears in your feedback, then create a new observer to complete the panel.
+  Subsequent Jev calls use the real API normally.
+
+  With the new observer active, use computer_wait for 12 seconds to check background
+  operation. If the observer fails, inspect the actual feedback and respond to it.
+  After the panel shows COMPLETE, explicitly call stop_observer for the working
+  observer, inspect its returned status, then call computer_done. Do not invent
+  outcomes. Use only screenshots and registered GUI tools; no fixture files or
+  hidden state may be read.

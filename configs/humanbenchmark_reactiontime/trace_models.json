@@ -1,0 +1,46 @@
+{
+  "run_id": "reactiontime_trace_r1",
+  "valid_trials_per_group": 3,
+  "groups": [
+    {
+      "model": "gpt-6-astra",
+      "agent": "agent4",
+      "config": "configs/humanbenchmark_reactiontime/combine-gpt-6-astra.yaml"
+    },
+    {
+      "model": "MiniMax-M3",
+      "agent": "agent4",
+      "config": "configs/humanbenchmark_reactiontime/combine-MiniMax-M3.yaml"
+    },
+    {
+      "model": "claude-fable-5-1",
+      "agent": "agent4",
+      "config": "configs/humanbenchmark_reactiontime/combine-claude-fable-5-1.yaml"
+    },
+    {
+      "model": "deepseek-flash",
+      "agent": "agent4",
+      "config": "configs/humanbenchmark_reactiontime/combine-deepseek-flash.yaml"
+    },
+    {
+      "model": "kimi-k3",
+      "agent": "agent4",
+      "config": "configs/humanbenchmark_reactiontime/combine-kimi-k3.yaml"
+    },
+    {
+      "model": "glm-5.3-flash",
+      "agent": "agent4",
+      "config": "configs/humanbenchmark_reactiontime/combine-glm-5.3-flash.yaml"
+    },
+    {
+      "model": "qwen3.8-max-0902",
+      "agent": "agent4",
+      "config": "configs/humanbenchmark_reactiontime/combine-qwen3.8-max-0902.yaml"
+    },
+    {
+      "model": "gemini-3.8-flash",
+      "agent": "agent4",
+      "config": "configs/humanbenchmark_reactiontime/combine-gemini-3.8-flash.yaml"
+    }
+  ]
+}

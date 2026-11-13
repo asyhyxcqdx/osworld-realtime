@@ -118,6 +118,56 @@ def test_a_long_recorded_line_arrives_whole(tmp_path):
     assert 'actual_time_s' in text
 
 
+@pytest.mark.parametrize('observer_mode', ['none', 'script'])
+def test_compact_input_preserves_events_strings_and_number_spelling(tmp_path, observer_mode):
+    task = tmp_path / 'task'
+    write_trajectory(task, openai_chat_conversation(), tail_events=[
+        {'event': 'observer_action', 'method': 'click', 'args': [10, 20]},
+        {'event': 'observer_failed', 'error': {'message': 'two  spaces\tand\na newline'}},
+        {'event': 'evaluation', 'result': 0.0},
+    ])
+    (task / 'experiment.json').write_text(json.dumps({'observer_mode': observer_mode}))
+    path = task / 'trajectory.jsonl'
+    with path.open('a') as f:
+        f.write('{ "event": "extra", "code": "x = \\\"a  b\\\"; p = \\\"C:\\\\\\\\tmp\\\"", "time_s": 1.20e-05 }\n')
+    original = path.read_bytes()
+    verbatim = auditor.build_audit_input(task)
+
+    compact = auditor.build_audit_input(task, compact_json=True)
+
+    assert [json.loads(line) for line in compact.splitlines()] == [
+        json.loads(line) for line in verbatim.splitlines()]
+    assert len(compact) < len(verbatim)
+    assert '1.20e-05' in compact
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize('score', [0.0, 1.0])
+def test_compact_reaudit_publishes_saved_score_and_keeps_evidence(tmp_path, monkeypatch, score):
+    task = tmp_path / 'task'
+    write_trajectory(task, openai_chat_conversation())
+    (task / 'game_result.json').write_text(json.dumps({'result': score, 'pass_at_3': score}))
+    (task / 'recording.mp4').write_bytes(b'original recording')
+    originals = {name: (task / name).read_bytes() for name in
+                 ['trajectory.jsonl', 'game_result.json', 'recording.mp4']}
+    session = Mock()
+    session.post.return_value = FakeResponse(judge_reply(good_verdict('NOT_CHEAT')))
+    monkeypatch.setattr(auditor, 'judge_settings',
+                        lambda: ('deepseek-flash', 'key', 'https://example', 'RULES'))
+    monkeypatch.setattr(auditor.requests, 'Session', lambda: session)
+
+    assert auditor.main([str(task), '--compact-json']) == 0
+
+    actual_input = session.post.call_args.kwargs['json']['messages'][0]['content']
+    assert actual_input == auditor.build_audit_input(task, compact_json=True)
+    assert (task / 'audit_input.txt').read_text() == actual_input
+    assert float((task / 'result.txt').read_text()) == score
+    result = json.loads((task / 'result.json').read_text())
+    assert result['audit_status'] == 'completed'
+    assert result['judge']['input_format'] == 'compact_jsonl'
+    assert all((task / name).read_bytes() == contents for name, contents in originals.items())
+
+
 def good_verdict(label='CHEAT'):
     return json.dumps({'label': label, 'confidence': 0.9,
                        'evidence': [] if label == 'NOT_CHEAT' else [
@@ -217,6 +267,32 @@ def test_a_request_failure_is_retried_on_the_next_round(monkeypatch):
     verdict = auditor.call_judge('trajectory', settings, session=session)
 
     assert verdict['label'] == 'NOT_CHEAT' and verdict['rounds'] == 2
+
+
+@pytest.mark.parametrize('score', [0.0, 1.0])
+def test_provider_error_details_are_saved_without_replaying_game_or_exposing_key(
+        tmp_path, monkeypatch, score):
+    task = tmp_path / 'task'
+    write_trajectory(task, openai_chat_conversation())
+    (task / 'game_result.json').write_text(json.dumps({'result': score, 'pass_at_3': score}))
+    (task / 'recording.mp4').write_bytes(b'original recording')
+    originals = {name: (task / name).read_bytes() for name in
+                 ['trajectory.jsonl', 'game_result.json', 'recording.mp4']}
+    response = Mock(status_code=400, text='Context length exceeded; credential judge-secret')
+    response.raise_for_status.side_effect = auditor.requests.HTTPError('400 Bad Request')
+    session = Mock()
+    session.post.return_value = response
+    monkeypatch.setattr(auditor, 'NETWORK_ROUNDS', 1)
+
+    status = auditor.audit_one(task, settings=('deepseek-flash', 'judge-secret',
+                                               'https://example', 'RULES'), session=session)
+
+    assert 'judge HTTP 400' in status and 'Context length exceeded' in status
+    assert '[REDACTED]' in status and 'judge-secret' not in status
+    pending = json.loads((task / 'result.json').read_text())
+    assert pending['audit_status'] == 'pending' and 'Context length exceeded' in pending['judge']['error']
+    assert not (task / 'result.txt').exists()
+    assert all((task / name).read_bytes() == contents for name, contents in originals.items())
 
 
 def test_a_reply_cut_off_by_max_tokens_is_not_accepted():

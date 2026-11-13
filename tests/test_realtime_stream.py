@@ -7,7 +7,7 @@ import pytest
 import requests
 
 from mm_agents.realtime_agent import ModelWire, RealtimeAgent, response_reasoning
-from mm_agents.realtime_protocol import AgentProtocolError
+from mm_agents.realtime_protocol import AgentProtocolError, ModelOutputLimitError
 from mm_agents.realtime_stream import (
     RateLimitedStreamError,
     TransientStreamError,
@@ -286,7 +286,7 @@ def test_truncated_but_terminated_stream_does_not_dispatch(monkeypatch, protocol
     else:
         events[1]['choices'][0]['finish_reason'] = 'length'
     agent = agent_with_http(monkeypatch, protocol, [sse(events)])
-    with pytest.raises(RuntimeError, match='no actions dispatched'):
+    with pytest.raises(ModelOutputLimitError, match='no actions dispatched'):
         agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
     assert agent.pending_action_calls is None
     assert next(e for e in agent.last_events if e['event'] == 'model_response')['provider_response']['usage']
@@ -297,13 +297,30 @@ def test_messages_output_limit_with_partial_json_preserves_usage_without_replay(
     events[3]['delta']['partial_json'] = '"sp'
     events[-2]['delta']['stop_reason'] = 'max_tokens'
     agent = agent_with_http(monkeypatch, 'anthropic_messages', [sse(events)])
-    with pytest.raises(RuntimeError, match='output limit'):
+    with pytest.raises(ModelOutputLimitError, match='output limit'):
         agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
     assert agent.wire.session.post.call_count == 1
     body = next(e for e in agent.last_events if e['event'] == 'model_response')['provider_response']
     assert body['usage']['output_tokens'] == 10
     assert body['content'][0]['input'] == '{"key":"sp'
     assert agent.pending_action_calls is None
+
+
+def test_responses_output_limit_preserves_terminal_reply_and_does_not_retry(monkeypatch):
+    body = {'status': 'incomplete', 'incomplete_details': {'reason': 'max_output_tokens'},
+            'output': [{'type': 'function_call', 'call_id': 'c1', 'name': 'computer_press',
+                        'arguments': '{"key":"sp'}],
+            'usage': {'input_tokens': 123, 'output_tokens': 128000}}
+    response = sse([{'type': 'response.incomplete', 'response': body}])
+    agent = agent_with_http(monkeypatch, 'openai_responses', [response])
+    with pytest.raises(ModelOutputLimitError):
+        agent.predict('task', {'screenshot': b'png', 'task_time_s': 0})
+    assert agent.wire.session.post.call_count == 1
+    assert agent.pending_action_calls is None
+    event = next(e for e in agent.last_events if e['event'] == 'model_response')
+    assert event['provider_response'] == body
+    assert event['usage'] == body['usage']
+    response.close.assert_called_once()
 
 
 def anthropic_tool_events(name, arguments, *, stop_reason='tool_use'):

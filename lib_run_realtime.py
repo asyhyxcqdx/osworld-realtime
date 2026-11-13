@@ -4,11 +4,13 @@ from datetime import datetime, timezone
 import json
 import logging
 import time
+import threading
 from pathlib import Path
 
 from lib_results_logger import log_task_completion
 from mm_agents.realtime_protocol import (
     AgentProtocolError,
+    ModelOutputLimitError,
     FRAME_TOOL,
     ForbiddenShortcutError,
 )
@@ -37,6 +39,11 @@ def resume_completed_task(out, example, args, scores):
     from mm_agents.realtime_auditor import load_game_result
 
     out = Path(out)
+    experiment_path = out / 'experiment.json'
+    if experiment_path.exists():
+        saved_mode = json.loads(experiment_path.read_text()).get('observer_mode', 'none')
+        if saved_mode != (getattr(args, 'observer_mode', None) or 'none'):
+            raise ValueError('This run_id belongs to a different observer_mode; use a separate run_id')
     if (out / "result.txt").exists():
         return True
     game = load_game_result(out)
@@ -79,8 +86,16 @@ def run_realtime_example(
 
         install(env.controller.http_server, password=args.client_password)
     time.sleep(args.environment_ready_wait_s)
+    observer_source = None
+    if getattr(agent, 'observer_mode', 'none') != 'none':
+        from desktop_env.realtime_contract import verify_server_source
+        observer_source = verify_server_source(env.controller.http_server,
+                                               names=('observers.py', 'observer_worker.py', 'pyxcursor.py', 'screen_capture.py'))
     record = env.controller.start_realtime_recording(args.recording_fragment_ms)
     metadata = {
+        "observer_mode": getattr(agent, 'observer_mode', 'none'),
+        "observer_api": getattr(agent, 'observer_config', {}),
+        "observer_server_source": observer_source,
         "run_id": getattr(args, "run_id", None),
         "agent_started_at": getattr(args, "agent_started_at", None),
         "task_started_at": task_started_at,
@@ -125,22 +140,25 @@ def run_realtime_example(
     done = False
     result = None
     termination_reason = "interrupted"
+    observer = None
+    event_lock = threading.RLock()
 
     def write_event(event, decision_id=None):
         # Persist every model and environment event in one chronological stream.
         nonlocal event_count
-        event_count += 1
-        record = {
-            "event_index": event_count,
-            "wall_time": datetime.now(timezone.utc).isoformat(),
-            "decision_id": (
-                decision_count if event.get("event") == "action_tool_result"
-                else decision_count + 1
-            ) if decision_id is None else decision_id,
-            **event,
-        }
-        with (out / "trajectory.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        with event_lock:
+            event_count += 1
+            record = {
+                "event_index": event_count,
+                "wall_time": datetime.now(timezone.utc).isoformat(),
+                "decision_id": (
+                    decision_count if event.get("event") == "action_tool_result"
+                    else decision_count + 1
+                ) if decision_id is None else decision_id,
+                **event,
+            }
+            with (out / "trajectory.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     def query(times_s):
         nonlocal query_count
@@ -165,6 +183,12 @@ def run_realtime_example(
     agent.bind_frame_query(query if agent.frames else None)
     agent.bind_event_sink(write_event)
     try:
+        if getattr(agent, 'observer_mode', 'none') != 'none':
+            from mm_agents.realtime_observers import ObserverManager
+            observer = ObserverManager(env, agent.observer_mode, out,
+                lambda event: write_event(event, decision_id=None),
+                {**agent.observer_config, 'condition_coordinate_system': agent.coordinate_system})
+            agent.bind_observer_feedback(observer.drain_feedback)
         obs = env._get_obs()
         obs["task_time_s"] = env.controller.last_observation_time
         (out / "initial_state.png").write_bytes(obs["screenshot"])
@@ -192,7 +216,9 @@ def run_realtime_example(
             )
             dispatched = time.monotonic()
             try:
-                if agent.sequence:
+                if observer is not None:
+                    obs, reward, done, info = observer.execute(actions)
+                elif agent.sequence:
                     obs, reward, done, info = env.step_sequence(
                         actions
                     )
@@ -222,7 +248,9 @@ def run_realtime_example(
                     decision_id=decision_count,
                 )
                 raise
-            action_count += len(actions)
+            action_count += sum(not a['action_type'].startswith('OBSERVER_')
+                                and info.get('observer_results', {}).get(i, {}).get('status') != 'not_executed'
+                                for i, a in enumerate(actions))
             obs["task_time_s"] = env.controller.last_observation_time
             screenshot_file = f"step_{decision_count}.png"
             obs["screenshot_file"] = screenshot_file
@@ -254,6 +282,8 @@ def run_realtime_example(
                     done=done,
                     info=info,
                 )
+        if observer:
+            observer.close()
         time.sleep(args.evaluation_settle_s)
         if page_identity is not None:
             verify_realtime_page_identity(env, page_config, page_identity)
@@ -274,6 +304,8 @@ def run_realtime_example(
         )
         termination_reason = completion_reason
     except AgentProtocolError as exc:
+        if observer:
+            observer.close()
         # The model broke the action protocol. Recording it as a run_error keeps the
         # task from looking like "no score", which the resume path would re-roll for
         # free. The score itself is the page's own verdict, exactly as in a normal
@@ -281,7 +313,7 @@ def run_realtime_example(
         # never passed), and 1 only when an earlier attempt had already passed.
         # Whether the violation voids that result is the judge's call (CHEAT -> 0,
         # CHEAT_ATTEMPT/UNCERTAIN/NOT_CHEAT -> keep it), not the host's.
-        termination_reason = "run_error"
+        termination_reason = "model_output_limit" if isinstance(exc, ModelOutputLimitError) else "run_error"
         run_error = {"type": type(exc).__name__, "message": str(exc)}
         write_event({"event": "run_error", **run_error}, decision_id=decision_count)
         try:
@@ -317,12 +349,20 @@ def run_realtime_example(
         write_event({"event": "run_error", **run_error}, decision_id=decision_count)
         raise
     finally:
+        if observer:
+            try:
+                observer.close()
+            except Exception as cleanup_error:
+                logging.getLogger(__name__).error('Observer cleanup failed in %s: %s', out, cleanup_error)
+            finally:
+                agent.bind_observer_feedback(None)
         agent.bind_event_sink(None)
         (out / "agent_metrics.json").write_text(
             json.dumps(
                 {
                     **agent.counters,
                     "run_id": getattr(args, "run_id", None),
+                    "observer_mode": getattr(agent, 'observer_mode', 'none'),
                     "task_started_at": task_started_at,
                     "task_finished_at": datetime.now(timezone.utc).isoformat(),
                     "executed_actions": action_count,

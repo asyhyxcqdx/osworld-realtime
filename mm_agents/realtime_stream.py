@@ -143,6 +143,14 @@ def _responses(response):
         kind = event.get("type", name)
         if kind == "response.completed":
             return event["response"]
+        if kind == "response.incomplete":
+            body = event.get("response", {})
+            if (body.get("status") == "incomplete"
+                    and (body.get("incomplete_details") or {}).get("reason") == "max_output_tokens"
+                    and not body.get("error") and not event.get("error")):
+                # This is a terminal model outcome. Preserve it for logging and
+                # let ModelWire reject every partial action as an output limit.
+                return body
         if kind in {"response.failed", "response.incomplete", "error"}:
             detail = (
                 event.get("response", {}).get("error")

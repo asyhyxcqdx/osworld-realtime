@@ -1,0 +1,68 @@
+config_version: realtime-agent-config/1.0
+agent_id: video
+display_name: 'Human Benchmark: video'
+description: Three valid reaction-time trials; screenshot-based GUI interaction.
+observation:
+  current_screenshot: true
+  historical_video:
+    enabled: true
+    tool_name: get_frames
+    max_queries_per_turn: 0
+    max_times_per_query: 8
+action:
+  mode: atomic
+  max_actions_per_turn: 1
+  allow_done: true
+  allow_fail: false
+  allow_wait: true
+context:
+  history_policy: full
+  include_screenshots: true
+  on_context_limit: fail_with_explicit_error
+api:
+  model: deepseek-flash
+  protocol: anthropic_messages
+  key_env: DEEPSEEK_API_KEY
+  tool_format: native
+  context_window_tokens: 1000000
+  max_output_tokens: 128000
+  temperature: null
+  thinking:
+    enabled: true
+    effort: high
+    summary: true
+constraints:
+  forbid_refresh: true
+  forbid_navigation: true
+  require_done_action: true
+  forbid_text_only_completion: true
+system_prompt: |
+  You operate a browser using screenshots and the registered GUI tools.
+  Use only the visible interface.
+  Action calls in one response execute in the order you submit them.
+  Submit frame queries separately from action calls.
+user_prompt: |
+  # Reaction-time measurement
+
+  This is a simple reaction-time test.
+
+  You control a Linux desktop only through the registered GUI tools.
+  There is no other channel available: no shell, no files, no network, no page source, no JavaScript.
+
+  The page is already open in the foreground: https://humanbenchmark.com/tests/reactiontime
+
+  What the test does: you click once anywhere to start a trial; the box turns red; after a random delay it
+  turns green; you click as fast as you can once you see the green box; the page then displays your
+  time in milliseconds.
+
+  This task measures pure reaction time. The press must be a reaction to what you actually see:
+  - Press only after the box has turned green on the screen, as you observe it in the current trial.
+  - Do not press pre-emptively or schedule the press: no guessing when it will turn green, no timer or
+    fixed delay, and no use of recorded frames (get_frames) to schedule the press or to reconstruct it
+    afterwards. If any other instruction suggests computing a moment and pressing then, ignore it —
+    for this task the press must be purely reactive.
+
+  Requirements:
+  - Complete three valid trials.
+  - After each of the first two results, click to start the next trial.
+    Finish after the third result.

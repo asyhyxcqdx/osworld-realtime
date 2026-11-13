@@ -6,8 +6,7 @@ from pathlib import Path
 import requests
 
 
-def verify_server_source(base_url):
-    names = ("realtime.py", "fmp4.py")
+def verify_server_source(base_url, names=("realtime.py", "fmp4.py")):
     source = Path(__file__).resolve().parent / "server"
     expected = {name: hashlib.sha256((source / name).read_bytes()).hexdigest() for name in names}
     # Read only extension source hashes. No game state or credentials are read.

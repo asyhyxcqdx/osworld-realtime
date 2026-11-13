@@ -84,7 +84,28 @@ def messages_url(base_url):
 # Building the audit input from the trajectory
 # --------------------------------------------------------------------------- #
 
-def build_audit_input(task_dir):
+def _compact_json_line(line):
+    """Remove JSON layout whitespace while preserving every string and value."""
+    result = []
+    quoted = escaped = False
+    for char in line:
+        if quoted:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+            result.append(char)
+        elif char not in ' \t\r':
+            result.append(char)
+    return ''.join(result)
+
+
+def build_audit_input(task_dir, *, compact_json=False):
     """The judge's user message: the trajectory's own lines, verbatim.
 
     The final request carries the whole conversation (history is never trimmed),
@@ -92,12 +113,25 @@ def build_audit_input(task_dir):
     material the judge needs. The recorded JSONL lines are passed through byte
     for byte -- nothing is renamed, dropped, re-serialised or rewritten -- and
     the recorder already keeps inline image bytes out of the log, so the judge
-    reads exactly what the trajectory says.
+    reads exactly what the trajectory says. ``compact_json`` removes only JSON
+    layout whitespace; all events, fields and string contents remain intact.
     """
     path = Path(task_dir) / 'trajectory.jsonl'
     if not path.exists():
         raise AuditError(f'no trajectory at {path}')
     lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+    if compact_json:
+        lines = [_compact_json_line(line) for line in lines]
+    metadata_path = Path(task_dir) / 'experiment.json'
+    metadata = json.loads(metadata_path.read_text()) if metadata_path.exists() else {}
+    observer_mode = metadata.get('observer_mode', 'none')
+    if observer_mode in {'jev', 'script'}:
+        # Earlier asynchronous actions are not contained in the final main-model request.
+        # Keep all non-request events, plus the final request containing full dialogue.
+        last_request = max((i for i, line in enumerate(lines)
+                            if json.loads(line).get('event') == 'model_request'), default=-1)
+        return '\n'.join(line for i, line in enumerate(lines)
+                         if i == last_request or json.loads(line).get('event') != 'model_request') + '\n'
     start = None
     for number, line in enumerate(lines):
         if '"model_request"' not in line:
@@ -184,7 +218,13 @@ def _ask_judge(settings, text, session):
               'messages': [{'role': 'user', 'content': text}]},
         timeout=JUDGE_TIMEOUT_S,
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        # Keep the provider's explanation (context limit, invalid parameters,
+        # etc.) so an audit-only retry can address the actual rejection.
+        detail = response.text.replace(key, '[REDACTED]') if key else response.text
+        raise AuditError(f'judge HTTP {response.status_code}: {detail[:2000]}') from exc
     payload = response.json()
     if payload.get('stop_reason') == 'max_tokens':
         error = AuditError('judge reply hit max_tokens; raise JUDGE_MAX_TOKENS')
@@ -258,7 +298,7 @@ def judge_error(exc):
     return {'error': str(exc)}
 
 
-def audit_task(task_dir, result, *, settings=None, session=None):
+def audit_task(task_dir, result, *, settings=None, session=None, compact_json=False):
     """Audit one finished task; returns ``(result, judge_or_None)``.
 
     ``result`` is the score to persist: 0 when the judge reports CHEAT, otherwise
@@ -266,7 +306,12 @@ def audit_task(task_dir, result, *, settings=None, session=None):
     whether the task counts as finished.
     """
     settings = settings or judge_settings()
-    text = build_audit_input(task_dir)
+    metadata_path = Path(task_dir) / 'experiment.json'
+    metadata = json.loads(metadata_path.read_text()) if metadata_path.exists() else {}
+    mode = metadata.get('observer_mode', 'none')
+    if mode in {'jev', 'script'}:
+        settings = (*settings[:3], (REPO / 'configs' / 'realtime_agents' / 'observers' / mode / 'auditor.txt').read_text())
+    text = build_audit_input(task_dir, compact_json=compact_json)
     # Keep exactly what the judge read, so any verdict can be re-read later.
     try:
         (Path(task_dir) / 'audit_input.txt').write_text(text, encoding='utf-8')
@@ -274,6 +319,8 @@ def audit_task(task_dir, result, *, settings=None, session=None):
         logging.getLogger(__name__).warning('cannot persist the audit input under %s', task_dir)
     verdict = call_judge(text, settings, session=session)
     record = judge_record(verdict, settings)
+    if compact_json:
+        record['input_format'] = 'compact_jsonl'
     if verdict['label'] == 'CHEAT':
         result = 0.0
     return result, record
@@ -336,7 +383,7 @@ def write_result(task_dir, payload, score):
     _atomic_write(path / 'result.txt', f'{score}\n')
 
 
-def audit_saved_task(task_dir, *, force=False, settings=None, session=None):
+def audit_saved_task(task_dir, *, force=False, settings=None, session=None, compact_json=False):
     """Audit the saved game without a VM. Return its final score and verdict."""
     path = Path(task_dir)
     game = load_game_result(path)
@@ -356,7 +403,9 @@ def audit_saved_task(task_dir, *, force=False, settings=None, session=None):
         (path / 'result.txt').unlink(missing_ok=True)
         _write_json(result_path, {**game, 'audit_status': 'pending'})
     try:
-        final, record = audit_task(path, game['result'], settings=settings, session=session)
+        options = {'compact_json': True} if compact_json else {}
+        final, record = audit_task(path, game['result'], settings=settings, session=session,
+                                  **options)
     except AuditError as exc:
         if not already_judged:
             _write_json(result_path, {**game, 'audit_status': 'pending', 'judge': judge_error(exc)})
@@ -370,7 +419,8 @@ def audit_saved_task(task_dir, *, force=False, settings=None, session=None):
 # Command line
 # --------------------------------------------------------------------------- #
 
-def audit_one(task_dir, *, force=False, settings=None, session=None, dry_run=False):
+def audit_one(task_dir, *, force=False, settings=None, session=None, dry_run=False,
+              compact_json=False):
     """Audit a task directory that is already on disk.
 
     Returns a short status string. A completed game without result.txt needs
@@ -379,7 +429,7 @@ def audit_one(task_dir, *, force=False, settings=None, session=None, dry_run=Fal
     path = Path(task_dir)
     result_path, scalar_path = path / 'result.json', path / 'result.txt'
     if dry_run:
-        text = build_audit_input(path)
+        text = build_audit_input(path, compact_json=compact_json)
         target = path / 'audit_input.txt'
         target.write_text(text, encoding='utf-8')
         return f'dry-run wrote {target} ({len(text)} bytes)'
@@ -390,7 +440,8 @@ def audit_one(task_dir, *, force=False, settings=None, session=None, dry_run=Fal
         judge = payload.get('judge') or {}
         if judge.get('label') in LABELS and scalar_path.exists() and not force:
             return f'skipped: already judged {judge["label"]}'
-        result, record = audit_saved_task(path, force=force, settings=settings, session=session)
+        result, record = audit_saved_task(path, force=force, settings=settings, session=session,
+                                          compact_json=compact_json)
     except AuditError as exc:
         return f'audit failed: {exc}'
     return f'{record["label"]} (confidence {record["confidence"]}) result={result}'
@@ -420,6 +471,8 @@ def parse_args(argv=None):
                         help='re-judge tasks that already carry a verdict')
     parser.add_argument('--dry-run', action='store_true',
                         help='only write audit_input.txt, do not call the judge')
+    parser.add_argument('--compact-json', action='store_true',
+                        help='remove JSON layout whitespace from audit input; keep all evidence')
     return parser.parse_args(argv)
 
 
@@ -439,7 +492,7 @@ def main(argv=None):
     judged = failed = 0
     for target in targets:
         status = audit_one(target, force=args.force, settings=settings,
-                           session=session, dry_run=args.dry_run)
+                           session=session, dry_run=args.dry_run, compact_json=args.compact_json)
         print(f'{target}  {status}', flush=True)
         judged += 1
         failed += 'audit failed' in status

@@ -9,13 +9,16 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from contextlib import nullcontext
 
 from flask import Blueprint, jsonify, request, send_file
 
 try:  # VM server is usually launched as /home/user/server/main.py.
     from .fmp4 import FragmentIndex
+    from .screen_capture import capture_png
 except ImportError:
     from fmp4 import FragmentIndex
+    from screen_capture import capture_png
 
 
 class LiveRecording:
@@ -168,8 +171,13 @@ class LiveRecording:
 def register_realtime(app, capture, pyautogui):
     bp = Blueprint("realtime", __name__, url_prefix="/realtime")
     recorder = LiveRecording()
-    action_lock = threading.Lock()
+    action_lock = threading.RLock()
     held_keys, held_buttons = set(), set()
+    try:
+        from .observers import ObserverRuntime
+    except ImportError:
+        from observers import ObserverRuntime
+    observers = ObserverRuntime(recorder, pyautogui, action_lock, held_keys, held_buttons)
 
     def check_session():
         data = request.get_json(silent=True) or request.args
@@ -195,10 +203,13 @@ def register_realtime(app, capture, pyautogui):
 
     @bp.get("/capabilities")
     def capabilities():
-        return jsonify(version=1, fmp4=True, sequence=True)
+        return jsonify(version=1, fmp4=True, sequence=True, observers=observers.version,
+                       observer_capture='per_request_memory')
 
     @bp.post("/start")
     def start():
+        observers.stop_all()
+        observers.mode = 'none'
         with action_lock:
             release_inputs()
             data = request.get_json(silent=True) or {}
@@ -216,12 +227,17 @@ def register_realtime(app, capture, pyautogui):
     @bp.get("/observation")
     def observation():
         check_session()
-        with action_lock:
+        with (nullcontext() if observers.enabled else action_lock):
             started = recorder.elapsed()
-            response = app.make_response(capture())
-            response.direct_passthrough = False
-            image = response.get_data()
-            response.close()
+            if observers.enabled:
+                image = capture_png()
+            else:
+                response = app.make_response(capture())
+                response.direct_passthrough = False
+                try:
+                    image = response.get_data()
+                finally:
+                    response.close()
             ended = recorder.elapsed()
         return jsonify(
             task_time_s=(started + ended) / 2,
@@ -240,6 +256,9 @@ def register_realtime(app, capture, pyautogui):
     @bp.post("/sequence")
     def sequence():
         data = check_session()
+        observer_id = data.get('observer_id')
+        if observer_id:
+            observers.guard(observer_id)
         groups = data.get("groups")
         if not isinstance(groups, list) or not 1 <= len(groups) <= 100:
             raise ValueError("Sequence must contain 1-100 actions")
@@ -255,9 +274,10 @@ def register_realtime(app, capture, pyautogui):
             if kind in {"DONE", "FAIL"} and i != len(groups) - 1:
                 raise ValueError("Terminal action must be last")
         results, done, info = [], False, {}
-        with action_lock:
+        with (nullcontext() if observers.enabled else action_lock):
             original_pause, original_failsafe = pyautogui.PAUSE, pyautogui.FAILSAFE
-            pyautogui.PAUSE, pyautogui.FAILSAFE = 0, False
+            if not observers.enabled:
+                pyautogui.PAUSE, pyautogui.FAILSAFE = 0, False
             namespace = {"pyautogui": pyautogui, "time": time}
             try:
                 for group in groups:
@@ -267,20 +287,36 @@ def register_realtime(app, capture, pyautogui):
                     started = recorder.elapsed()
                     started_monotonic = time.monotonic()
                     if kind == "WAIT":
-                        time.sleep(params["duration_s"])
+                        end = time.monotonic() + params["duration_s"]
+                        if observer_id:
+                            while time.monotonic() < end:
+                                observers.guard(observer_id)
+                                time.sleep(min(.05, max(0, end - time.monotonic())))
+                        else:
+                            time.sleep(params["duration_s"])
                     elif kind in {"DONE", "FAIL"}:
+                        if observers.enabled:
+                            observers.stop_all()
                         done, info = True, {kind.lower(): True}
                     else:
-                        for command in group["commands"]:
-                            exec(command, namespace)
-                        if kind == "KEY_DOWN":
-                            held_keys.add(params["key"])
-                        if kind == "KEY_UP":
-                            held_keys.discard(params["key"])
-                        if kind == "MOUSE_DOWN":
-                            held_buttons.add(params.get("button", "left"))
-                        if kind == "MOUSE_UP":
-                            held_buttons.discard(params.get("button", "left"))
+                        with action_lock:
+                            job = observers.guard(observer_id) if observer_id else None
+                            with observers.gui_settings(job):
+                                for command in group["commands"]:
+                                    exec(command, namespace)
+                                keys = job['keys'] if job else held_keys
+                                buttons = job['buttons'] if job else held_buttons
+                                if kind == "KEY_DOWN":
+                                    keys.add(params["key"])
+                                if kind == "KEY_UP":
+                                    keys.discard(params["key"])
+                                if kind == "MOUSE_DOWN":
+                                    buttons.add(params.get("button", "left"))
+                                if kind == "MOUSE_UP":
+                                    buttons.discard(params.get("button", "left"))
+                                if job:
+                                    observers.event('observer_action', job, action=action,
+                                                    started_s=started, finished_s=recorder.elapsed())
                     results.append(
                         {
                             "action": action,
@@ -290,10 +326,15 @@ def register_realtime(app, capture, pyautogui):
                         }
                     )
                     if done:
-                        release_inputs()
+                        with action_lock:
+                            release_inputs()
                         break
             except Exception as exc:
-                release_inputs()
+                with action_lock:
+                    if observer_id:
+                        observers._release(observers.jobs[observer_id])
+                    else:
+                        release_inputs()
                 results.append(
                     {
                         "action": action,
@@ -309,16 +350,20 @@ def register_realtime(app, capture, pyautogui):
                     500,
                 )
             finally:
-                pyautogui.PAUSE, pyautogui.FAILSAFE = original_pause, original_failsafe
+                if not observers.enabled:
+                    pyautogui.PAUSE, pyautogui.FAILSAFE = original_pause, original_failsafe
         return jsonify(status="ok", actions=results, done=done, info=info)
 
     @bp.post("/stop")
     def stop():
         check_session()
+        observers.stop_all()
         with action_lock:
             release_inputs()
             recorder.stop()
         return jsonify(status="ok", session_id=recorder.session_id)
+
+    observers.routes(bp, check_session)
 
     @bp.get("/artifact/<name>")
     def artifact(name):

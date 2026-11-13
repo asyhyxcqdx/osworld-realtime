@@ -12,11 +12,12 @@ from unittest.mock import Mock
 
 import pytest
 
-from lib_run_realtime import run_realtime_example
+from lib_run_realtime import run_realtime_example, resume_completed_task
 from mm_agents.realtime_agent import ModelWire, RealtimeAgent
 from mm_agents.realtime_protocol import (
     AgentProtocolError,
     ForbiddenShortcutError,
+    ModelOutputLimitError,
     validate_action,
 )
 
@@ -33,17 +34,17 @@ def tool_use_reply(name, arguments):
     return {"content": [{"type": "tool_use", "id": "c1", "name": name, "input": arguments}]}
 
 
-def run_text_only_violation(tmp_path, monkeypatch, evaluate):
-    """Drive one episode that ends in AgentProtocolError, then return its dir."""
+def run_agent_failure(tmp_path, monkeypatch, evaluate, *, replies=None, audit=None):
+    """Exercise the real runner and result writer with a controlled model reply."""
     monkeypatch.setattr('lib_run_realtime.time.sleep', lambda _: None)
     monkeypatch.setattr('lib_run_single.setup_logger', lambda *args: None)
     monkeypatch.setattr('lib_run_realtime.log_task_completion', lambda *args: None)
     # The audit runs before any score is written; keep this test offline.
     monkeypatch.setattr('mm_agents.realtime_auditor.audit_task',
-                        lambda task_dir, result, **kwargs: (result, {'label': 'NOT_CHEAT'}))
+                        audit or (lambda task_dir, result, **kwargs: (result, {'label': 'NOT_CHEAT'})))
     monkeypatch.setattr('lib_run_single._evaluate_with_details', evaluate)
     wire = ModelWire('mock', 'anthropic_messages')
-    wire.request = Mock(return_value=text_only_reply())
+    wire.request = Mock(side_effect=replies) if replies is not None else Mock(return_value=text_only_reply())
     agent = RealtimeAgent(system_prompt_text=TEST_SYSTEM_PROMPT,
                           user_prompt_text=TEST_USER_PROMPT,
                           sequence=True, frames=False, wire=wire)
@@ -62,13 +63,13 @@ def run_text_only_violation(tmp_path, monkeypatch, evaluate):
         model='mock', max_sequence_actions=100, max_frame_queries=0, evaluation_settle_s=0,
     )
     scores = []
-    run_realtime_example(agent, env, {}, 1, 'task', args, str(tmp_path), scores)
+    run_realtime_example(agent, env, {}, 10, 'task', args, str(tmp_path), scores)
     return scores
 
 
 def test_protocol_violation_records_a_real_zero_when_the_page_is_readable(tmp_path, monkeypatch):
     evaluate = Mock(return_value=0.0)
-    scores = run_text_only_violation(tmp_path, monkeypatch, evaluate)
+    scores = run_agent_failure(tmp_path, monkeypatch, evaluate)
     assert scores == [0.0]
     assert (tmp_path / 'result.txt').read_text() == '0.0\n'
     details = json.loads((tmp_path / 'result.json').read_text())
@@ -83,7 +84,7 @@ def test_protocol_violation_records_a_real_zero_when_the_page_is_readable(tmp_pa
 
 def test_protocol_violation_without_a_readable_page_leaves_no_score(tmp_path, monkeypatch):
     evaluate = Mock(side_effect=RuntimeError('the VM is gone'))
-    scores = run_text_only_violation(tmp_path, monkeypatch, evaluate)
+    scores = run_agent_failure(tmp_path, monkeypatch, evaluate)
     assert scores == []
     # No score at all: the resume re-runs and re-judges this task.
     assert not (tmp_path / 'result.txt').exists()
@@ -100,6 +101,65 @@ def test_protocol_violation_without_a_readable_page_leaves_no_score(tmp_path, mo
 def test_forbidden_shortcut_is_a_protocol_violation():
     assert issubclass(ForbiddenShortcutError, AgentProtocolError)
     assert issubclass(AgentProtocolError, ValueError)
+
+
+def output_limit_reply():
+    return {'stop_reason': 'max_tokens',
+            'content': [{'type': 'tool_use', 'id': 'cutoff', 'name': 'computer_press', 'input': '{"key":"sp'}],
+            'usage': {'input_tokens': 100, 'output_tokens': 128000}}
+
+
+@pytest.mark.parametrize('page_score', [0.0, 1.0])
+def test_output_limit_finishes_with_existing_page_score_and_resume_skips(tmp_path, monkeypatch, page_score):
+    # A normal earlier action can already have won. The later truncated action
+    # must not execute, and its failure must not erase the page's existing win.
+    replies = [tool_use_reply('computer_press', {'key': 'space'}), output_limit_reply()]
+    evaluate = Mock(return_value=page_score)
+    scores = run_agent_failure(tmp_path, monkeypatch, evaluate, replies=replies)
+    assert scores == [page_score]
+    assert float((tmp_path / 'result.txt').read_text()) == page_score
+    assert evaluate.call_args.kwargs['termination_reason'] == 'model_output_limit'
+    metrics = json.loads((tmp_path / 'agent_metrics.json').read_text())
+    assert metrics['executed_actions'] == 1
+    assert metrics['model_requests'] == 2
+    assert metrics['run_error']['type'] == 'ModelOutputLimitError'
+    before = (tmp_path / 'trajectory.jsonl').read_bytes()
+    assert resume_completed_task(tmp_path, {}, SimpleNamespace(), []) is True
+    assert (tmp_path / 'trajectory.jsonl').read_bytes() == before
+
+
+def test_output_limit_before_first_action_scores_zero_and_audit_retries_only_audit(tmp_path, monkeypatch):
+    from mm_agents.realtime_auditor import AuditError
+    audit = Mock(side_effect=AuditError('temporary judge outage'))
+    scores = run_agent_failure(tmp_path, monkeypatch, Mock(return_value=0.0),
+                               replies=[output_limit_reply()], audit=audit)
+    assert scores == []
+    assert not (tmp_path / 'result.txt').exists()
+    assert json.loads((tmp_path / 'game_result.json').read_text())['result'] == 0.0
+    metrics = json.loads((tmp_path / 'agent_metrics.json').read_text())
+    assert metrics['executed_actions'] == 0
+    assert metrics['model_requests'] == 1
+    before = (tmp_path / 'trajectory.jsonl').read_bytes()
+    assert resume_completed_task(tmp_path, {}, SimpleNamespace(), []) is True
+    assert not (tmp_path / 'result.txt').exists()
+    audit.side_effect = None
+    audit.return_value = (0.0, {'label': 'NOT_CHEAT'})
+    scores = []
+    assert resume_completed_task(tmp_path, {}, SimpleNamespace(), scores) is True
+    assert scores == [0.0]
+    assert (tmp_path / 'result.txt').read_text() == '0.0\n'
+    assert (tmp_path / 'trajectory.jsonl').read_bytes() == before
+
+
+@pytest.mark.parametrize('error', [RuntimeError('HTTP 401 quota exhausted'),
+                                  RuntimeError('response incomplete without an explicit output limit')])
+def test_infrastructure_error_still_leaves_no_score(tmp_path, monkeypatch, error):
+    evaluate = Mock()
+    with pytest.raises(RuntimeError):
+        run_agent_failure(tmp_path, monkeypatch, evaluate, replies=[error])
+    evaluate.assert_not_called()
+    assert not (tmp_path / 'game_result.json').exists()
+    assert not (tmp_path / 'result.txt').exists()
 
 
 @pytest.mark.parametrize('key', ['tab', 'enter', 'return', 'esc', 'escape'])

@@ -47,6 +47,8 @@ class Xcursor:
     display = None
 
     def __init__(self, display=None):
+        self._cursor_image = None
+        self.position = None
         if not display:
             try:
                 display = os.environ["DISPLAY"].encode("utf-8")
@@ -78,12 +80,23 @@ class Xcursor:
         # Set up XCloseDisplay function signature for proper cleanup
         self.xlib.XCloseDisplay.argtypes = [ctypes.POINTER(Display)]
         self.xlib.XCloseDisplay.restype = ctypes.c_int
+        self.xlib.XFree.argtypes = [ctypes.c_void_p]
+        self.xlib.XFree.restype = ctypes.c_int
 
         if not self.display:
             self.display = self.xlib.XOpenDisplay(display)  # (display) or (None)
+        if not self.display:
+            raise RuntimeError("Cannot open the X11 display for cursor capture")
+
+    def _free_cursor_image(self):
+        pointer = getattr(self, '_cursor_image', None)
+        if pointer:
+            self.xlib.XFree(pointer)
+            self._cursor_image = None
 
     def close(self):
         """Close the X11 display connection to prevent resource leaks."""
+        self._free_cursor_image()
         if self.display:
             self.xlib.XCloseDisplay(self.display)
             self.display = None
@@ -123,12 +136,17 @@ class Xcursor:
         return b
 
     def getCursorImageData(self):
+        if not self.display:
+            raise RuntimeError("The X11 cursor connection is closed")
+        self._free_cursor_image()
         # Call the function. Read data of cursor/mouse-pointer.
         cursor_data = self.XFixesGetCursorImage(self.display)
 
         if not (cursor_data and cursor_data[0]):
             raise Exception("Cannot read XFixesGetCursorImage()")
 
+        self._cursor_image = cursor_data
+        self.position = (int(cursor_data[0].x), int(cursor_data[0].y))
         # Note: cursor_data is a pointer, take cursor_data[0]
         return cursor_data[0]
 

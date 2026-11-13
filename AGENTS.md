@@ -162,6 +162,8 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 
 已保存 `game_result.json`（或旧版 `result.json`）就可以补审计，无需 `result.txt`，也不需要 `--force`。`--force` 用于重新审查已有判决的任务。
 
+审计输入接近上下文上限时，可加 `--compact-json`，仅去掉 JSON 字符串之外的排版空格；所有事件和字段值保留，原始轨迹不改。实际发送文本仍保存到 `audit_input.txt`，判决记录 `input_format: compact_jsonl`。默认继续使用原始行。
+
 ### 续跑（补齐没成绩的任务）
 
 **同一条命令、同样的 `--result_dir` / `--run_id` 再跑一次即可**，不需要额外参数：
@@ -195,7 +197,7 @@ python -m mm_agents.realtime_auditor <任务目录> --dry-run                 # 
 | 同一个任务重跑后 `trajectory.jsonl` 里事件翻倍 | 它是追加模式；使用内置续跑。已保存游戏结果的目录只补审计，只有尚未保存游戏结果的任务会清理重跑 |
 | 某个模型"没有成绩" | `result.txt` 不存在表示最终成绩尚未发布，**不记 0 分**。已有 `game_result.json` 或旧版 `result.json` 时只补审计；没有游戏结果时才重跑。`result.txt=0.0` = **有效 0 分**（可能是游戏没过、模型违反动作协议，或判官判了 `CHEAT`）。其中**模型违反动作协议**（连续 3 轮不回工具调用、越权快捷键、坐标越界等）会记 `termination_reason: run_error`（`result.json` 字段与正常局完全一致，具体原因在 `trajectory.jsonl` 的 `run_error` 事件里）—— **这样它就不会被当成"无成绩"**（无成绩会被续跑重跑，等于白拿一次重掷）；**分数照页面原值写**（违规时页面通常还没通关，所以实际多是 0；若之前那次尝试已经通关，页面给的就是 1），**要不要因为违规把这次成绩作废由判官判**（`CHEAT` → 0，`CHEAT_ATTEMPT`/`UNCERTAIN`/`NOT_CHEAT` → 保留页面原值）；但**若违规后连页面都读不到**（评测抛异常），按基础设施故障处理：不写分、续跑重跑（页面里可能已记着通过）。判官判了作弊的，看 `result.json` 的 `judge.label` |
 | 某条任务在 `model_error: JSONDecodeError … column N` 处整条作废（`result.txt` 都没有） | **模型把工具参数写成了非法 JSON**：实测 deepseek-flash 会把唯一的数组参数写成 `{"times_s": 6.0, 6.5, 7.0}`（漏掉 `[`），同一条请求重放 **24%** 复现；789 次请求里 1.1%，69 条任务里死 13%。**旧行为**：anthropic 协议在流式收尾处就 `json.loads`、失败即抛裸 `ValueError`，绕过了 `predict()` 里的纠错重试，于是整条任务被当成"基础设施故障"并靠续跑反复重跑（等于重掷骰子抬分）。**现行为**（`mm_agents/realtime_stream.py`）：解析失败时保留原始字符串往下传 —— 动作调用走 `format_error` 纠错（同一决策内 ≤2 次），仍改不掉才记 `run_error` + **有效 0 分**（模型失败）；`get_frames` 调用回一条 `status: invalid_arguments` 的结果（明说"`times_s` 要 1–8 个数字的列表，例如 `[8.0]`"）让模型当场重查，**并同样计入同一决策的纠错额度**（按响应 +1，超 2 次判错）——帧参数写错是模型自己的错，不该被报成"录屏解码失败"，也不该无限重试。真断流（没有 `message_stop`/块没收完）仍抛 `IncompleteStreamError`（照旧无成绩、续跑重试） |
-| 单轮花掉约 $20 | 模型可能退化（重复刷屏）直到撞上 `max_output_tokens`（128k），网关返回 `response.incomplete`。我们的行为是**停止且不执行半段**，但那一轮照样计费。日志显示 `Responses stream response.incomplete: None` 时，去网关明细看该轮的 `completion_tokens` 是否等于上限 |
+| 单轮花掉约 $20 | 模型可能退化（重复刷屏）直到撞上 `max_output_tokens`（128k），网关返回 `response.incomplete`。明确的 `max_tokens` / `length` / `max_output_tokens` 记为 `model_output_limit`：不执行截断动作，读取当前游戏成绩并审计落分，续跑不重玩；原回复和 token 用量保留。原因不明的 `incomplete` 仍是未评分异常 |
 | 整批突然中断 | 本机代理瞬断（`ProxyError: Connection refused`）会打断模型请求。批量脚本已把**账单抓取失败**降级为记录 `billing_error` 不中断；模型请求失败仍会让该任务变成"无有效成绩" |
 | 零星 `Model API HTTP 402 … insufficient balance (1008)` 打死任务 | 网关的**上游渠道**临时没钱（不是你的 key 额度超了；key 额度看 `hard_limit_usd`）。网关在多渠道间轮询，所以是间歇性的 —— `mm_agents/realtime_agent.py` 现在把 402 当可重试：退避 1/2/4/8 秒共 **5 次**（其它 429/5xx 同样是 5 次）；仍失败才按"无有效成绩"杀掉该任务，续跑补齐。撞上时先去 Packy 后台看该模型的**渠道余额**，光重试救不了渠道级长时间欠费 |
 | 网关回 **HTTP 200**，但流里报 `rate_limit_exceeded` / `too_many_requests` / `overloaded`（"exceeded token rate limit"）打死任务 | 这是**上游按 token 限流（TPM）**，不是并发被限也不是 key 额度：`mm_agents/realtime_stream.py` 把它单独抛成 `RateLimitedStreamError`，`mm_agents/realtime_agent.py` 给它**独立预算**——首发之后**最多重试 5 次**，退避 10/20/30/45/60 秒（±25% 抖动，跨过一个滚动分钟窗口）；这种拒绝对**没有到达模型**，重发不会重复执行动作（旧行为是当成模型错误、直接判"无有效成绩"）。判据是错误负载里出现限流/过载/配额字样（`is_rate_limited`）。**另一类"上游瞬时故障"**（`server_error`/`api_error`/`internal_error`/`timeout`/`idle timeout`/`unavailable`，判据 `is_transient_error`，实测 2026-09-25 在 fable-ucloud 上表现为 `passthrough stream idle timeout after 120s waiting for next chunk`，12 题里丢 9 题）抛成 `TransientStreamError`，走**网络预算**（3/6/12/24 秒，共 5 次）——它同样没有产出完整回复、重发不会重复动作，但通常几秒就好，所以不用跨分钟的配额预算。**模型拒绝 / 内容过滤（`content_filter`）/ 撞输出上限仍然立即失败**，不许重试：那些是模型或内容的结论，重发没有意义。**它跟并发数无关**：实测小请求 24 并发全过，而带完整历史+截图的大请求连发就中（单任务 ≈9 万 tokens/分钟）——真跑不动时降 `--num_envs` 或换配额更大的路由，光靠重试只是把任务救回来 |
@@ -256,6 +258,8 @@ recording.mp4 + recording_index.json + recording_ffmpeg.log
 ---
 
 ## 9. 文档索引
+
+TRACE 观察器扩展使用独立配置和 run_id，运行与结果说明见 [REALTIME_OBSERVERS.md](REALTIME_OBSERVERS.md)。观察器组审计保留早期后台事件，并使用对应模式的审计 prompt。
 
 | 文档 | 内容 |
 |---|---|

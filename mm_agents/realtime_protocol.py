@@ -119,6 +119,10 @@ class ForbiddenShortcutError(AgentProtocolError):
     """Raised when an action would leave or inspect the game page."""
 
 
+class ModelOutputLimitError(AgentProtocolError):
+    """The provider explicitly terminated the model reply at its output budget."""
+
+
 _BLOCKED_SINGLE_KEYS = {
     "f5",
     "f12",

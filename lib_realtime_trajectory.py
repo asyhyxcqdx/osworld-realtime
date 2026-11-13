@@ -271,6 +271,11 @@ def build_trajectory_data(path, output=None):
             if img:
                 view['images'].append(img)
                 last_image = img
+        elif kind.startswith('observer_') and event.get('screenshot_file'):
+            img = screenshot({'screenshot_file': event['screenshot_file'],
+                              'task_time_s': event.get('task_time_s', event.get('observation', {}).get('task_time_s'))}, 'Observer')
+            if img:
+                view['images'] = [img]
         elif kind == 'action_tool_result':
             view['hidden'] = True
             call_ids = [pair[0].get('id') for pair in event.get('calls', []) if isinstance(pair, list) and pair and isinstance(pair[0], dict)]

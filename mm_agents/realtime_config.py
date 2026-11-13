@@ -15,7 +15,12 @@ VARIANT_TO_AGENT_ID = {
 }
 
 
-def validate_thinking(model, protocol, enabled, effort):
+def validate_thinking(model, protocol, enabled, effort, prefix_mismatch_behavior=None):
+    if prefix_mismatch_behavior is not None:
+        if not isinstance(prefix_mismatch_behavior, str) or prefix_mismatch_behavior not in {"error", "drop_block"}:
+            raise ValueError("thinking.prefix_mismatch_behavior must be error or drop_block")
+        if protocol != "anthropic_messages" or not model.startswith("claude-") or not enabled:
+            raise ValueError("thinking.prefix_mismatch_behavior requires Claude Messages with thinking enabled")
     if model == "MiniMax-M3" and enabled:
         if protocol != "anthropic_messages":
             raise ValueError("MiniMax-M3 adaptive thinking is configured through Anthropic Messages")
@@ -40,10 +45,15 @@ def validate_key_env(name):
         raise ValueError("api.key_env must name an environment variable, not contain a key")
 
 
-def default_config_path(variant, model, root=None):
+def default_config_path(variant, model, root=None, observer_mode='none'):
     agent_id = VARIANT_TO_AGENT_ID[variant]
     base = Path(root) if root else Path(__file__).resolve().parents[1]
-    return base / "configs" / "realtime_agents" / f"{agent_id}-{model}.yaml"
+    directory = base / "configs" / "realtime_agents"
+    if observer_mode != 'none':
+        if observer_mode not in {'jev', 'script'} or variant != 'agent4':
+            raise ValueError('Observers require agent4 and mode jev or script')
+        directory = directory / 'observers' / observer_mode
+    return directory / f"{agent_id}-{model}.yaml"
 
 
 def load_realtime_config(path, *, variant=None):
@@ -60,7 +70,7 @@ def load_realtime_config(path, *, variant=None):
     missing = sorted(required - set(config))
     if missing:
         raise ValueError("Realtime Agent config is missing: " + ", ".join(missing))
-    if set(config) - required:
+    if set(config) - required - {'observer_mode', 'observer_api'}:
         raise ValueError("Unknown realtime Agent config fields")
     for name in ("action", "api", "observation", "context", "constraints"):
         if not isinstance(config[name], dict):
@@ -71,6 +81,18 @@ def load_realtime_config(path, *, variant=None):
         raise ValueError("Config agent_id does not match the selected variant.")
     if config["agent_id"] not in VARIANT_TO_AGENT_ID.values():
         raise ValueError("Unknown agent_id")
+    mode = config.get('observer_mode', 'none')
+    if mode not in {'none', 'jev', 'script'} or (mode != 'none' and config['agent_id'] != 'combine'):
+        raise ValueError('Observers require the combine Agent')
+    observer_api = config.get('observer_api', {})
+    if not isinstance(observer_api, dict) or (mode != 'jev' and observer_api):
+        raise ValueError('observer_api is only available to Jev observers')
+    if mode == 'jev':
+        validate_key_env(observer_api.get('key_env', 'JEV_API_KEY'))
+        if not 500 <= observer_api.get('image_max_side', 1568) <= 1568:
+            raise ValueError('Jev image_max_side must be between 500 and 1568')
+        if not 1 <= observer_api.get('timeout_s', 30) <= 120:
+            raise ValueError('Jev timeout_s must be between 1 and 120')
     action = config["action"]
     api = config["api"]
     observation = config["observation"]
@@ -122,7 +144,8 @@ def load_realtime_config(path, *, variant=None):
         raise ValueError("api.thinking.summary must be true for realtime experiments.")
     if thinking.get("effort") is None and api["model"] != "MiniMax-M3":
         raise ValueError("api.thinking.effort is required")
-    validate_thinking(api["model"], protocol, True, thinking.get("effort"))
+    validate_thinking(api["model"], protocol, True, thinking.get("effort"),
+                      thinking.get("prefix_mismatch_behavior"))
     if type(api.get("context_window_tokens")) is not int or api["context_window_tokens"] < 128000:
         raise ValueError("Realtime context window must be at least 128000 tokens.")
     if type(api.get("max_output_tokens")) is not int or api["max_output_tokens"] <= 0:
@@ -156,6 +179,8 @@ def agent_kwargs(config):
         "api_format": api["protocol"],
         "api_key_env": api.get("key_env"),
         "coordinate_system": api.get("coordinate_system", "native_pixels"),
+        "observer_mode": config.get('observer_mode', 'none'),
+        "observer_config": config.get('observer_api', {}),
         "max_tokens": api["max_output_tokens"],
         "temperature": api["temperature"],
         "max_trajectory_length": None,
@@ -165,6 +190,7 @@ def agent_kwargs(config):
         "thinking_enabled": thinking["enabled"],
         "thinking_effort": thinking.get("effort"),
         "thinking_summary": thinking["summary"],
+        "thinking_prefix_mismatch_behavior": thinking.get("prefix_mismatch_behavior"),
         "system_prompt_text": config["system_prompt"],
         "user_prompt_text": config["user_prompt"],
     }

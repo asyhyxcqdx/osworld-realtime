@@ -8,6 +8,8 @@
 
 版本 `realtime-agent-config/1.0`，共 40 份：10 款模型 × 4 组。
 
+后台观察器另有 Jev、Python 两套配置，分别位于 `configs/realtime_agents/observers/jev/` 和 `script/`。可选顶层字段 `observer_mode` 为 `none` / `jev` / `script`，`observer_api` 仅用于 Jev；两种扩展都要求 combine。接入、异步执行和日志见 [后台观察器](REALTIME_OBSERVERS.md)。
+
 文件命名 `<agent_id>-<model>.yaml`，agent1/2/3/4 分别映射 vanilla/anticipatory/video/combine。`--agent_config` 可显式指定文件；`--model` 若同时给出必须与文件 `api.model` 一致，缺失文件直接报错，不回退其他模型配置。不带 `--model` 时 `run_multienv.py` 默认 `claude-fable-5-1`，而批量脚本 `run_realtime_batch.py` 不传 `--models` 时默认八款实验模型。
 
 **顶层字段**：config_version、agent_id、display_name、description、observation、action、context、api、constraints、system_prompt、user_prompt；未知顶层字段会被拒绝。两段 prompt 都必须为非空字符串，**YAML 是它们的唯一来源**（代码里没有默认 prompt）：`system_prompt` 是反作弊与评测诚信规则，实际 system = YAML 原文 + `api.coordinate_system` 对应的坐标约定，完整文字保存在每次运行的 `system_prompt.txt`；`user_prompt` 是每个变体的任务说明（角色、实时约束、执行策略、工具与感知、规则与收尾），作为对话开头的唯一一条任务 user 消息；任务配置里的 `instruction` 字段**保留**（环境核心 `desktop_env.py` 的 `_set_task_info` 要求它存在），值填的是 combine 那套 user prompt，运行时会被覆盖成当前变体的 user prompt。
@@ -51,7 +53,7 @@
 
 **错误处理**：Agent3 同一回复多个 `get_frames`、混合查询与动作、非法参数或文字代替工具时，该回复的动作一概不执行，先回传每个调用 ID 的错误结果，再请求纠正，最多两次；执行阶段出错则不重放序列。模型知道截图时间与之前动作的实际时间，不接收持续更新的视频流，自己决定查询的时间点与数量；模型生成回复期间游戏与录屏仍在继续。
 
-**结束口径**：正常结束或达到决策上限后读取 BENCH，未成功记有效 0 分，结束原因分别是 `done` / `decision_limit`；游戏内部 ready/running 状态照实保存，无有效成绩的异常不会伪造成游戏失败。**跨模型继续需要批量的 `--keep-going`**，单个模型内的任务失败本来就会继续下一个任务；reset、初始页面检查和录制启动等早期错误可能只有运行日志。
+**结束口径**：正常结束、达到决策上限或模型明确输出超限后读取 BENCH，未成功记 0，已有成功保留；结束原因分别为 `done`、`decision_limit`、`model_output_limit`。输出超限的动作不执行，原回复与 token 用量照常保存，经过审计发布成绩，续跑不重玩。游戏内部 ready/running 状态照实保存。网络中断、接口限流及原因不明的不完整回复仍按接口异常处理。**跨模型继续需要批量的 `--keep-going`**，单个模型内的任务失败本来就会继续下一个任务；reset、初始页面检查和录制启动等早期错误可能只有运行日志。
 
 ---
 
@@ -59,7 +61,7 @@
 
 动作通过 API tools schema 提供，不把工具调用当文本 JSON 解析。Messages 使用 adaptive thinking；MiniMax 不发送 effort/display；Responses 使用 `reasoning.effort=high`、`summary=auto`；Gemini Chat 使用 `extra_body.google.thinking_config={thinking_level: high, include_thoughts: true}` 且不同时发送 `reasoning_effort`——**Chat 思考配置目前只为 `gemini-3.8-flash` 开通**，扩展参数不会发给任意 Chat 模型。
 
-三种协议都请求流式回复并收齐完成标志后才解析、提交动作，不执行中途收到的半段序列：Messages 按块拼接文本、思考、签名和工具 JSON；Chat 按索引拼接工具调用、思考扩展及最终 usage；Responses 等待完整 `response.completed`。读取超时保持 240 秒，HTTP 暂时错误及读取超时/断连最多尝试五次（网络类退避 3/6/12/24 秒，HTTP 状态码类 1/2/4/8 秒，均带抖动），失败重试丢弃该次不完整回复；模型的 length/max_tokens 等输出截断仍明确停止。**网关用 HTTP 200 的流内错误事件报配额限流时**（OpenAI 形状的 `error`/`response.failed`，Anthropic 的 `error`/`overloaded_error`，见 `mm_agents/realtime_stream.py::is_rate_limited`）单独给一套预算：同样请求**最多重试五次**，退避 10/20/30/45/60 秒（±25% 抖动）——这种拒绝没有到达模型、重发不可能重复执行动作，而提供方的限额通常是滚动一分钟窗口，所以间隔要跨过窗口；六次（首发 + 五次重试）都是限流才按失败结束。**流内的"上游瞬时故障"另走网络预算**：判定见 `realtime_stream.py::is_transient_error`（`server_error` / `api_error` / `internal_error` / `timeout` / `idle timeout` / `unavailable`），抛 `TransientStreamError`，首发之后最多重试五次、退避 3/6/12/24 秒——同样没有产出完整回复，重发不会重复动作。模型拒绝、`content_filter`、`incomplete`（撞输出上限）都不属于此列，仍然立即失败。请求记录 `stream_requested`，回复记录实际是否按 SSE 返回的 `stream_received`（供应商忽略流式而返回普通 JSON 时标 false，不冒充成功）。
+三种协议都请求流式回复并收齐完成标志后才解析、提交动作，不执行中途收到的半段序列：Messages 按块拼接文本、思考、签名和工具 JSON；Chat 按索引拼接工具调用、思考扩展及最终 usage；Responses 接收 `response.completed`，或明确标注 `max_output_tokens` 的 `response.incomplete` 作为超限终结记录。读取超时保持 240 秒，HTTP 暂时错误及读取超时/断连最多尝试五次（网络类退避 3/6/12/24 秒，HTTP 状态码类 1/2/4/8 秒，均带抖动），失败重试丢弃该次不完整回复；模型明确的 length/max_tokens/max_output_tokens 输出截断结束本题并按现有游戏结果落分。**网关用 HTTP 200 的流内错误事件报配额限流时**（OpenAI 形状的 `error`/`response.failed`，Anthropic 的 `error`/`overloaded_error`，见 `mm_agents/realtime_stream.py::is_rate_limited`）单独给一套预算：同样请求**最多重试五次**，退避 10/20/30/45/60 秒（±25% 抖动）——这种拒绝没有到达模型、重发不可能重复执行动作，而提供方的限额通常是滚动一分钟窗口，所以间隔要跨过窗口；六次（首发 + 五次重试）都是限流才按失败结束。**流内的"上游瞬时故障"另走网络预算**：判定见 `realtime_stream.py::is_transient_error`（`server_error` / `api_error` / `internal_error` / `timeout` / `idle timeout` / `unavailable`），抛 `TransientStreamError`，首发之后最多重试五次、退避 3/6/12/24 秒——同样没有产出完整回复，重发不会重复动作。模型拒绝、`content_filter` 和其他原因的 `incomplete` 不按临时服务故障重试；只有明确标注输出预算耗尽的回复才归为 `model_output_limit`。请求记录 `stream_requested`，回复记录实际是否按 SSE 返回的 `stream_received`（供应商忽略流式而返回普通 JSON 时标 false，不冒充成功）。
 
 Gemini Chat 的取帧回图封装：结果含图片时 `role=tool` 只说明结果在后续图片消息里并保留调用 ID，随后的 `role=user` 按调用 ID 分组，依次放查询完成时间、各帧信息和图片，详细时间与状态只发一份；部分帧失败时状态仍保留在该组中，整次查询没有图片时详细结果直接留在 `role=tool`。Messages / Responses 的取帧封装保持原有结构。
 

@@ -30,6 +30,7 @@ from mm_agents.realtime_protocol import (
     FRAME_TOOL,
     GetFramesArgs,
     AgentProtocolError,
+    ModelOutputLimitError,
     ForbiddenShortcutError,
     validate_action,
 )
@@ -203,6 +204,7 @@ class ModelWire:
         thinking_enabled=None,
         thinking_effort=None,
         api_key_env=None,
+        thinking_prefix_mismatch_behavior=None,
     ):
         self.model = model
         self.protocol = (
@@ -220,12 +222,14 @@ class ModelWire:
             thinking_enabled = thinking_summary
         if thinking_summary and not thinking_enabled:
             raise ValueError("thinking_summary requires thinking_enabled")
-        validate_thinking(model, self.protocol, thinking_enabled, thinking_effort)
+        validate_thinking(model, self.protocol, thinking_enabled, thinking_effort,
+                          thinking_prefix_mismatch_behavior)
         validate_key_env(api_key_env)
         self.api_key_env = api_key_env
         self.thinking_enabled = bool(thinking_enabled)
         self.thinking_summary = thinking_summary
         self.thinking_effort = thinking_effort
+        self.thinking_prefix_mismatch_behavior = thinking_prefix_mismatch_behavior
         anthropic = self.protocol == "anthropic_messages"
         self.base_url = (
             base_url
@@ -320,6 +324,11 @@ class ModelWire:
             )
             if self.thinking_enabled:
                 payload["thinking"] = {"type": "adaptive"}
+                if self.thinking_prefix_mismatch_behavior is not None:
+                    headers["anthropic-beta"] = "thinking-binding-controls-2026-08-01"
+                    payload["thinking"]["block_binding"] = {
+                        "prefix_mismatch_behavior": self.thinking_prefix_mismatch_behavior,
+                    }
                 if self.thinking_summary and self.model != "MiniMax-M3":
                     payload["thinking"]["display"] = "summarized"
                 if self.thinking_effort:
@@ -496,8 +505,16 @@ class ModelWire:
         stop_reason = response.get("stop_reason")
         if self.protocol == "openai_chat":
             stop_reason = response.get("choices", [{}])[0].get("finish_reason")
-        if stop_reason in {"max_tokens", "length"} or response.get("status") == "incomplete":
-            raise RuntimeError("Model response hit its output limit or is incomplete; no actions dispatched.")
+        output_limit = stop_reason in {"max_tokens", "length"} or (
+            self.protocol == "openai_responses"
+            and response.get("status") == "incomplete"
+            and (response.get("incomplete_details") or {}).get("reason") == "max_output_tokens"
+            and not response.get("error")
+        )
+        if output_limit:
+            raise ModelOutputLimitError("Model response hit its output limit; no actions dispatched.")
+        if response.get("status") == "incomplete":
+            raise RuntimeError("Model response is incomplete; no actions dispatched.")
         calls = []
         if self.protocol == "anthropic_messages":
             blocks = response.get("content", [])
@@ -609,9 +626,12 @@ class RealtimeAgent:
         thinking_enabled=None,
         thinking_effort=None,
         thinking_summary=False,
+        thinking_prefix_mismatch_behavior=None,
         system_prompt_text,
         user_prompt_text,
         coordinate_system="native_pixels",
+        observer_mode="none",
+        observer_config=None,
         wire=None,
     ):
         if sequence is None or frames is None:
@@ -636,6 +656,11 @@ class RealtimeAgent:
         self.tool_format = tool_format
         self.coordinates = CoordinateAdapter(coordinate_system)
         self.coordinate_system = self.coordinates.name
+        if observer_mode not in {'none', 'jev', 'script'} or (observer_mode != 'none' and (not sequence or not frames)):
+            raise ValueError('Observers require TRACE with mode jev or script')
+        self.observer_mode = observer_mode
+        self.observer_config = dict(observer_config or {})
+        self.observer_feedback = None
         self.action_tools = self.coordinates.action_tools(ACTION_TOOLS)
         self.wire = wire or ModelWire(
             model,
@@ -645,8 +670,12 @@ class RealtimeAgent:
             thinking_enabled=thinking_enabled,
             thinking_effort=thinking_effort,
             api_key_env=api_key_env,
+            thinking_prefix_mismatch_behavior=thinking_prefix_mismatch_behavior,
         )
-        self.system = system_prompt_text + "\n" + self.coordinates.guidance
+        guidance = self.coordinates.guidance
+        if observer_mode == 'script':
+            guidance = 'For registered computer_* tool calls only: ' + guidance + '\nPython PyAutoGUI calls always use native 1920x1080 pixels.'
+        self.system = system_prompt_text + "\n" + guidance
         self.frame_query = None
         self.event_sink = None
         self.reset()
@@ -669,6 +698,9 @@ class RealtimeAgent:
 
     def bind_event_sink(self, callback):
         self.event_sink = callback
+
+    def bind_observer_feedback(self, callback):
+        self.observer_feedback = callback
 
     def _history_rounds(self):
         if self.history_length is None:
@@ -717,6 +749,9 @@ class RealtimeAgent:
                 "done": bool(done),
                 "last_in_decision": index == len(actions) - 1,
             }
+            observer_result = (info or {}).get('observer_results', {}).get(index)
+            if observer_result is not None:
+                result = {**observer_result, 'last_in_decision': index == len(actions) - 1}
             if error is not None:
                 result["error"] = error
             results.append((call, result))
@@ -737,6 +772,15 @@ class RealtimeAgent:
             raise AgentProtocolError("Invalid action count for this agent group.")
         actions = []
         for call in calls:
+            if self.observer_mode != 'none' and call['name'] in {'create_observer', 'stop_observer'}:
+                from mm_agents.realtime_observers import decode_observer_call
+                try:
+                    actions.append(decode_observer_call(call, self.observer_mode, self.coordinates))
+                except ForbiddenShortcutError:
+                    raise
+                except (ValueError, TypeError, KeyError) as exc:
+                    raise AgentProtocolError(str(exc)) from exc
+                continue
             action_type = ACTION_TOOL_TYPES.get(call["name"])
             if action_type is None:
                 raise AgentProtocolError("Unknown action tool.")
@@ -804,6 +848,11 @@ class RealtimeAgent:
         )
         queries, errors, requests_in_decision = 0, 0, 0
         while True:
+            if self.observer_feedback:
+                feedback = self.observer_feedback()
+                if feedback:
+                    round_messages.append(self.wire.user([text_block(
+                        'Background observer updates:\n' + json.dumps(feedback, ensure_ascii=False))]))
             # Preserve the legacy finite mode only when explicitly requested.
             if self.max_queries and requests_in_decision >= self.max_queries + 4:
                 raise RuntimeError("Model request budget exhausted before an action was produced.")
@@ -817,6 +866,9 @@ class RealtimeAgent:
             request_tools = []
             if self.tool_format == "native":
                 request_tools.extend(self.action_tools)
+                if self.observer_mode != 'none':
+                    from mm_agents.realtime_observers import observer_tools
+                    request_tools.extend(observer_tools(self.observer_mode, self.action_tools))
                 if tools_enabled:
                     request_tools.insert(0, FRAME_TOOL)
             self.emit({
@@ -833,6 +885,8 @@ class RealtimeAgent:
                         "enabled": self.wire.thinking_enabled,
                         "effort": self.wire.thinking_effort,
                         "summary": self.wire.thinking_summary,
+                        **({"prefix_mismatch_behavior": self.wire.thinking_prefix_mismatch_behavior}
+                           if self.wire.thinking_prefix_mismatch_behavior is not None else {}),
                     },
                     "tools": [tool["name"] for tool in request_tools],
                     "request_messages": loggable_messages(history + round_messages),
@@ -861,6 +915,7 @@ class RealtimeAgent:
                 "event": "model_response", "request_id": request_id,
                 "latency_s": time.monotonic() - start,
                 "provider_response": copy.deepcopy(raw),
+                "usage": copy.deepcopy(raw.get("usage", {})),
                 "stream_received": self.wire.last_response_streamed,
                 **response_reasoning(raw, self.wire.protocol),
             }

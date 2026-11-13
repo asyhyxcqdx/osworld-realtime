@@ -86,6 +86,7 @@ def parse_args():
                         choices=sorted(VARIANT_TO_AGENT_ID), help='which of the four agents to run')
     parser.add_argument('--models', default=','.join(DEFAULT_MODELS),
                         help='comma-separated model names; each must have a YAML for the variant')
+    parser.add_argument('--observer_mode', choices=['none', 'jev', 'script'], default='none')
     parser.add_argument('--run_id', required=True,
                         help='batch id; reuse it exactly when resuming')
     parser.add_argument('--result_dir',
@@ -133,13 +134,13 @@ def parse_args():
     return parser.parse_args()
 
 
-def model_key_envs(variant, models):
+def model_key_envs(variant, models, observer_mode='none'):
     """Read api.key_env from the same YAMLs the runner will load."""
     sys.path.insert(0, str(REPO))
     from mm_agents.realtime_config import default_config_path, load_realtime_config
     envs = {}
     for model in models:
-        config = load_realtime_config(default_config_path(variant, model), variant=variant)
+        config = load_realtime_config(default_config_path(variant, model, observer_mode=observer_mode), variant=variant)
         envs[model] = config['api'].get('key_env') or 'PACKY_API_KEY'
     return envs
 
@@ -706,6 +707,8 @@ def main():
     # Loaded before parsing so .env can also supply the argument defaults below.
     applied = load_env_file()
     args = parse_args()
+    if args.observer_mode != 'none' and args.agent_variant != 'agent4':
+        raise SystemExit('Observers require --agent_variant agent4')
     print(describe_sources(applied), flush=True)
 
     # The audit runs before every score is written, so a missing judge key must
@@ -742,6 +745,8 @@ def main():
             '--provider_name', 'docker', '--path_to_vm', str(args.path_to_vm),
             '--headless',
         ]
+        if args.observer_mode != 'none':
+            command += ['--observer_mode', args.observer_mode]
         if api_base_url:
             command += ['--api_base_url', api_base_url]
         command += [
@@ -774,7 +779,7 @@ def main():
     if args.proxy:
         session.proxies.update({'http': args.proxy, 'https': args.proxy})
 
-    key_envs = model_key_envs(args.agent_variant, models)
+    key_envs = model_key_envs(args.agent_variant, models, args.observer_mode)
     keys, key_sources = resolve_keys(models, key_envs, args.keys_file)
     for model in models:
         print('KEY_SOURCE', model, key_envs[model], key_sources[model], flush=True)
