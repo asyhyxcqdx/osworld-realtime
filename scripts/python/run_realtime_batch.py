@@ -79,6 +79,19 @@ SUMMARY_FIELDS = ('model', 'key_env', 'run_id', 'return_code', 'elapsed_s', 'req
                   'input_tokens', 'output_tokens')
 
 
+def git_commit():
+    """Return the code revision when this copy includes Git metadata."""
+    if not (REPO / '.git').exists():
+        return None
+    try:
+        return subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip() or None
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -805,7 +818,7 @@ def main():
         'quota_per_usd': QUOTA_PER_USD,
         'currency_note': 'Gateway ledger charge in USD, quota/500000. No RMB conversion or extrapolation.',
         'exclusive_key_use_confirmed_by_user': True,
-        'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=REPO, text=True).strip(),
+        'commit': git_commit(),
         'key_env_per_model': key_envs, 'key_source_per_model': key_sources,
         'runs': previous_runs,
     }
