@@ -623,6 +623,11 @@ def get_unfinished(
                     continue
                 example_path = os.path.join(domain_path, example_id)
                 if os.path.isdir(example_path):
+                    if agent_variant:
+                        from mm_agents.realtime_run_status import pending_rerun
+                        if pending_rerun(example_path):
+                            # The worker archives this failed run before starting a new one.
+                            continue
                     if "result.txt" not in os.listdir(example_path):
                         if agent_variant and any(os.path.exists(os.path.join(example_path, name))
                                                  for name in ("game_result.json", "result.json")):
@@ -631,6 +636,8 @@ def get_unfinished(
                             continue
                         # Gameplay was interrupted before an outcome was saved.
                         for file in os.listdir(example_path):
+                            if file == '_previous_runs':
+                                continue
                             path = os.path.join(example_path, file)
                             if os.path.isdir(path) and not os.path.islink(path):
                                 shutil.rmtree(path)

@@ -345,6 +345,9 @@ def load_game_result(task_dir):
     legacy audit can also be resumed without playing again.
     """
     task_dir = Path(task_dir)
+    from mm_agents.realtime_run_status import pending_rerun
+    if pending_rerun(task_dir):
+        return None
     path = task_dir / 'game_result.json'
     if not path.exists():
         path = task_dir / 'result.json'

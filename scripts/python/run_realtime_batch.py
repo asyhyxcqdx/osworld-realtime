@@ -72,7 +72,7 @@ DEFAULT_MODELS = ['claude-sonnet-5', 'gpt-5.6-sol', 'gemini-3.8-flash',
                   'claude-fable-5-1', 'gpt-6-astra']
 SUMMARY_FIELDS = ('model', 'key_env', 'run_id', 'return_code', 'elapsed_s', 'requests',
                   'responses', 'decisions', 'frame_queries', 'pass_at_1', 'pass_at_3',
-                  'status', 'tasks_total', 'tasks_scored', 'pass_at_3_mean',
+                  'status', 'tasks_total', 'tasks_scored', 'tasks_pending_rerun', 'pass_at_3_mean',
                   'actual_charge_usd', 'computed_charge_usd',
                   'gateway_log_charge_usd', 'gateway_charge_count',
                   'gateway_prompt_tokens', 'gateway_completion_tokens',
@@ -403,13 +403,14 @@ def merge_task_rows(previous, current):
 
 
 def aggregate_model_row(summaries, *, model, key_env, run_id, return_code, elapsed_s):
-    """One model-level row: counters summed, pass rates averaged over every task."""
+    """One model-level row: counters summed; pending infrastructure reruns have no score."""
     total = len(summaries)
+    eligible = [row for row in summaries if row.get('run_status') != 'pending_rerun']
 
     def mean(field):
-        if not total:
+        if not eligible:
             return None
-        return round(sum(float(row.get(field) or 0) for row in summaries) / total, 4)
+        return round(sum(float(row.get(field) or 0) for row in eligible) / len(eligible), 4)
 
     def total_of(field):
         return sum(row.get(field) or 0 for row in summaries)
@@ -422,6 +423,7 @@ def aggregate_model_row(summaries, *, model, key_env, run_id, return_code, elaps
         'pass_at_1': mean('pass_at_1'), 'pass_at_3': mean('pass_at_3'),
         'status': None,
         'tasks_total': total,
+        'tasks_pending_rerun': total - len(eligible),
         'tasks_scored': sum(1 for row in summaries if row.get('status') is not None),
         'pass_at_3_mean': mean('pass_at_3'),
         'input_tokens': total_of('input_tokens'),
@@ -435,6 +437,9 @@ def summarize(task_dir):
               'frame_queries': 0, 'usage_records': [], 'evaluations': [], 'errors': [],
               'stream_received': [], 'pass_at_1': None, 'pass_at_3': None, 'status': None,
               'input_tokens': 0, 'output_tokens': 0, 'cached_input_tokens': 0}
+    from mm_agents.realtime_run_status import pending_rerun
+    if pending_rerun(task_dir):
+        result['run_status'] = 'pending_rerun'
     trajectory = task_dir / 'trajectory.jsonl'
     if trajectory.exists():
         for line in trajectory.read_text(errors='replace').splitlines():
@@ -476,7 +481,7 @@ def summarize(task_dir):
             result['judge'] = payload['judge']
         # A saved game without result.txt awaits its audit. Resume uses the same
         # game outcome and trajectory before publishing the final score.
-        if (task_dir / 'result.txt').exists():
+        if (task_dir / 'result.txt').exists() and result.get('run_status') != 'pending_rerun':
             result.update(pass_at_1=payload.get('pass_at_1'), pass_at_3=payload.get('pass_at_3'),
                           status=payload.get('status'), attempts=payload.get('attempts_completed'))
         else:

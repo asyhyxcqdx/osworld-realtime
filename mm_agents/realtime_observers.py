@@ -17,6 +17,27 @@ from mm_agents.realtime_protocol import ACTION_TOOL_TYPES, validate_action_seque
 
 OBSERVER_ACTIONS = {'create_observer': 'OBSERVER_CREATE', 'stop_observer': 'OBSERVER_STOP'}
 
+# Two retries after the initial classification request, each using a new frame.
+JEV_RETRY_DELAYS = (0.2, 0.5)
+
+
+class ObserverNetworkError(RuntimeError):
+    """A Jev service outage prevents this run from receiving a normal score."""
+
+    def __init__(self, details):
+        self.details = details
+        super().__init__('Jev observer request failed: ' + details['message'])
+
+
+def _retryable_jev_error(exc):
+    if isinstance(exc, requests.exceptions.SSLError) and 'CERTIFICATE_VERIFY_FAILED' in str(exc):
+        return False
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError,
+                        requests.exceptions.ChunkedEncodingError)):
+        return True
+    return isinstance(exc, requests.HTTPError) and exc.response is not None and \
+        exc.response.status_code in {408, 429, 500, 502, 503, 504}
+
 JEV_DESCRIPTION = '''Start a named background observer driven by Jev.
 Provide name and cases: visual conditions mapped to sequences of existing GUI actions.
 An empty sequence means no action. The runtime repeatedly captures a fresh screenshot,
@@ -106,6 +127,7 @@ class ObserverManager:
         self.feedback = queue.Queue()
         self.threads, self.stops, self.names = {}, {}, {}
         self.cursor, self.closed, self.fatal = 0, False, None
+        self.network_error = None
         self.poll_stop = threading.Event()
         self.terminal = threading.Event()
         self.poll_lock = threading.Lock()
@@ -166,6 +188,7 @@ class ObserverManager:
                 return
 
     def drain_feedback(self):
+        self.raise_if_failed()
         if self.fatal:
             raise RuntimeError('Observer VM/log connection failed: ' + self.fatal)
         values = []
@@ -174,6 +197,10 @@ class ObserverManager:
                 values.append(self.feedback.get_nowait())
             except queue.Empty:
                 return values
+
+    def raise_if_failed(self):
+        if self.network_error is not None:
+            raise ObserverNetworkError(self.network_error)
 
     def create(self, parameters):
         result = self.rpc('POST', '/observers/create', parameters if self.mode == 'script' else {'name': parameters['name']})
@@ -235,8 +262,9 @@ class ObserverManager:
         cases = list(parameters['cases'].items())
         criteria = {f'C{i}': condition for i, (condition, _) in enumerate(cases)}
         index = 0
+        failures = 0
         try:
-            while not stop.is_set() and not self.terminal.is_set():
+            while not stop.is_set() and not self.terminal.is_set() and self.network_error is None:
                 shot = self.rpc('GET', '/observation')
                 if stop.is_set():
                     break
@@ -248,13 +276,45 @@ class ObserverManager:
                 self.record({'event': 'observer_jev_request', 'observer_id': ident, 'name': parameters['name'],
                              'screenshot_file': relative, 'observation': shot, 'criteria': criteria,
                              'request_monotonic_s': began})
-                raw = self.classify(image, criteria)
+                try:
+                    raw = self.classify(image, criteria)
+                except requests.RequestException as exc:
+                    failures += 1
+                    cancelled = stop.is_set() or self.terminal.is_set()
+                    retry = not cancelled and _retryable_jev_error(exc) and failures <= len(JEV_RETRY_DELAYS)
+                    message = str(exc)
+                    if getattr(self, 'key', None):
+                        message = message.replace(self.key, '[REDACTED]')
+                    error = {'error_type': type(exc).__name__, 'message': message,
+                             'observer_id': ident, 'name': parameters['name'],
+                             'consecutive_failures': failures}
+                    self.record({'event': 'observer_jev_error', **error,
+                                 'screenshot_file': relative, 'latency_s': time.monotonic() - began,
+                                 'will_retry': retry, 'ignored_after_stop': cancelled})
+                    if cancelled:
+                        break
+                    if not retry:
+                        with self.event_lock:
+                            if self.network_error is None:
+                                self.network_error = error
+                        raise ObserverNetworkError(error) from exc
+                    # Only classification is retried. No GUI request is replayed.
+                    if hasattr(self.local, 'jev_session'):
+                        self.local.jev_session.close()
+                        del self.local.jev_session
+                    if stop.wait(JEV_RETRY_DELAYS[failures - 1]):
+                        break
+                    continue
+                if failures:
+                    self.record({'event': 'observer_jev_recovered', 'observer_id': ident,
+                                 'name': parameters['name'], 'consecutive_failures': failures})
+                failures = 0
                 answer = raw.get('answers', {}).get('case', {})
                 choice = answer.get('choice')
                 self.record({'event': 'observer_jev_response', 'observer_id': ident, 'name': parameters['name'],
                              'choice': choice, 'response': raw, 'latency_s': time.monotonic() - began,
                              'ignored_after_stop': stop.is_set()})
-                if stop.is_set():
+                if stop.is_set() or self.terminal.is_set() or self.network_error is not None:
                     break
                 if choice == 'NONE':
                     continue
@@ -275,6 +335,11 @@ class ObserverManager:
                     self.terminal.set()
         except Exception as exc:
             if not stop.is_set():
+                if isinstance(exc, requests.RequestException) and self.network_error is None:
+                    # Screenshot/GUI transport failure: never replay an uncertain action.
+                    self.network_error = {'error_type': type(exc).__name__, 'message': str(exc),
+                                          'observer_id': ident, 'name': parameters['name'],
+                                          'stage': 'observer_transport'}
                 event = {'event': 'observer_failed', 'name': parameters['name'], 'observer_id': ident,
                          'error': {'error_type': type(exc).__name__, 'message': str(exc)}}
                 try:
@@ -288,10 +353,12 @@ class ObserverManager:
                 self.local.jev_session.close()
 
     def execute(self, actions):
+        self.raise_if_failed()
         results, sequence_actions = {}, []
         done = self.terminal.is_set()
         index = 0
         while index < len(actions) and not done:
+            self.raise_if_failed()
             action = actions[index]
             if action['action_type'] in OBSERVER_ACTIONS.values():
                 params = action['parameters']
@@ -319,7 +386,13 @@ class ObserverManager:
         for stop in self.stops.values():
             stop.set()
         try:
-            self.rpc('POST', '/observers/stop_all')
+            # Persist the failure before task-wide cancellation can label it stopped.
+            try:
+                if self.network_error is not None:
+                    self.rpc('POST', '/observers/stop', {
+                        'observer_id': self.network_error['observer_id'], 'error': self.network_error})
+            finally:
+                self.rpc('POST', '/observers/stop_all')
             for thread in self.threads.values():
                 thread.join(timeout=self.cfg.get('timeout_s', 30) + 5)
                 if thread.is_alive():

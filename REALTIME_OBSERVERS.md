@@ -54,3 +54,19 @@ observers/<id>/stdout.log、stderr.log
 ```bash
 python -m mm_agents.realtime_auditor <任务目录> --compact-json
 ```
+
+## Jev connection recovery
+
+Transient Jev connection errors are retried at most twice, after 0.2 and 0.5 seconds.
+Each retry captures a new screenshot; the game keeps running. A successful response
+resets the retry count. GUI actions are never retried automatically.
+
+If recovery fails, the runner stops the task and writes `run_status.json` with
+`status: pending_rerun`. Its trajectory and recording remain available, without a
+final `result.txt`. Batch summaries list `tasks_pending_rerun` and exclude these
+tasks from success-rate averages. Rerun the same command to retry the task; the old
+run is first moved into `_previous_runs/` inside its task directory.
+
+Recovered errors and their elapsed time stay in the trajectory. Model decisions,
+case selection, and game rules are unchanged. Use a new run ID for experiments
+with this recovery policy; earlier runs retain their original behavior and results.

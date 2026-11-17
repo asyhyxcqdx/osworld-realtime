@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 
 from lib_results_logger import log_task_completion
+from mm_agents.realtime_run_status import pending_rerun, mark_pending_rerun, archive_pending_run
 from mm_agents.realtime_protocol import (
     AgentProtocolError,
     ModelOutputLimitError,
@@ -44,6 +45,8 @@ def resume_completed_task(out, example, args, scores):
         saved_mode = json.loads(experiment_path.read_text()).get('observer_mode', 'none')
         if saved_mode != (getattr(args, 'observer_mode', None) or 'none'):
             raise ValueError('This run_id belongs to a different observer_mode; use a separate run_id')
+    if pending_rerun(out):
+        return False
     if (out / "result.txt").exists():
         return True
     game = load_game_result(out)
@@ -61,6 +64,7 @@ def run_realtime_example(
     out = Path(example_result_dir)
     if resume_completed_task(out, example, args, scores):
         return
+    archive_pending_run(out)
     from lib_run_single import _evaluate_with_details, setup_logger
     runtime_logger = setup_logger(example, example_result_dir)
     task_started_at = datetime.now(timezone.utc).isoformat()
@@ -284,6 +288,7 @@ def run_realtime_example(
                 )
         if observer:
             observer.close()
+            observer.raise_if_failed()
         time.sleep(args.evaluation_settle_s)
         if page_identity is not None:
             verify_realtime_page_identity(env, page_config, page_identity)
@@ -306,6 +311,7 @@ def run_realtime_example(
     except AgentProtocolError as exc:
         if observer:
             observer.close()
+            observer.raise_if_failed()
         # The model broke the action protocol. Recording it as a run_error keeps the
         # task from looking like "no score", which the resume path would re-roll for
         # free. The score itself is the page's own verdict, exactly as in a normal
@@ -356,6 +362,15 @@ def run_realtime_example(
                 logging.getLogger(__name__).error('Observer cleanup failed in %s: %s', out, cleanup_error)
             finally:
                 agent.bind_observer_feedback(None)
+            if observer.network_error is not None:
+                # Do not publish or audit a task whose observer could not recover.
+                # This check also covers a failure arriving during the final model call.
+                termination_reason = 'observer_network_error'
+                run_error = observer.network_error
+                result = None
+                mark_pending_rerun(out, run_error)
+                write_event({'event': 'run_pending_rerun', 'error': run_error},
+                            decision_id=decision_count)
         agent.bind_event_sink(None)
         (out / "agent_metrics.json").write_text(
             json.dumps(
@@ -372,6 +387,8 @@ def run_realtime_example(
                     "termination_reason": termination_reason,
                     "execution_error": execution_error,
                     "run_error": run_error,
+                    **({'run_status': 'pending_rerun'}
+                       if termination_reason == 'observer_network_error' else {}),
                 },
                 indent=2,
             )

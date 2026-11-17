@@ -59,6 +59,7 @@ TERMINATION_LABELS = {
     'done': '正常结束',
     'decision_limit': '回合上限',
     'execution_error': '执行异常',
+    'observer_network_error': '运行异常（待补跑）',
     'run_error': '其他运行异常',
     'interrupted': '中断',
 }
